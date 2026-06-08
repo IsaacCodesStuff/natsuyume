@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "../.."
 
 Item {
     id: albumTrackList
@@ -12,9 +13,6 @@ Item {
     readonly property color primaryText: theme.primaryText
     readonly property color mutedText:   theme.mutedText
     readonly property color accentColor: theme.accentColor
-
-    signal backRequested
-    signal trackListUpdated(var tracks)
 
     property bool trackSortOpen: false
 
@@ -33,8 +31,56 @@ Item {
         { label: "Play Count",   value: 11 }
     ]
 
+    signal backRequested
+    signal trackListUpdated(var tracks)
     signal sortRequested(int value, string label)
     signal ascendingToggled(bool ascending)
+
+    // Context menu
+    ContextMenu {
+        id: trackContextMenu
+        theme: albumTrackList.theme
+    }
+
+    SongInfo {
+        id: songInfoDialog
+        theme: albumTrackList.theme
+    }
+
+    function trackActions(path, title) {
+        return [
+            {
+                label: "Play",
+                icon: "▶",
+                onTriggered: function() {
+                    if (player.isAlbumActiveQueue(albumTrackList.albumName)) {
+                        player.jumpToTrackByPath(path)
+                    } else {
+                        let paths = albumTrackList.tracks.map(t => t.path)
+                        player.openFilesInNewQueue(paths, albumTrackList.albumName)
+                        player.jumpToTrackByPath(path)
+                    }
+                }
+            },
+            {
+                label: "Add to queue",
+                icon: "+",
+                onTriggered: function() {
+                    player.addTrackToQueue(path)
+                }
+            },
+            {
+                label: "Add to playlist",
+                icon: "🎵",
+                disabled: true
+            },
+            {
+                label: "Song info",
+                icon: "ℹ",
+                onTriggered: function() { songInfoDialog.open(path) }
+            }
+        ]
+    }
 
     // Header
     Rectangle {
@@ -167,6 +213,7 @@ Item {
         model: albumTrackList.tracks
 
         delegate: Rectangle {
+            id: trackDelegate
             width: listView.width
             height: 48
             radius: 8
@@ -175,12 +222,12 @@ Item {
             Row {
                 anchors.fill: parent
                 anchors.leftMargin: 12
-                anchors.rightMargin: 12
+                anchors.rightMargin: 0
                 spacing: 8
 
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width
+                    width: parent.width - 40
                     spacing: 2
 
                     Text {
@@ -199,21 +246,70 @@ Item {
                         width: parent.width
                     }
                 }
+
+                // Divider
+                Rectangle {
+                    width: 1
+                    height: parent.height * 0.6
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Options button
+                Item {
+                    width: 32
+                    height: parent.height
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Text {
+                        text: "⋮"
+                        font.pixelSize: 16
+                        color: albumTrackList.mutedText
+                        anchors.centerIn: parent
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            trackContextMenu.title   = modelData.title
+                            trackContextMenu.actions = albumTrackList.trackActions(
+                                modelData.path, modelData.title)
+                            trackContextMenu.open()
+                        }
+                    }
+                }
             }
 
+            // Tap to play
             MouseArea {
                 anchors.fill: parent
+                anchors.rightMargin: 32
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (player.isAlbumActiveQueue(albumTrackList.albumName)) {
-                        // Album already loaded — just jump to the tapped track
-                        player.jumpToTrack(index)
+                acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+                onClicked: function(mouse) {
+                    if (mouse.button === Qt.RightButton) {
+                        trackContextMenu.title   = modelData.title
+                        trackContextMenu.actions = albumTrackList.trackActions(
+                            modelData.path, modelData.title)
+                        trackContextMenu.open()
                     } else {
-                        // Load the whole album as a new queue and jump to tapped track
-                        let paths = albumTrackList.tracks.map(t => t.path)
-                        player.openFilesInNewQueue(paths, albumTrackList.albumName)
-                        player.jumpToTrack(index)
+                        if (player.isAlbumActiveQueue(albumTrackList.albumName)) {
+                            player.jumpToTrackByPath(modelData.path)
+                        } else {
+                            let paths = albumTrackList.tracks.map(t => t.path)
+                            player.openFilesInNewQueue(paths, albumTrackList.albumName)
+                            player.jumpToTrackByPath(modelData.path)
+                        }
                     }
+                }
+
+                onPressAndHold: {
+                    trackContextMenu.title   = modelData.title
+                    trackContextMenu.actions = albumTrackList.trackActions(
+                        modelData.path, modelData.title)
+                    trackContextMenu.open()
                 }
             }
         }

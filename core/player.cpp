@@ -659,6 +659,106 @@ bool Player::isAlbumActiveQueue(const QString &album) const
 {
     Queue *q = activeQueue();
     if (!q || q->trackCount() == 0) return false;
-    // Check if the active queue's name matches the album
-    return q->name() == album;
+    if (q->name() != album) return false;
+
+    // Also verify track count matches — if tracks were deleted
+    // treat it as a different queue and reload fresh
+    QList<Track> albumTracks = m_library->tracksByAlbum(
+        album,
+        m_trackSort,
+        m_trackSortAscending
+        );
+
+    return q->trackCount() == albumTracks.size();
+}
+
+void Player::jumpToTrackByPath(const QString &path)
+{
+    Queue *q = activeQueue();
+    if (!q) return;
+    for (int i = 0; i < q->trackCount(); i++) {
+        if (q->trackAt(i).path == path) {
+            q->loadTrackAt(i);
+            return;
+        }
+    }
+    // Path not found in queue — add it and play
+    q->addTrack(path);
+    q->loadTrackAt(q->trackCount() - 1);
+}
+
+void Player::addAlbumToQueue(const QString &album)
+{
+    Queue *q = activeQueue();
+    if (!q) return;
+
+    QList<Track> tracks = m_library->tracksByAlbum(
+        album,
+        m_trackSort,
+        m_trackSortAscending
+        );
+
+    for (const Track &t : std::as_const(tracks))
+        q->addTrack(t.path);
+}
+
+void Player::addTrackToQueue(const QString &path)
+{
+    Queue *q = activeQueue();
+    if (!q) return;
+    q->addTrack(path);
+}
+
+QVariantMap Player::trackInfoByPath(const QString &path) const
+{
+    QVariantMap map;
+
+    // Check active queue first — it may have tracks not in library
+    Queue *q = activeQueue();
+    if (q) {
+        for (int i = 0; i < q->trackCount(); i++) {
+            Track t = q->trackAt(i);
+            if (t.path == path) {
+                map["path"]        = t.path;
+                map["title"]       = t.title;
+                map["artist"]      = t.artist;
+                map["album"]       = t.album;
+                map["albumArtist"] = t.albumArtist;
+                map["composer"]    = t.composer;
+                map["genre"]       = t.genre;
+                map["trackNumber"] = t.trackNumber;
+                map["discNumber"]  = t.discNumber;
+                map["year"]        = t.year;
+                map["duration"]    = t.duration;
+                map["playCount"]   = t.playCount;
+                map["dateAdded"]   = t.dateAdded;
+                map["dateLastPlayed"] = t.dateLastPlayed;
+                return map;
+            }
+        }
+    }
+
+    // Fall back to library
+    QList<Track> tracks = m_library->allTracks();
+    for (const Track &t : std::as_const(tracks)) {
+        if (t.path == path) {
+            map["path"]        = t.path;
+            map["title"]       = t.title;
+            map["artist"]      = t.artist;
+            map["album"]       = t.album;
+            map["albumArtist"] = t.albumArtist;
+            map["composer"]    = t.composer;
+            map["genre"]       = t.genre;
+            map["trackNumber"] = t.trackNumber;
+            map["discNumber"]  = t.discNumber;
+            map["year"]        = t.year;
+            map["duration"]    = t.duration;
+            map["playCount"]   = t.playCount;
+            map["dateAdded"]   = t.dateAdded;
+            map["dateLastPlayed"] = t.dateLastPlayed;
+            return map;
+        }
+    }
+
+    return map;
 }

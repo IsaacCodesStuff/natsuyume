@@ -160,6 +160,10 @@ public:
 
     Q_INVOKABLE void moveTrack(int from, int to);
     Q_INVOKABLE bool isAlbumActiveQueue(const QString &album) const;
+    Q_INVOKABLE void jumpToTrackByPath(const QString &path);
+    Q_INVOKABLE void addAlbumToQueue(const QString &album);
+    Q_INVOKABLE void addTrackToQueue(const QString &path);
+    Q_INVOKABLE QVariantMap trackInfoByPath(const QString &path) const;
 
 signals:
     void isPlayingChanged();

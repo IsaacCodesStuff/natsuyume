@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import natsuyume_player
 
 Item {
     id: albumGrid
@@ -7,9 +8,9 @@ Item {
     required property var    theme
     required property string searchQuery
 
-    readonly property color primaryText: theme.primaryText
-    readonly property color mutedText:   theme.mutedText
-    readonly property color accentColor: theme.accentColor
+    readonly property color primaryText:  theme.primaryText
+    readonly property color mutedText:    theme.mutedText
+    readonly property color accentColor:  theme.accentColor
 
     signal albumSelected(string albumName)
 
@@ -19,6 +20,43 @@ Item {
         return player.allAlbums.filter(a =>
             a.toLowerCase().includes(searchQuery)
         )
+    }
+
+    // Context menu
+    ContextMenu {
+        id: albumContextMenu
+        theme: albumGrid.theme
+    }
+
+    function albumActions(albumName) {
+        return [
+            {
+                label: "Play album",
+                icon: "▶",
+                onTriggered: function() {
+                    let tracks = player.tracksForAlbum(albumName)
+                    let paths = tracks.map(t => t.path)
+                    player.openFilesInNewQueue(paths, albumName)
+                }
+            },
+            {
+                label: "Add to queue",
+                icon: "+",
+                onTriggered: function() {
+                    player.addAlbumToQueue(albumName)
+                }
+            },
+            {
+                label: "Add to playlist",
+                icon: "🎵",
+                disabled: true
+            },
+            {
+                label: "Advanced shuffle",
+                icon: "🔀",
+                disabled: true
+            }
+        ]
     }
 
     GridView {
@@ -79,8 +117,24 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: albumGrid.albumSelected(modelData)
+
+                    onClicked: function(mouse) {
+                        if (mouse.button === Qt.RightButton) {
+                            albumContextMenu.title   = modelData
+                            albumContextMenu.actions = albumGrid.albumActions(modelData)
+                            albumContextMenu.open()
+                        } else {
+                            albumGrid.albumSelected(modelData)
+                        }
+                    }
+
+                    onPressAndHold: {
+                        albumContextMenu.title   = modelData
+                        albumContextMenu.actions = albumGrid.albumActions(modelData)
+                        albumContextMenu.open()
+                    }
                 }
             }
         }

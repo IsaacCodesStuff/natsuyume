@@ -1,4 +1,5 @@
 import QtQuick
+import "../.."
 
 Item {
     id: queueTrackList
@@ -17,6 +18,53 @@ Item {
     property int dragToIndex:   -1
     property bool  dragProxyVisible: false
     property real  dragProxyY:       0
+
+    function trackActions(idx, title) {
+        return [
+            {
+                label: "Play",
+                icon: "▶",
+                onTriggered: function() { player.jumpToTrack(idx) }
+            },
+            {
+                label: "Stop after this song",
+                icon: "⏹",
+                disabled: true
+            },
+            {
+                label: "Song info",
+                icon: "ℹ",
+                onTriggered: function() { songInfoDialog.open(path) }
+            },
+            {
+                label: "Add to playlist",
+                icon: "+",
+                disabled: true
+            },
+            {
+                label: "Save queue as playlist",
+                icon: "🎵",
+                disabled: true
+            },
+            {
+                label: "Remove from queue",
+                icon: "✕",
+                destructive: true,
+                onTriggered: function() { player.removeTrackAt(idx) }
+            }
+        ]
+    }
+
+    // Context menu instance
+    ContextMenu {
+        id: trackContextMenu
+        theme: queueTrackList.theme
+    }
+
+    SongInfo {
+        id: songInfoDialog
+        theme: queueTrackList.theme  // or albumTrackList.theme
+    }
 
     ListView {
         id: trackList
@@ -149,7 +197,7 @@ Item {
                     // Track info
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 76
+                        width: parent.width - 92
                         spacing: 2
 
                         Text {
@@ -173,18 +221,35 @@ Item {
                         }
                     }
 
-                    // Add to playlist
-                    Text {
-                        text: "+"
-                        font.pixelSize: 14
-                        color: queueTrackList.mutedText
+                    // Divider before options button
+                    Rectangle {
+                        width: 1
+                        height: parent.height * 0.6
+                        color: Qt.rgba(1, 1, 1, 0.08)
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 16
+                    }
+
+                    // Options button
+                    Item {
+                        width: 32
+                        height: parent.height
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Text {
+                            text: "⋮"
+                            font.pixelSize: 16
+                            color: queueTrackList.mutedText
+                            anchors.centerIn: parent
+                        }
 
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: { /* TODO: add to playlist */ }
+                            onClicked: {
+                                trackContextMenu.title   = modelData.title
+                                trackContextMenu.actions = queueTrackList.trackActions(index, modelData.title)
+                                trackContextMenu.open()
+                            }
                         }
                     }
                 }
@@ -193,8 +258,14 @@ Item {
                 MouseArea {
                     anchors.fill: parent
                     anchors.leftMargin: 26
+                    anchors.rightMargin: 32
                     cursorShape: Qt.PointingHandCursor
                     onClicked: player.jumpToTrack(index)
+                    onPressAndHold: {
+                        trackContextMenu.title = modelData.title
+                        trackContextMenu.actions = queueTrackList.trackActions(index, modelData.title)
+                        trackContextMenu.open()
+                    }
                 }
             }
         }

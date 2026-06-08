@@ -46,6 +46,7 @@ qt_add_qml_module(appnatsuyume_player
         manager/playback.h manager/playback.cpp
         manager/metadata.h manager/metadata.cpp
         manager/queue.h manager/queue.cpp
+        QML_FILES ui/SongInfo.qml
 )
 
 set_target_properties(appnatsuyume_player PROPERTIES
