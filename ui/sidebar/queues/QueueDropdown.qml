@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Effects
 
 Item {
     id: queueDropdown
@@ -18,20 +17,10 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
-        radius: 10
+        radius: 12
         color: queueDropdown.bgColor
-        border.color: Qt.rgba(1, 1, 1, 0.08)
+        border.color: Qt.rgba(1, 1, 1, 0.1)
         border.width: 1
-
-        layer.enabled: true
-        layer.effect: MultiEffect {
-            shadowEnabled: true
-            shadowColor: Qt.rgba(0, 0, 0, 0.4)
-            shadowVerticalOffset: 4
-            shadowBlur: 0.6
-        }
 
         Column {
             anchors.fill: parent
@@ -51,16 +40,37 @@ Item {
                     color: queueDropdown.mutedText
                     leftPadding: 4
                 }
+
+                Text {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "✕"
+                    font.pixelSize: 12
+                    color: queueDropdown.mutedText
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: queueDropdown.closeRequested()
+                    }
+                }
+            }
+
+            // Divider
+            Rectangle {
+                width: parent.width
+                height: 1
+                color: Qt.rgba(1, 1, 1, 0.06)
             }
 
             // ── Queue list ─────────────────────────────────────
             ListView {
                 id: queueList
                 width: parent.width
-                height: parent.height - 40
+                height: parent.height - 48
                 spacing: 4
                 clip: true
-                model: player.queueNames
+                model: player.queueCount
 
                 delegate: Rectangle {
                     id: queueItem
@@ -71,6 +81,9 @@ Item {
                            ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.15)
                            : Qt.rgba(1, 1, 1, 0.04)
 
+                    // Cache root reference for use inside nested items
+                    property var dropdown: queueDropdown
+
                     property bool isRenaming: queueDropdown.renamingIndex === index
 
                     Row {
@@ -80,33 +93,20 @@ Item {
                         spacing: 6
 
                         Item {
-                            width: parent.width - 28
+                            width: parent.width - 52
                             height: parent.height
 
                             // Normal label
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: parent.width
-                                text: modelData
+                                text: player.queueNames[index]
                                 font.pixelSize: 12
                                 color: index === player.activeQueueIndex
                                        ? queueDropdown.accentColor
                                        : queueDropdown.primaryText
                                 elide: Text.ElideRight
                                 visible: !queueItem.isRenaming
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        player.switchToQueue(index)
-                                        queueDropdown.closeRequested()
-                                    }
-                                    onDoubleClicked: {
-                                        queueDropdown.renamingIndex = index
-                                        queueDropdown.renameBuffer = modelData
-                                    }
-                                }
                             }
 
                             // Inline rename field
@@ -123,27 +123,45 @@ Item {
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 8
                                     verticalAlignment: TextInput.AlignVCenter
-                                    text: queueDropdown.renameBuffer
+                                    text: queueItem.dropdown.renameBuffer
                                     font.pixelSize: 12
-                                    color: queueDropdown.primaryText
+                                    color: queueItem.dropdown.primaryText
                                     selectByMouse: true
                                     focus: queueItem.isRenaming
 
-                                    onTextChanged: queueDropdown.renameBuffer = text
+                                    onTextChanged: queueItem.dropdown.renameBuffer = text
 
                                     onAccepted: {
-                                        if (queueDropdown.renameBuffer.trim().length > 0)
-                                            player.renameQueue(index, queueDropdown.renameBuffer.trim())
-                                        queueDropdown.renamingIndex = -1
+                                        if (queueItem.dropdown.renameBuffer.trim().length > 0)
+                                            player.renameQueue(index, queueItem.dropdown.renameBuffer.trim())
+                                        queueItem.dropdown.renamingIndex = -1
                                     }
 
                                     onActiveFocusChanged: {
                                         if (!activeFocus && queueItem.isRenaming) {
-                                            if (queueDropdown.renameBuffer.trim().length > 0)
-                                                player.renameQueue(index, queueDropdown.renameBuffer.trim())
-                                            queueDropdown.renamingIndex = -1
+                                            if (queueItem.dropdown.renameBuffer.trim().length > 0)
+                                                player.renameQueue(index, queueItem.dropdown.renameBuffer.trim())
+                                            queueItem.dropdown.renamingIndex = -1
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        // Pencil / rename button
+                        Text {
+                            text: "✎"
+                            font.pixelSize: 13
+                            color: queueDropdown.mutedText
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: !queueItem.isRenaming
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    queueItem.dropdown.renamingIndex = index
+                                    queueItem.dropdown.renameBuffer = player.queueNames[index]
                                 }
                             }
                         }
@@ -161,6 +179,18 @@ Item {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: player.closeQueue(index)
                             }
+                        }
+                    }
+
+                    // Tap to switch queue
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.rightMargin: 52
+                        cursorShape: Qt.PointingHandCursor
+                        enabled: !queueItem.isRenaming
+                        onClicked: {
+                            player.switchToQueue(index)
+                            queueDropdown.closeRequested()
                         }
                     }
                 }

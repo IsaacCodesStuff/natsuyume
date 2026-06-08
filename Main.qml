@@ -48,7 +48,11 @@ Window {
         target: player
 
         function onCoverArtChanged() {
-            coverArtSource = "image://covers/current?t=" + Date.now()
+            if (player.hasCoverArt) {
+                coverArtSource = "image://covers/current?t=" + Date.now()
+            } else {
+                coverArtSource = ""
+            }
         }
     }
 

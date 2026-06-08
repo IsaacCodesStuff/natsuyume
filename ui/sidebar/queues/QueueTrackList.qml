@@ -12,6 +12,12 @@ Item {
 
     signal dismissRequested
 
+    // Drag state
+    property int dragFromIndex: -1
+    property int dragToIndex:   -1
+    property bool  dragProxyVisible: false
+    property real  dragProxyY:       0
+
     ListView {
         id: trackList
         anchors.fill: parent
@@ -19,63 +25,221 @@ Item {
         spacing: 4
         clip: true
         model: player.trackList
+        interactive: queueTrackList.dragFromIndex < 0
 
-        delegate: Rectangle {
+        displaced: Transition {
+            NumberAnimation {
+                properties: "x,y"
+                duration: 150
+                easing.type: Easing.OutCubic
+            }
+        }
+
+        delegate: Item {
+            id: delegateRoot
             width: trackList.width
             height: 48
-            radius: 8
-            color: index === player.trackIndex
-                   ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.18)
-                   : Qt.rgba(1, 1, 1, 0.04)
 
-            Row {
-                anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 10
-                spacing: 8
+            property var root: queueTrackList  // cache root reference
+            property bool isDragging: root.dragFromIndex === index
 
-                Text {
-                    text: index === player.trackIndex
-                          ? (player.isPlaying ? "▶" : "⏸")
-                          : ""
-                    font.pixelSize: 10
-                    color: queueTrackList.accentColor
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 12
+            // Visual card
+            Rectangle {
+                id: card
+                width: parent.width
+                height: parent.height
+                radius: 8
+                color: index === player.trackIndex
+                       ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.18)
+                       : Qt.rgba(1, 1, 1, 0.04)
+                opacity: delegateRoot.isDragging ? 0.5 : 1.0
+                scale:   delegateRoot.isDragging ? 1.02 : 1.0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 100 }
+                }
+                Behavior on scale {
+                    NumberAnimation { duration: 100 }
                 }
 
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width - 22
-                    spacing: 2
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 8
 
+                    // Drag handle
                     Text {
-                        text: modelData.title
-                        font.pixelSize: 12
-                        font.weight: index === player.trackIndex
-                                     ? Font.Medium : Font.Normal
-                        color: index === player.trackIndex
-                               ? queueTrackList.accentColor
-                               : queueTrackList.primaryText
-                        elide: Text.ElideRight
-                        width: parent.width
-                    }
-
-                    Text {
-                        text: modelData.artist
-                        font.pixelSize: 10
+                        text: "⠿"
+                        font.pixelSize: 16
                         color: queueTrackList.mutedText
-                        elide: Text.ElideRight
-                        width: parent.width
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 16
+
+                        MouseArea {
+                            id: dragHandle
+                            anchors.fill: parent
+                            cursorShape: Qt.SizeVerCursor
+
+                            onPressed: function(mouse) {
+                                let mapped = mapToItem(delegateRoot.root, 0, mouse.y)
+                                delegateRoot.root.dragFromIndex    = index
+                                delegateRoot.root.dragToIndex      = index
+                                delegateRoot.root.dragProxyY       = mapped.y - 24
+                                delegateRoot.root.dragProxyVisible = true
+                            }
+
+                            onPositionChanged: function(mouse) {
+                                let mapped = mapToItem(delegateRoot.root, 0, mouse.y)
+                                delegateRoot.root.dragProxyY = mapped.y - 24
+
+                                let listY = mapped.y - trackList.y - 8
+                                let newIndex = Math.floor(listY / 52)
+                                newIndex = Math.max(0, Math.min(newIndex, player.trackList.length - 1))
+                                delegateRoot.root.dragToIndex = newIndex
+                            }
+
+                            onReleased: {
+                                if (delegateRoot.root.dragFromIndex >= 0 &&
+                                    delegateRoot.root.dragToIndex >= 0 &&
+                                    delegateRoot.root.dragFromIndex !== delegateRoot.root.dragToIndex) {
+                                    player.moveTrack(
+                                        delegateRoot.root.dragFromIndex,
+                                        delegateRoot.root.dragToIndex)
+                                }
+                                delegateRoot.root.dragProxyVisible = false
+                                delegateRoot.root.dragFromIndex    = -1
+                                delegateRoot.root.dragToIndex      = -1
+                            }
+                        }
+                    }
+
+                    // Track thumbnail
+                    Rectangle {
+                        width: 36
+                        height: 36
+                        radius: 4
+                        color: Qt.rgba(1, 1, 1, 0.06)
+                        anchors.verticalCenter: parent.verticalCenter
+
+                        Image {
+                            id: thumbImage
+                            anchors.fill: parent
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            cache: true
+                            source: {
+                                let path = modelData.path
+                                if (!path) return ""
+                                return "image://trackcovers/" + encodeURIComponent(path)
+                            }
+                            layer.enabled: true
+                            layer.effect: null
+                        }
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: "♪"
+                            font.pixelSize: 14
+                            color: queueTrackList.mutedText
+                            visible: thumbImage.status !== Image.Ready
+                        }
+                    }
+
+                    // Track info
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 76
+                        spacing: 2
+
+                        Text {
+                            text: modelData.title
+                            font.pixelSize: 12
+                            font.weight: index === player.trackIndex
+                                         ? Font.Medium : Font.Normal
+                            color: index === player.trackIndex
+                                   ? queueTrackList.accentColor
+                                   : queueTrackList.primaryText
+                            elide: Text.ElideRight
+                            width: parent.width
+                        }
+
+                        Text {
+                            text: modelData.artist
+                            font.pixelSize: 10
+                            color: queueTrackList.mutedText
+                            elide: Text.ElideRight
+                            width: parent.width
+                        }
+                    }
+
+                    // Add to playlist
+                    Text {
+                        text: "+"
+                        font.pixelSize: 14
+                        color: queueTrackList.mutedText
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 16
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: { /* TODO: add to playlist */ }
+                        }
                     }
                 }
-            }
 
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: player.jumpToTrack(index)
+                // Tap to play — covers card but leaves drag handle alone
+                MouseArea {
+                    anchors.fill: parent
+                    anchors.leftMargin: 26
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: player.jumpToTrack(index)
+                }
             }
+        }
+    }
+
+    // Drag proxy — the floating card while dragging
+    Rectangle {
+        id: dragProxy
+        x: 8
+        y: queueTrackList.dragProxyY
+        width: trackList.width
+        height: 48
+        radius: 8
+        visible: queueTrackList.dragProxyVisible
+        opacity: 0.85
+        z: 20
+
+        color: Qt.rgba(
+            queueTrackList.accentColor.r,
+            queueTrackList.accentColor.g,
+            queueTrackList.accentColor.b,
+            0.25
+        )
+        border.color: Qt.rgba(
+            queueTrackList.accentColor.r,
+            queueTrackList.accentColor.g,
+            queueTrackList.accentColor.b,
+            0.5
+        )
+        border.width: 1
+
+        Text {
+            anchors.centerIn: parent
+            text: {
+                let idx = queueTrackList.dragFromIndex
+                let list = player.trackList
+                if (idx >= 0 && list && idx < list.length)
+                    return list[idx].title
+                return ""
+            }
+            font.pixelSize: 12
+            color: queueTrackList.primaryText
+            elide: Text.ElideRight
+            width: parent.width - 24
+            horizontalAlignment: Text.AlignHCenter
         }
     }
 

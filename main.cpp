@@ -4,6 +4,7 @@
 #include "core/player.h"
 #include "core/coverimageprovider.h"
 #include "core/albumcoverprovider.h"
+#include "core/trackcoverprovider.h"
 
 int main(int argc, char *argv[])
 {
@@ -17,6 +18,9 @@ int main(int argc, char *argv[])
 
     AlbumCoverProvider *albumCoverProvider = new AlbumCoverProvider();
     engine.addImageProvider("albumcovers", albumCoverProvider);
+
+    TrackCoverProvider *trackCoverProvider = new TrackCoverProvider();
+    engine.addImageProvider("trackcovers", trackCoverProvider);
 
     QObject::connect(
         &engine,

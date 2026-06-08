@@ -388,7 +388,8 @@ void Player::toggleShuffle()
 
 // --- Multi-queue actions ---
 
-void Player::openFilesInNewQueue(const QStringList &filePaths)
+void Player::openFilesInNewQueue(const QStringList &filePaths,
+                                 const QString &name)
 {
     if (filePaths.isEmpty())
         return;
@@ -396,7 +397,8 @@ void Player::openFilesInNewQueue(const QStringList &filePaths)
     if (Queue *current = activeQueue())
         current->saveState();
 
-    Queue *newQueue = new Queue(generateQueueName(), this);
+    QString queueName = name.isEmpty() ? generateQueueName() : name;
+    Queue *newQueue = new Queue(queueName, this);
     newQueue->setVolume(m_volume);
     connectQueueSignals(newQueue);
 
@@ -646,4 +648,17 @@ void Player::setTrackSortAscending(bool ascending)
 {
     m_trackSortAscending = ascending;
     emit trackSortChanged();
+}
+void Player::moveTrack(int from, int to)
+{
+    if (Queue *q = activeQueue())
+        q->moveTrack(from, to);
+}
+
+bool Player::isAlbumActiveQueue(const QString &album) const
+{
+    Queue *q = activeQueue();
+    if (!q || q->trackCount() == 0) return false;
+    // Check if the active queue's name matches the album
+    return q->name() == album;
 }

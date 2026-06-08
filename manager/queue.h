@@ -67,6 +67,8 @@ public:
 
     Playback *playback() const;
 
+    void moveTrack(int from, int to);
+
 signals:
     void trackChanged();
     void queueChanged();

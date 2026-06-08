@@ -43,19 +43,38 @@ Item {
         onAddRequested: { /* TODO */ }
     }
 
-    // ── Queue dropdown ─────────────────────────────────────────
-    QueueDropdown {
-        id: dropdown
+    // ── Centered dialog overlay ────────────────────────────────
+    Item {
+        anchors.fill: parent
         visible: queuesView.dropdownOpen
         z: 10
-        anchors.top: topBar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        height: Math.min(
-            player.queueCount * 52 + 52,
-            parent.height - topBar.height - 16
-        )
-        theme: queuesView.theme
-        onCloseRequested: queuesView.dropdownOpen = false
+
+        // Dim background
+        Rectangle {
+            anchors.fill: parent
+            color: Qt.rgba(0, 0, 0, 0.6)
+            opacity: queuesView.dropdownOpen ? 1.0 : 0.0
+
+            Behavior on opacity {
+                NumberAnimation { duration: 180 }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                onClicked: queuesView.dropdownOpen = false
+            }
+        }
+
+        // Centered dialog
+        QueueDropdown {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 32, 320)
+            height: Math.min(
+                player.queueCount * 52 + 52,
+                parent.height - 64
+            )
+            theme: queuesView.theme
+            onCloseRequested: queuesView.dropdownOpen = false
+        }
     }
 }

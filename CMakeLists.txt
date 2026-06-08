@@ -23,7 +23,20 @@ qt_add_qml_module(appnatsuyume_player
         ui/Lyrics.qml
         ui/FilePicker.qml
         ui/AlbumCover.qml
+        ui/ContextMenu.qml
+        ui/sidebar/SettingsView.qml
+        ui/sidebar/QueuesView.qml
+        ui/sidebar/albums/AlbumSortBar.qml
+        ui/sidebar/albums/TrackSortBar.qml
+        ui/sidebar/albums/AlbumGrid.qml
+        ui/sidebar/albums/AlbumTrackList.qml
+        ui/sidebar/AlbumsView.qml
+        ui/sidebar/queues/QueueTopBar.qml
+        ui/sidebar/queues/QueueTrackList.qml
+        ui/sidebar/queues/QueueDropdown.qml
+        ui/sidebar/queues/QueueAddButton.qml
     SOURCES
+        core/trackcoverprovider.h core/trackcoverprovider.cpp
         core/albumcoverprovider.h core/albumcoverprovider.cpp
         core/coverimageprovider.h core/coverimageprovider.cpp
         core/fileindexer.h core/fileindexer.cpp
@@ -33,17 +46,6 @@ qt_add_qml_module(appnatsuyume_player
         manager/playback.h manager/playback.cpp
         manager/metadata.h manager/metadata.cpp
         manager/queue.h manager/queue.cpp
-        QML_FILES ui/sidebar/SettingsView.qml
-        QML_FILES ui/sidebar/QueuesView.qml
-        QML_FILES ui/sidebar/albums/AlbumSortBar.qml
-        QML_FILES ui/sidebar/albums/TrackSortBar.qml
-        QML_FILES ui/sidebar/albums/AlbumGrid.qml
-        QML_FILES ui/sidebar/albums/AlbumTrackList.qml
-        QML_FILES ui/sidebar/AlbumsView.qml
-        QML_FILES ui/sidebar/queues/QueueTopBar.qml
-        QML_FILES ui/sidebar/queues/QueueTrackList.qml
-        QML_FILES ui/sidebar/queues/QueueDropdown.qml
-        QML_FILES ui/sidebar/queues/QueueAddButton.qml
 )
 
 set_target_properties(appnatsuyume_player PROPERTIES

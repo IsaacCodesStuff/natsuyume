@@ -116,8 +116,12 @@ Item {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    let paths = albumTrackList.tracks.map(t => t.path)
-                    player.openFilesInNewQueue(paths)
+                    if (player.isAlbumActiveQueue(albumTrackList.albumName)) {
+                        player.jumpToTrack(0)
+                    } else {
+                        let paths = albumTrackList.tracks.map(t => t.path)
+                        player.openFilesInNewQueue(paths, albumTrackList.albumName)
+                    }
                 }
             }
         }
@@ -201,9 +205,15 @@ Item {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
                 onClicked: {
-                    let paths = albumTrackList.tracks.map(t => t.path)
-                    player.openFilesInNewQueue(paths)
-                    player.jumpToTrack(index)
+                    if (player.isAlbumActiveQueue(albumTrackList.albumName)) {
+                        // Album already loaded — just jump to the tapped track
+                        player.jumpToTrack(index)
+                    } else {
+                        // Load the whole album as a new queue and jump to tapped track
+                        let paths = albumTrackList.tracks.map(t => t.path)
+                        player.openFilesInNewQueue(paths, albumTrackList.albumName)
+                        player.jumpToTrack(index)
+                    }
                 }
             }
         }

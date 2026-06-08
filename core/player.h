@@ -131,8 +131,8 @@ public:
     Q_INVOKABLE void cycleRepeatMode();
     Q_INVOKABLE void toggleShuffle();
 
-    Q_INVOKABLE void openFilesInNewQueue(const QStringList &filePaths);
-    Q_INVOKABLE void addTrackToActiveQueue(const QString &filePath);
+    Q_INVOKABLE void openFilesInNewQueue(const QStringList &filePaths,
+                                         const QString &name = QString());    Q_INVOKABLE void addTrackToActiveQueue(const QString &filePath);
     Q_INVOKABLE void switchToQueue(int index);
     Q_INVOKABLE void closeQueue(int index);
     Q_INVOKABLE void renameQueue(int index, const QString &name);
@@ -157,6 +157,9 @@ public:
     Q_INVOKABLE void setAlbumSortAscending(bool ascending);
     Q_INVOKABLE void setTrackSort(int sort);
     Q_INVOKABLE void setTrackSortAscending(bool ascending);
+
+    Q_INVOKABLE void moveTrack(int from, int to);
+    Q_INVOKABLE bool isAlbumActiveQueue(const QString &album) const;
 
 signals:
     void isPlayingChanged();

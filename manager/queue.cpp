@@ -299,3 +299,29 @@ void Queue::setVolume(float volume)
 }
 
 Playback *Queue::playback() const { return m_playback; }
+
+void Queue::moveTrack(int from, int to)
+{
+    if (from < 0 || from >= m_tracks.size()) return;
+    if (to < 0   || to   >= m_tracks.size()) return;
+    if (from == to) return;
+
+    m_tracks.move(from, to);
+
+    if (m_shuffled)
+        generateShuffleOrder();
+
+    // Keep current track index tracking the same track
+    if (m_currentTrackIndex == from) {
+        m_currentTrackIndex = to;
+    } else if (from < to) {
+        if (m_currentTrackIndex > from && m_currentTrackIndex <= to)
+            m_currentTrackIndex--;
+    } else {
+        if (m_currentTrackIndex >= to && m_currentTrackIndex < from)
+            m_currentTrackIndex++;
+    }
+
+    emit queueChanged();
+    emit trackChanged();
+}
