@@ -33,7 +33,6 @@ Window {
 
     // ── Global state ───────────────────────────────────────────
     property string coverArtPath: ""
-    property bool   showFilePicker: false
     property bool   showLyrics: false
     property int    currentTab: 0
 
@@ -87,7 +86,6 @@ Window {
                 theme: root
                 player: player
                 showLyricsOverlay: false
-                onOpenFilePicker: root.showFilePicker = true
             }
 
             Lyrics {
@@ -139,7 +137,6 @@ Window {
                 player: player
                 showLyricsOverlay: root.showLyrics
                 onCoverArtTapped: root.showLyrics = !root.showLyrics
-                onOpenFilePicker: root.showFilePicker = true
             }
         }
 
@@ -174,7 +171,6 @@ Window {
                 player: player
                 showLyricsOverlay: root.showLyrics
                 onCoverArtTapped: root.showLyrics = !root.showLyrics
-                onOpenFilePicker: root.showFilePicker = true
             }
 
             Sidebar {
@@ -196,23 +192,6 @@ Window {
                 root.mobilePanelIndex = index === 0 ? 0 : 1
                 if (index > 0) root.currentTab = index - 1
             }
-        }
-    }
-
-    // ── File picker overlay ────────────────────────────────────
-    FilePicker {
-        id: filePicker
-        visible: showFilePicker
-        anchors.fill: parent
-        z: 10
-        theme: root
-
-        onFilesSelected: function(paths) {
-            player.openFilesInNewQueue(paths)
-            showFilePicker = false
-        }
-        onCancelled: {
-            showFilePicker = false
         }
     }
 

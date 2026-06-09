@@ -11,6 +11,32 @@ Item {
     property var    albumTracks:   []
     property string searchQuery:   ""
 
+    readonly property var albumSortOptions: [
+        { label: "Name",         value: 0 },
+        { label: "Artist",       value: 1 },
+        { label: "Album Artist", value: 2 },
+        { label: "Year",         value: 3 },
+        { label: "Song Count",   value: 4 },
+        { label: "Duration",     value: 5 },
+        { label: "Composer",     value: 6 },
+        { label: "Date Added",   value: 7 }
+    ]
+
+    readonly property var trackSortOptions: [
+        { label: "Track №",      value: 0  },
+        { label: "Title",        value: 1  },
+        { label: "Artist",       value: 2  },
+        { label: "Album Artist", value: 3  },
+        { label: "Year",         value: 4  },
+        { label: "Duration",     value: 5  },
+        { label: "Genre",        value: 6  },
+        { label: "Composer",     value: 7  },
+        { label: "Filename",     value: 8  },
+        { label: "Date Added",   value: 9  },
+        { label: "Last Played",  value: 10 },
+        { label: "Play Count",   value: 11 }
+    ]
+
     // ── Search bar ─────────────────────────────────────────────
     Rectangle {
         id: searchBar
@@ -50,7 +76,7 @@ Item {
     }
 
     // ── Album sort bar ─────────────────────────────────────────
-    AlbumSortBar {
+    SortBar {
         id: albumSortBar
         anchors.top: searchBar.bottom
         anchors.left: parent.left
@@ -60,13 +86,15 @@ Item {
         anchors.topMargin: 4
         visible: albumsView.selectedAlbum === ""
         theme: albumsView.theme
+        sortOptions: albumsView.albumSortOptions
+        currentSort: player.albumSort
+        currentAscending: player.albumSortAscending
 
-        onSortRequested: function(value, label) {
+        onSortChanged: function(value, label) {
             player.setAlbumSort(value)
-            sortLabel = label
         }
 
-        onAscendingToggled: function(ascending) {
+        onAscendingChanged: function(ascending) {
             player.setAlbumSortAscending(ascending)
         }
     }
@@ -91,265 +119,145 @@ Item {
     }
 
     // ── Album track list ───────────────────────────────────────
-    AlbumTrackList {
-        id: trackList
+    Item {
         anchors.fill: parent
         visible: albumsView.selectedAlbum !== ""
-        theme: albumsView.theme
-        albumName: albumsView.selectedAlbum
-        tracks: albumsView.albumTracks
 
-        onBackRequested: albumsView.selectedAlbum = ""
-
-        onTrackListUpdated: function(tracks) {
-            albumsView.albumTracks = tracks
-        }
-    }
-
-    // ── Album sort dropdown (rendered on top of everything) ────
-    Item {
-        visible: albumSortBar.sortOpen && albumsView.selectedAlbum === ""
-        anchors.top: albumSortBar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
-        anchors.topMargin: 4
-        height: albumSortBar.sortOptions.length * 40 + 48
-        z: 10
-
+        // Header
         Rectangle {
-            anchors.fill: parent
-            radius: 10
-            color: albumsView.theme.bgColor
-            border.color: Qt.rgba(1, 1, 1, 0.08)
-            border.width: 1
+            id: albumHeader
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 44
+            color: Qt.rgba(0, 0, 0, 0.15)
 
-            Column {
+            Row {
                 anchors.fill: parent
-                anchors.margins: 8
-                spacing: 4
+                anchors.leftMargin: 12
+                anchors.rightMargin: 12
+                spacing: 8
 
-                Item {
-                    width: parent.width
-                    height: 36
+                Text {
+                    text: "‹"
+                    font.pixelSize: 24
+                    color: albumsView.theme.primaryText
+                    anchors.verticalCenter: parent.verticalCenter
 
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 4
-
-                        Repeater {
-                            model: [
-                                { label: "↑ Asc",  value: true  },
-                                { label: "↓ Desc", value: false }
-                            ]
-
-                            Rectangle {
-                                width:  72
-                                height: 28
-                                radius: 6
-                                color: player.albumSortAscending === modelData.value
-                                       ? Qt.rgba(
-                                             albumsView.theme.accentColor.r,
-                                             albumsView.theme.accentColor.g,
-                                             albumsView.theme.accentColor.b, 0.2)
-                                       : Qt.rgba(1, 1, 1, 0.06)
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.pixelSize: 11
-                                    color: player.albumSortAscending === modelData.value
-                                           ? albumsView.theme.accentColor
-                                           : albumsView.theme.mutedText
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        albumSortBar.ascendingToggled(modelData.value)
-                                        albumSortBar.sortOpen = false
-                                    }
-                                }
-                            }
-                        }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: albumsView.selectedAlbum = ""
                     }
                 }
 
-                ListView {
-                    width: parent.width
-                    height: parent.height - 44
-                    clip: true
-                    spacing: 2
-                    model: albumSortBar.sortOptions
+                Text {
+                    text: albumsView.selectedAlbum
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                    color: albumsView.theme.primaryText
+                    elide: Text.ElideRight
+                    width: parent.width - 36
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+        }
 
-                    delegate: Rectangle {
-                        width: parent.width
-                        height: 36
-                        radius: 6
-                        color: player.albumSort === modelData.value
-                               ? Qt.rgba(
-                                     albumsView.theme.accentColor.r,
-                                     albumsView.theme.accentColor.g,
-                                     albumsView.theme.accentColor.b, 0.15)
-                               : Qt.rgba(1, 1, 1, 0.04)
+        // Action bar — Play All | Sort
+        Item {
+            id: actionBar
+            anchors.top: albumHeader.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.margins: 8
+            height: 36
 
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            text: modelData.label
-                            font.pixelSize: 12
-                            color: player.albumSort === modelData.value
-                                   ? albumsView.theme.accentColor
-                                   : albumsView.theme.primaryText
-                        }
+            // Play All
+            Rectangle {
+                anchors.left: parent.left
+                width: parent.width / 2 - 4
+                height: parent.height
+                radius: 8
+                color: Qt.rgba(
+                    albumsView.theme.accentColor.r,
+                    albumsView.theme.accentColor.g,
+                    albumsView.theme.accentColor.b, 0.15)
 
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            text: "✓"
-                            font.pixelSize: 11
-                            color: albumsView.theme.accentColor
-                            visible: player.albumSort === modelData.value
-                        }
+                Row {
+                    anchors.centerIn: parent
+                    spacing: 6
 
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                albumSortBar.sortRequested(modelData.value, modelData.label)
-                                albumSortBar.sortOpen = false
-                            }
+                    Text {
+                        text: "▶"
+                        font.pixelSize: 12
+                        color: albumsView.theme.accentColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    Text {
+                        text: "Play All"
+                        font.pixelSize: 12
+                        color: albumsView.theme.accentColor
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (player.isAlbumActiveQueue(albumsView.selectedAlbum)) {
+                            player.jumpToTrack(0)
+                        } else {
+                            let paths = albumsView.albumTracks.map(t => t.path)
+                            player.openFilesInNewQueue(paths, albumsView.selectedAlbum)
                         }
                     }
                 }
             }
+
+            // Track sort bar
+            SortBar {
+                id: trackSortBar
+                anchors.right: parent.right
+                width: parent.width / 2 - 4
+                height: parent.height
+                theme: albumsView.theme
+                sortOptions: albumsView.trackSortOptions
+                currentSort: player.trackSort
+                currentAscending: player.trackSortAscending
+
+                onSortChanged: function(value, label) {
+                    player.setTrackSort(value)
+                    albumsView.albumTracks = player.tracksForAlbum(
+                        albumsView.selectedAlbum)
+                }
+
+                onAscendingChanged: function(ascending) {
+                    player.setTrackSortAscending(ascending)
+                    albumsView.albumTracks = player.tracksForAlbum(
+                        albumsView.selectedAlbum)
+                }
+            }
         }
-    }
 
-    // ── Track sort dropdown (rendered on top of everything) ────
-    Item {
-        visible: trackList.trackSortOpen && albumsView.selectedAlbum !== ""
-        anchors.top: parent.top
-        anchors.topMargin: 44 + 36 + 12
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
-        height: trackList.trackSortOptions.length * 40 + 48
-        z: 10
+        // Track list
+        AlbumTrackList {
+            id: trackList
+            anchors.top: actionBar.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.topMargin: 8
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            theme: albumsView.theme
+            albumName: albumsView.selectedAlbum
+            tracks: albumsView.albumTracks
 
-        Rectangle {
-            anchors.fill: parent
-            radius: 10
-            color: albumsView.theme.bgColor
-            border.color: Qt.rgba(1, 1, 1, 0.08)
-            border.width: 1
-
-            Column {
-                anchors.fill: parent
-                anchors.margins: 8
-                spacing: 4
-
-                Item {
-                    width: parent.width
-                    height: 36
-
-                    Row {
-                        anchors.centerIn: parent
-                        spacing: 4
-
-                        Repeater {
-                            model: [
-                                { label: "↑ Asc",  value: true  },
-                                { label: "↓ Desc", value: false }
-                            ]
-
-                            Rectangle {
-                                width:  72
-                                height: 28
-                                radius: 6
-                                color: player.trackSortAscending === modelData.value
-                                       ? Qt.rgba(
-                                             albumsView.theme.accentColor.r,
-                                             albumsView.theme.accentColor.g,
-                                             albumsView.theme.accentColor.b, 0.2)
-                                       : Qt.rgba(1, 1, 1, 0.06)
-
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: modelData.label
-                                    font.pixelSize: 11
-                                    color: player.trackSortAscending === modelData.value
-                                           ? albumsView.theme.accentColor
-                                           : albumsView.theme.mutedText
-                                }
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        trackList.ascendingToggled(modelData.value)
-                                        trackList.trackSortOpen = false
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                ListView {
-                    width: parent.width
-                    height: parent.height - 44
-                    clip: true
-                    spacing: 2
-                    model: trackList.trackSortOptions
-
-                    delegate: Rectangle {
-                        width: parent.width
-                        height: 36
-                        radius: 6
-                        color: player.trackSort === modelData.value
-                               ? Qt.rgba(
-                                     albumsView.theme.accentColor.r,
-                                     albumsView.theme.accentColor.g,
-                                     albumsView.theme.accentColor.b, 0.15)
-                               : Qt.rgba(1, 1, 1, 0.04)
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            text: modelData.label
-                            font.pixelSize: 12
-                            color: player.trackSort === modelData.value
-                                   ? albumsView.theme.accentColor
-                                   : albumsView.theme.primaryText
-                        }
-
-                        Text {
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            text: "✓"
-                            font.pixelSize: 11
-                            color: albumsView.theme.accentColor
-                            visible: player.trackSort === modelData.value
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                trackList.sortRequested(modelData.value, modelData.label)
-                                trackList.trackSortOpen = false
-                            }
-                        }
-                    }
-                }
+            onBackRequested: albumsView.selectedAlbum = ""
+            onTrackListUpdated: function(tracks) {
+                albumsView.albumTracks = tracks
             }
         }
     }

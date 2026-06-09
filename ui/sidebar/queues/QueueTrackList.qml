@@ -221,14 +221,6 @@ Item {
                         }
                     }
 
-                    // Divider before options button
-                    Rectangle {
-                        width: 1
-                        height: parent.height * 0.6
-                        color: Qt.rgba(1, 1, 1, 0.08)
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
                     // Options button
                     Item {
                         width: 32

@@ -25,22 +25,10 @@ Item {
         anchors.top: topBar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: addButton.top
-        anchors.bottomMargin: 8
+        anchors.bottom: parent.bottom  // was addButton.top
         theme: queuesView.theme
         dimmed: queuesView.dropdownOpen
         onDismissRequested: queuesView.dropdownOpen = false
-    }
-
-    // ── Add file button ────────────────────────────────────────
-    QueueAddButton {
-        id: addButton
-        anchors.bottom: parent.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.margins: 8
-        theme: queuesView.theme
-        onAddRequested: { /* TODO */ }
     }
 
     // ── Centered dialog overlay ────────────────────────────────

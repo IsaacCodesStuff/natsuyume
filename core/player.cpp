@@ -641,6 +641,7 @@ void Player::setAlbumSortAscending(bool ascending)
 void Player::setTrackSort(int sort)
 {
     m_trackSort = static_cast<Library::TrackSort>(sort);
+    qDebug() << "trackSort changed to" << sort;
     emit trackSortChanged();
 }
 

@@ -20,7 +20,6 @@ Item {
     property bool showLyricsOverlay: false
 
     signal coverArtTapped
-    signal openFilePicker
 
     readonly property color bgColor:       theme.bgColor
     readonly property color surfaceColor:  theme.surfaceColor
@@ -302,30 +301,13 @@ Item {
             }
         }
 
-        // Track info + Open File
-        Row {
-            width: parent.width
-
-            Text {
-                id: trackInfoText
-                text: player.trackCount > 1
-                      ? "Track " + (player.trackIndex + 1) + " of " + player.trackCount
-                      : ""
-                font.pixelSize: 12
-                color: mutedText
-                anchors.verticalCenter: parent.verticalCenter
-            }
-
-            Item {
-                width: parent.width - trackInfoText.implicitWidth - openFileBtn.implicitWidth
-                height: 1
-            }
-
-            Button {
-                id: openFileBtn
-                text: "Open File"
-                onClicked: nowPlaying.openFilePicker()
-            }
+        Text {
+            text: player.trackCount > 1
+                  ? "Track " + (player.trackIndex + 1) + " of " + player.trackCount
+                  : ""
+            font.pixelSize: 12
+            color: mutedText
+            anchors.horizontalCenter: parent.horizontalCenter
         }
     }
 

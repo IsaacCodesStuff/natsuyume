@@ -14,27 +14,8 @@ Item {
     readonly property color mutedText:   theme.mutedText
     readonly property color accentColor: theme.accentColor
 
-    property bool trackSortOpen: false
-
-    readonly property var trackSortOptions: [
-        { label: "Track №",      value: 0  },
-        { label: "Title",        value: 1  },
-        { label: "Artist",       value: 2  },
-        { label: "Album Artist", value: 3  },
-        { label: "Year",         value: 4  },
-        { label: "Duration",     value: 5  },
-        { label: "Genre",        value: 6  },
-        { label: "Composer",     value: 7  },
-        { label: "Filename",     value: 8  },
-        { label: "Date Added",   value: 9  },
-        { label: "Last Played",  value: 10 },
-        { label: "Play Count",   value: 11 }
-    ]
-
     signal backRequested
     signal trackListUpdated(var tracks)
-    signal sortRequested(int value, string label)
-    signal ascendingToggled(bool ascending)
 
     // Context menu
     ContextMenu {
@@ -122,7 +103,7 @@ Item {
         }
     }
 
-    // Action bar
+    // Action bar — Play All only
     Item {
         id: actionBar
         anchors.top: header.bottom
@@ -131,11 +112,8 @@ Item {
         anchors.margins: 8
         height: 36
 
-        // Play All
         Rectangle {
-            anchors.left: parent.left
-            width: parent.width / 2 - 4
-            height: parent.height
+            anchors.fill: parent
             radius: 8
             color: Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.15)
 
@@ -169,31 +147,6 @@ Item {
                         player.openFilesInNewQueue(paths, albumTrackList.albumName)
                     }
                 }
-            }
-        }
-
-        // Track sort bar
-        TrackSortBar {
-            anchors.right: parent.right
-            width: parent.width / 2 - 4
-            height: parent.height
-            theme: albumTrackList.theme
-            sortOpen: albumTrackList.trackSortOpen
-
-            onSortOpenChanged: albumTrackList.trackSortOpen = sortOpen
-
-            onSortRequested: function(value, label) {
-                albumTrackList.sortRequested(value, label)
-                player.setTrackSort(value)
-                albumTrackList.trackListUpdated(
-                    player.tracksForAlbum(albumTrackList.albumName))
-            }
-
-            onAscendingToggled: function(ascending) {
-                albumTrackList.ascendingToggled(ascending)
-                player.setTrackSortAscending(ascending)
-                albumTrackList.trackListUpdated(
-                    player.tracksForAlbum(albumTrackList.albumName))
             }
         }
     }
@@ -245,14 +198,6 @@ Item {
                         elide: Text.ElideRight
                         width: parent.width
                     }
-                }
-
-                // Divider
-                Rectangle {
-                    width: 1
-                    height: parent.height * 0.6
-                    color: Qt.rgba(1, 1, 1, 0.08)
-                    anchors.verticalCenter: parent.verticalCenter
                 }
 
                 // Options button

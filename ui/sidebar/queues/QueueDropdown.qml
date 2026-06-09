@@ -69,7 +69,7 @@ Item {
                 width: parent.width
                 height: parent.height - 48
                 spacing: 4
-                clip: true
+                clip: false
                 model: player.queueCount
 
                 delegate: Rectangle {
@@ -93,7 +93,7 @@ Item {
                         spacing: 6
 
                         Item {
-                            width: parent.width - 52
+                            width: parent.width - 64
                             height: parent.height
 
                             // Normal label
@@ -148,36 +148,52 @@ Item {
                             }
                         }
 
-                        // Pencil / rename button
-                        Text {
-                            text: "✎"
-                            font.pixelSize: 13
-                            color: queueDropdown.mutedText
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !queueItem.isRenaming
+                        // Spacer
+                        Item { width: 8; height: 1 }
 
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    queueItem.dropdown.renamingIndex = index
-                                    queueItem.dropdown.renameBuffer = player.queueNames[index]
+                        // Pencil button
+                        Item {
+                            width: 24
+                            height: parent.height
+
+                            Text {
+                                text: "✎"
+                                font.pixelSize: 13
+                                color: queueDropdown.mutedText
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !queueItem.isRenaming
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        queueItem.dropdown.renamingIndex = index
+                                        queueItem.dropdown.renameBuffer = player.queueNames[index]
+                                    }
                                 }
                             }
                         }
 
-                        // Remove button
-                        Text {
-                            text: "✕"
-                            font.pixelSize: 11
-                            color: queueDropdown.mutedText
-                            anchors.verticalCenter: parent.verticalCenter
-                            visible: !queueItem.isRenaming
+                        // Spacer
+                        Item { width: 8; height: 1 }
 
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: player.closeQueue(index)
+                        // Remove button
+                        Item {
+                            width: 24
+                            height: parent.height
+
+                            Text {
+                                text: "✕"
+                                font.pixelSize: 11
+                                color: queueDropdown.mutedText
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: !queueItem.isRenaming
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: player.closeQueue(index)
+                                }
                             }
                         }
                     }
