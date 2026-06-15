@@ -66,7 +66,7 @@ Item {
             Text {
                 id: syncedLabel
                 anchors.centerIn: parent
-                text: "Synced"
+                text: player.lyricsAreSynced ? "Synced" : "Lyrics"
                 font.pixelSize: 10
                 font.weight: Font.Medium
                 color: secondaryText
@@ -111,31 +111,54 @@ Item {
         clip: true
         spacing: 14
 
-        model: ListModel {
-            ListElement { line: "Lorem ipsum dolor sit amet";  isCurrent: false }
-            ListElement { line: "consectetur adipiscing elit"; isCurrent: false }
-            ListElement { line: "sed do eiusmod tempor";       isCurrent: true  }
-            ListElement { line: "incididunt ut labore";        isCurrent: false }
-            ListElement { line: "et dolore magna aliqua";      isCurrent: false }
-            ListElement { line: "Ut enim ad minim veniam";     isCurrent: false }
-            ListElement { line: "quis nostrud exercitation";   isCurrent: false }
-        }
+        model: player.lyricsAreSynced
+            ? player.lyricLines
+            : plainLyrics.lines
 
         delegate: Text {
+            required property var modelData
+            required property int index
             width: lyricsList.width
-            text: line
+            text: player.lyricsAreSynced ? modelData.text : modelData
             font.pixelSize: isCurrent ? 15 : 12
             font.weight:    isCurrent ? Font.Medium : Font.Normal
             color: isCurrent ? lyrics.primaryText : lyrics.secondaryText
             opacity: isCurrent ? 1.0 : (overlayMode ? 0.45 : 0.6)
             wrapMode: Text.WordWrap
 
-            Behavior on opacity {
-                NumberAnimation { duration: 300 }
+            readonly property bool isCurrent: {
+                if (!player.lyricsAreSynced) return false
+                const pos = player.position
+                const next = index + 1
+                const nextTs = next < lyricsList.count
+                    ? player.lyricLines[next].timestamp
+                    : Infinity
+                return pos >= modelData.timestamp && pos < nextTs
             }
-            Behavior on font.pixelSize {
-                NumberAnimation { duration: 200 }
+
+            Behavior on opacity { NumberAnimation { duration: 300 } }
+            Behavior on font.pixelSize { NumberAnimation { duration: 200 } }
+        }
+
+        // Auto-scroll to current line
+        onCountChanged: currentIndex = 0
+
+        Connections {
+            target: player
+            function onPositionChanged() {
+                for (let i = lyricsList.count - 1; i >= 0; i--) {
+                    if (player.position >= player.lyricLines[i].timestamp) {
+                        lyricsList.currentIndex = i
+                        lyricsList.positionViewAtIndex(i, ListView.Center)
+                        break
+                    }
+                }
             }
+        }
+
+        QtObject {
+            id: plainLyrics
+            property var lines: player.rawLyrics.length > 0 ? player.rawLyrics.split('\n') : []
         }
     }
 

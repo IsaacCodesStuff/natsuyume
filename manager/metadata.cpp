@@ -18,6 +18,10 @@
 
 #include <QImage>
 #include <QDebug>
+#include "lrcparser.h"
+#include <QFileInfo>
+#include <QFile>
+#include <QDir>
 
 // Helper to read a Xiph comment field (Ogg/FLAC)
 static QString xiphField(TagLib::Ogg::XiphComment *xiph, const char *key)
@@ -110,6 +114,12 @@ Track Metadata::read(const QString &path)
                     track.coverArt = img;
                 }
             }
+
+            // Lyrics — prefer USLT (synced-text container), fall back to SYLT
+            auto usltFrames = id3->frameListMap()["USLT"];
+            if (!usltFrames.isEmpty())
+                track.lyrics = QString::fromStdString(
+                    usltFrames.front()->toString().to8Bit(true));
         }
     }
     else if (auto *flac = dynamic_cast<TagLib::FLAC::File *>(ref.file())) {
@@ -120,6 +130,10 @@ Track Metadata::read(const QString &path)
             track.trackNumber = xiphInt(xiph, "TRACKNUMBER");
             track.discNumber  = xiphInt(xiph, "DISCNUMBER");
             if (track.discNumber < 1) track.discNumber = 1;
+            track.lyrics = xiphField(xiph, "LYRICS");
+            if (track.lyrics.isEmpty())
+            track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
+            qDebug() << "FLAC lyrics length:" << track.lyrics.length();
         }
 
         // Cover art
@@ -139,6 +153,9 @@ Track Metadata::read(const QString &path)
             track.trackNumber = xiphInt(xiph, "TRACKNUMBER");
             track.discNumber  = xiphInt(xiph, "DISCNUMBER");
             if (track.discNumber < 1) track.discNumber = 1;
+            track.lyrics = xiphField(xiph, "LYRICS");
+            if (track.lyrics.isEmpty())
+            track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
 
             const auto &pics = xiph->pictureList();
             if (!pics.isEmpty()) {
@@ -157,6 +174,9 @@ Track Metadata::read(const QString &path)
             track.trackNumber = xiphInt(xiph, "TRACKNUMBER");
             track.discNumber  = xiphInt(xiph, "DISCNUMBER");
             if (track.discNumber < 1) track.discNumber = 1;
+            track.lyrics = xiphField(xiph, "LYRICS");
+            if (track.lyrics.isEmpty())
+            track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
 
             const auto &pics = xiph->pictureList();
             if (!pics.isEmpty()) {
@@ -208,8 +228,26 @@ Track Metadata::read(const QString &path)
                     track.coverArt = img;
                 }
             }
+
+            // Lyrics
+            track.lyrics = getStr("\xa9lyr");
         }
     }
+
+    // ── Lyrics ────────────────────────────────────────────────────────────────
+    // Priority: .lrc sidecar > embedded tag
+
+    // 1. Look for a .lrc file next to the audio file
+    QFileInfo fi(path);
+    QString lrcPath = fi.dir().filePath(fi.completeBaseName() + ".lrc");
+    QFile lrcFile(lrcPath);
+    if (lrcFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        track.lyrics = QString::fromUtf8(lrcFile.readAll());
+        return track; // sidecar takes priority, skip embedded
+    }
+
+    // 2. Embedded lyrics — already read per-format above, stored in track.lyrics
+    //    (populated in the format blocks below; nothing to do here)
 
     return track;
 }

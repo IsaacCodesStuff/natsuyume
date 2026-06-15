@@ -49,8 +49,7 @@ Item {
             {
                 label: "Add to playlist",
                 icon: "🎵",
-                disabled: true
-            },
+                onTriggered: function() { player.requestAddAlbumToPlaylist(albumName) }            },
             {
                 label: "Advanced shuffle",
                 icon: "🔀",

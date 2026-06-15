@@ -25,11 +25,14 @@ qt_add_qml_module(appnatsuyume_player
         ui/ContextMenu.qml
         ui/SongInfo.qml
         ui/SortBar.qml
+        ui/TrackRow.qml
         ui/sidebar/SettingsView.qml
         ui/sidebar/QueuesView.qml
+        ui/sidebar/ArtistsView.qml
+        ui/sidebar/AlbumsView.qml
         ui/sidebar/albums/AlbumGrid.qml
         ui/sidebar/albums/AlbumTrackList.qml
-        ui/sidebar/AlbumsView.qml
+        ui/sidebar/artists/ArtistTrackList.qml
         ui/sidebar/queues/QueueTopBar.qml
         ui/sidebar/queues/QueueTrackList.qml
         ui/sidebar/queues/QueueDropdown.qml
@@ -42,9 +45,13 @@ qt_add_qml_module(appnatsuyume_player
         core/library.h core/library.cpp
         core/track.h core/track.cpp
         core/player.h core/player.cpp
+        core/lrcparser.h core/lrcparser.cpp
         manager/playback.h manager/playback.cpp
         manager/metadata.h manager/metadata.cpp
         manager/queue.h manager/queue.cpp
+        QML_FILES ui/PlaylistPicker.qml
+        QML_FILES ui/sidebar/playlists/PlaylistTrackList.qml
+        QML_FILES ui/sidebar/PlaylistsView.qml
 )
 
 set_target_properties(appnatsuyume_player PROPERTIES

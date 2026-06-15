@@ -54,23 +54,13 @@ Item {
             }
 
             // ── Artists ────────────────────────────────────────
-            Item {
-                Text {
-                    anchors.centerIn: parent
-                    text: "Artists"
-                    font.pixelSize: 13
-                    color: sidebar.mutedText
-                }
+            ArtistsView {
+                theme: sidebar.theme
             }
 
             // ── Playlists ──────────────────────────────────────
-            Item {
-                Text {
-                    anchors.centerIn: parent
-                    text: "Playlists"
-                    font.pixelSize: 13
-                    color: sidebar.mutedText
-                }
+            PlaylistsView {
+                theme: sidebar.theme
             }
 
             // ── Settings ───────────────────────────────────────

@@ -10,6 +10,7 @@
 #include "library.h"
 #include "fileindexer.h"
 #include "albumcoverprovider.h"
+#include "lrcparser.h"
 
 class Player : public QObject
 {
@@ -27,6 +28,10 @@ class Player : public QObject
     Q_PROPERTY(QString trackArtist READ trackArtist NOTIFY metadataChanged)
     Q_PROPERTY(QString trackAlbum READ trackAlbum NOTIFY metadataChanged)
     Q_PROPERTY(bool hasCoverArt READ hasCoverArt NOTIFY metadataChanged)
+
+    // --- Lyrics ---
+    Q_PROPERTY(QString      rawLyrics  READ rawLyrics  NOTIFY metadataChanged)
+    Q_PROPERTY(QVariantList lyricLines READ lyricLines NOTIFY metadataChanged)
 
     // --- Track navigation ---
     Q_PROPERTY(int trackIndex READ trackIndex NOTIFY trackChanged)
@@ -66,6 +71,15 @@ class Player : public QObject
     Q_PROPERTY(bool albumSortAscending READ albumSortAscending WRITE setAlbumSortAscending NOTIFY albumSortChanged)
     Q_PROPERTY(int trackSort READ trackSort WRITE setTrackSort NOTIFY trackSortChanged)
     Q_PROPERTY(bool trackSortAscending READ trackSortAscending WRITE setTrackSortAscending NOTIFY trackSortChanged)
+
+    Q_PROPERTY(bool lyricsAreSynced READ lyricsAreSynced NOTIFY metadataChanged)
+    Q_PROPERTY(QVariantList allPlaylists READ allPlaylists NOTIFY playlistsChanged)
+    Q_PROPERTY(int  playlistSort          READ playlistSort
+                   WRITE setPlaylistSort
+                       NOTIFY playlistSortChanged)
+    Q_PROPERTY(bool playlistSortAscending READ playlistSortAscending
+                   WRITE setPlaylistSortAscending
+                       NOTIFY playlistSortChanged)
 
 public:
     explicit Player(QObject *parent = nullptr);
@@ -119,6 +133,8 @@ public:
     int  trackSort() const;
     bool trackSortAscending() const;
 
+    bool lyricsAreSynced() const { return !m_lyricLines.isEmpty(); }
+
     // --- Invokables ---
     Q_INVOKABLE void setVolume(float volume);
 
@@ -165,6 +181,30 @@ public:
     Q_INVOKABLE void addTrackToQueue(const QString &path);
     Q_INVOKABLE QVariantMap trackInfoByPath(const QString &path) const;
 
+    QString      rawLyrics()  const;
+    QVariantList lyricLines() const;
+
+    Q_INVOKABLE QStringList albumsForArtist(const QString &artist) const;
+
+    // --- Playlists ---
+    Q_INVOKABLE QVariantList allPlaylists() const;
+    Q_INVOKABLE int          createPlaylist(const QString &name);
+    Q_INVOKABLE void         deletePlaylist(int playlistId);
+    Q_INVOKABLE void         renamePlaylist(int playlistId, const QString &name);
+    Q_INVOKABLE void         addTrackToPlaylist(int playlistId, const QString &path);
+    Q_INVOKABLE void         removeTrackFromPlaylist(int playlistId, const QString &path);
+    Q_INVOKABLE void         moveTrackInPlaylist(int playlistId, int from, int to);
+    Q_INVOKABLE int          saveQueueAsPlaylist(const QString &name);
+    Q_INVOKABLE QVariantList tracksForPlaylist(int playlistId) const;
+    Q_INVOKABLE void         openPlaylistInNewQueue(int playlistId, const QString &name);
+    Q_INVOKABLE void requestAddToPlaylist(const QString &path);
+    Q_INVOKABLE void requestAddAlbumToPlaylist(const QString &albumName);
+    int  playlistSort() const;
+    bool playlistSortAscending() const;
+    Q_INVOKABLE void setPlaylistSort(int sort);
+    Q_INVOKABLE void setPlaylistSortAscending(bool ascending);
+    Q_INVOKABLE void sortPlaylist(int playlistId);
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -182,6 +222,10 @@ signals:
     void scanProgressChanged();
     void albumSortChanged();
     void trackSortChanged();
+    void playlistsChanged();
+    void addToPlaylistRequested(const QString &path);
+    void addAlbumToPlaylistRequested(const QString &albumName);
+    void playlistSortChanged();
 
 private:
     QList<Queue*> m_queues;
@@ -209,6 +253,16 @@ private:
     bool               m_albumSortAscending;
     Library::TrackSort m_trackSort;
     bool               m_trackSortAscending;
+
+    QList<LrcLine> m_lyricLines;  // parsed, empty if no LRC
+    void rebuildLyricLines();
+    QString m_rawLyrics;
+
+    Library::TrackSort m_playlistSort;
+    bool               m_playlistSortAscending;
+
+    bool   m_playCountCredited = false;
+    qint64 m_creditThresholdMs = 0;
 };
 
 #endif // PLAYER_H

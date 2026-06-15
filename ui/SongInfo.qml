@@ -1,37 +1,23 @@
 import QtQuick
 import QtQuick.Controls
 
-// SongInfo — displays full metadata for a track.
-//
-// Usage:
-//   SongInfo {
-//       id: songInfo
-//       theme: root
-//   }
-//   songInfo.open(path)
-
 Item {
     id: songInfo
 
     required property var theme
 
-    readonly property color bgColor:      theme.bgColor
     readonly property color primaryText:  theme.primaryText
-    readonly property color secondaryText: theme.secondaryText
     readonly property color mutedText:    theme.mutedText
     readonly property color accentColor:  theme.accentColor
 
-    property bool    isOpen: false
-    property var     track:  null
+    property var track: null
 
     function open(path) {
-        track  = player.trackInfoByPath(path)
-        isOpen = true
+        track = player.trackInfoByPath(path)
+        popup.open()
     }
 
-    function close() {
-        isOpen = false
-    }
+    function close() { popup.close() }
 
     function formatDuration(ms) {
         let totalSeconds = Math.floor(ms / 1000)
@@ -46,58 +32,40 @@ Item {
         return date.toLocaleDateString()
     }
 
-    anchors.fill: parent
-    visible: isOpen
-    z: 100
+    Popup {
+        id: popup
+        modal: true
+        focus: true
+        anchors.centerIn: Overlay.overlay
+        width: 320
+        height: Math.min(contentCol.implicitHeight + 32, 480)
+        padding: 0
 
-    // ── Dim background ─────────────────────────────────────────
-    Rectangle {
-        anchors.fill: parent
-        color: Qt.rgba(0, 0, 0, 0.6)
-        opacity: songInfo.isOpen ? 1.0 : 0.0
-
-        Behavior on opacity {
-            NumberAnimation { duration: 180 }
+        background: Rectangle {
+            radius: 14
+            color: songInfo.theme.bgColor
+            border.color: Qt.rgba(1, 1, 1, 0.08)
+            border.width: 1
         }
 
-        MouseArea {
-            anchors.fill: parent
-            onClicked: songInfo.close()
-        }
-    }
-
-    // ── Centered dialog ────────────────────────────────────────
-    Rectangle {
-        anchors.centerIn: parent
-        width: Math.min(parent.width - 48, 360)
-        height: Math.min(contentCol.implicitHeight + 24, parent.height - 64)
-        radius: 14
-        color: songInfo.bgColor
-        border.color: Qt.rgba(1, 1, 1, 0.08)
-        border.width: 1
-        clip: true
-
-        MouseArea {
-            anchors.fill: parent
+        Overlay.modal: Rectangle {
+            color: Qt.rgba(0, 0, 0, 0.6)
         }
 
-        // Scrollable content
-        Flickable {
-            anchors.fill: parent
-            anchors.margins: 16
+        contentItem: Flickable {
             contentHeight: contentCol.implicitHeight
             clip: true
 
             Column {
                 id: contentCol
-                width: parent.width
+                width: popup.width - 32
+                x: 16
+                y: 16
                 spacing: 0
 
-                // ── Header row ─────────────────────────────────
                 Row {
                     width: parent.width
                     height: 24
-                    spacing: 0
 
                     Text {
                         text: "Song Info"
@@ -124,7 +92,6 @@ Item {
 
                 Item { width: 1; height: 16 }
 
-                // ── Cover art ──────────────────────────────────
                 Rectangle {
                     width: Math.min(parent.width, 120)
                     height: width
@@ -134,7 +101,6 @@ Item {
 
                     Image {
                         anchors.fill: parent
-                        anchors.margins: 0
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
                         source: songInfo.track && songInfo.track.path
@@ -155,7 +121,6 @@ Item {
 
                 Item { width: 1; height: 16 }
 
-                // ── Divider ────────────────────────────────────
                 Rectangle {
                     width: parent.width
                     height: 1
@@ -164,7 +129,6 @@ Item {
 
                 Item { width: 1; height: 12 }
 
-                // ── Metadata rows ──────────────────────────────
                 Repeater {
                     model: songInfo.track ? [
                         { label: "Title",        value: songInfo.track.title        },
@@ -217,7 +181,6 @@ Item {
                             anchors.top: parent.top
                             anchors.topMargin: 8
                             wrapMode: Text.WrapAnywhere
-                            elide: Text.ElideNone
                         }
 
                         Rectangle {

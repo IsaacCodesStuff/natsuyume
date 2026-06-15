@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import natsuyume_player
+import "ui"
 
 Window {
     id: root
@@ -15,6 +16,24 @@ Window {
     // ── Player instance ────────────────────────────────────────
     Player {
         id: player
+    }
+
+    // ── Shared dialogs ─────────────────────────────────────────
+    PlaylistPicker {
+        id: playlistPicker
+        theme: root
+    }
+
+    Connections {
+        target: player
+        function onAddToPlaylistRequested(path) {
+            console.log("onAddToPlaylistRequested:", path)
+            playlistPicker.open(path)
+        }
+        function onAddAlbumToPlaylistRequested(albumName) {
+            console.log("onAddAlbumToPlaylistRequested:", albumName)
+            playlistPicker.openForAlbum(albumName)
+        }
     }
 
     // ── Breakpoints ────────────────────────────────────────────

@@ -69,6 +69,8 @@ public:
 
     void moveTrack(int from, int to);
 
+    void updateTrackStats(const QString &path, qint64 lastPlayed, int playCount);
+
 signals:
     void trackChanged();
     void queueChanged();

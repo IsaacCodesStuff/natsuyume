@@ -325,3 +325,14 @@ void Queue::moveTrack(int from, int to)
     emit queueChanged();
     emit trackChanged();
 }
+
+void Queue::updateTrackStats(const QString &path, qint64 lastPlayed, int playCount)
+{
+    for (Track &t : m_tracks) {
+        if (t.path == path) {
+            t.dateLastPlayed = lastPlayed;
+            t.playCount      = playCount;
+            break;
+        }
+    }
+}

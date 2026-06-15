@@ -9,8 +9,6 @@ Item {
     readonly property color primaryText: theme.primaryText
     readonly property color accentColor: theme.accentColor
 
-    property bool dropdownOpen: false
-
     signal dropdownToggled
 
     Rectangle {

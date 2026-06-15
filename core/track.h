@@ -33,6 +33,7 @@ public:
 
     // --- Cover art ---
     QImage  coverArt;
+    QString lyrics;
 
     bool isValid()      const { return !path.isEmpty(); }
     bool hasCoverArt()  const { return !coverArt.isNull(); }

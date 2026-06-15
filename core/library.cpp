@@ -61,6 +61,25 @@ void Library::createSchema()
         )
     )");
 
+    q.exec(R"(
+        CREATE TABLE IF NOT EXISTS playlists (
+            id    INTEGER PRIMARY KEY AUTOINCREMENT,
+            name  TEXT NOT NULL UNIQUE
+        )
+    )");
+
+    q.exec(R"(
+        CREATE TABLE IF NOT EXISTS playlist_tracks (
+            playlist_id  INTEGER NOT NULL,
+            path         TEXT NOT NULL,
+            position     INTEGER NOT NULL,
+            PRIMARY KEY (playlist_id, path),
+            FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+        )
+    )");
+
+    q.exec("PRAGMA foreign_keys = ON");
+
     if (q.lastError().isValid())
         qWarning() << "Library: schema error:" << q.lastError().text();
 }
@@ -304,4 +323,253 @@ bool Library::containsPath(const QString &path) const
 {
     QReadLocker locker(&m_cacheLock);
     return m_pathCache.contains(path);
+}
+
+// ── Playlist writing ───────────────────────────────────────────────────────
+
+int Library::createPlaylist(const QString &name)
+{
+    QSqlQuery q(m_db);
+    q.prepare("INSERT INTO playlists (name) VALUES (:name)");
+    q.bindValue(":name", name);
+    if (!q.exec()) {
+        qWarning() << "Library: createPlaylist error:" << q.lastError().text();
+        return -1;
+    }
+    emit playlistsChanged();
+    return q.lastInsertId().toInt();
+}
+
+void Library::deletePlaylist(int playlistId)
+{
+    QSqlQuery q(m_db);
+    q.prepare("DELETE FROM playlists WHERE id = :id");
+    q.bindValue(":id", playlistId);
+    q.exec();
+    emit playlistsChanged();
+}
+
+void Library::renamePlaylist(int playlistId, const QString &name)
+{
+    QSqlQuery q(m_db);
+    q.prepare("UPDATE playlists SET name = :name WHERE id = :id");
+    q.bindValue(":name", name);
+    q.bindValue(":id",   playlistId);
+    q.exec();
+    emit playlistsChanged();
+}
+
+void Library::addTrackToPlaylist(int playlistId, const QString &path)
+{
+    QSqlQuery q(m_db);
+    // Get current max position
+    q.prepare("SELECT COALESCE(MAX(position), -1) FROM playlist_tracks WHERE playlist_id = :id");
+    q.bindValue(":id", playlistId);
+    q.exec();
+    int nextPos = q.next() ? q.value(0).toInt() + 1 : 0;
+
+    // INSERT OR IGNORE respects the PRIMARY KEY (playlist_id, path) — no duplicates
+    q.prepare(R"(
+        INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
+        VALUES (:id, :path, :pos)
+    )");
+    q.bindValue(":id",   playlistId);
+    q.bindValue(":path", path);
+    q.bindValue(":pos",  nextPos);
+    q.exec();
+    emit playlistsChanged();
+}
+
+void Library::removeTrackFromPlaylist(int playlistId, const QString &path)
+{
+    QSqlQuery q(m_db);
+    // Get position of the track being removed
+    q.prepare("SELECT position FROM playlist_tracks WHERE playlist_id = :id AND path = :path");
+    q.bindValue(":id",   playlistId);
+    q.bindValue(":path", path);
+    q.exec();
+    if (!q.next()) return;
+    int removedPos = q.value(0).toInt();
+
+    // Delete it
+    q.prepare("DELETE FROM playlist_tracks WHERE playlist_id = :id AND path = :path");
+    q.bindValue(":id",   playlistId);
+    q.bindValue(":path", path);
+    q.exec();
+
+    // Shift positions of tracks that came after it
+    q.prepare(R"(
+        UPDATE playlist_tracks
+        SET position = position - 1
+        WHERE playlist_id = :id AND position > :pos
+    )");
+    q.bindValue(":id",  playlistId);
+    q.bindValue(":pos", removedPos);
+    q.exec();
+    emit playlistsChanged();
+}
+
+void Library::moveTrackInPlaylist(int playlistId, int from, int to)
+{
+    if (from == to) return;
+
+    QSqlQuery q(m_db);
+
+    // Use a temp position (-1) to avoid UNIQUE constraint conflicts during swap
+    q.prepare(R"(
+        UPDATE playlist_tracks SET position = -1
+        WHERE playlist_id = :id AND position = :from
+    )");
+    q.bindValue(":id",   playlistId);
+    q.bindValue(":from", from);
+    q.exec();
+
+    if (from < to) {
+        // Shift everything between from+1 and to down by 1
+        q.prepare(R"(
+            UPDATE playlist_tracks SET position = position - 1
+            WHERE playlist_id = :id AND position > :from AND position <= :to
+        )");
+    } else {
+        // Shift everything between to and from-1 up by 1
+        q.prepare(R"(
+            UPDATE playlist_tracks SET position = position + 1
+            WHERE playlist_id = :id AND position >= :to AND position < :from
+        )");
+    }
+    q.bindValue(":id",   playlistId);
+    q.bindValue(":from", from);
+    q.bindValue(":to",   to);
+    q.exec();
+
+    // Place the moved track at its destination
+    q.prepare(R"(
+        UPDATE playlist_tracks SET position = :to
+        WHERE playlist_id = :id AND position = -1
+    )");
+    q.bindValue(":id", playlistId);
+    q.bindValue(":to", to);
+    q.exec();
+
+    emit playlistsChanged();
+}
+
+int Library::saveQueueAsPlaylist(const QString &name, const QStringList &paths)
+{
+    int id = createPlaylist(name);
+    if (id < 0) return -1;
+
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
+        VALUES (:id, :path, :pos)
+    )");
+    for (int i = 0; i < paths.size(); ++i) {
+        q.bindValue(":id",   id);
+        q.bindValue(":path", paths[i]);
+        q.bindValue(":pos",  i);
+        q.exec();
+    }
+    emit playlistsChanged();
+    return id;
+}
+
+// ── Playlist reading ───────────────────────────────────────────────────────
+
+QList<PlaylistInfo> Library::allPlaylists() const
+{
+    QList<PlaylistInfo> result;
+    QSqlQuery q(m_db);
+    q.exec("SELECT id, name FROM playlists ORDER BY name ASC");
+    while (q.next())
+        result.append({ q.value(0).toInt(), q.value(1).toString() });
+    return result;
+}
+
+QList<Track> Library::tracksForPlaylist(int playlistId) const
+{
+    QList<Track> result;
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        SELECT t.path, t.title, t.artist, t.album, t.album_artist,
+               t.composer, t.genre, t.track_number, t.disc_number,
+               t.year, t.duration, t.date_added, t.date_last_played, t.play_count
+        FROM playlist_tracks pt
+        JOIN tracks t ON t.path = pt.path
+        WHERE pt.playlist_id = :id
+        ORDER BY pt.position ASC
+    )");
+    q.bindValue(":id", playlistId);
+    q.exec();
+    while (q.next())
+        result.append(trackFromQuery(q));
+    return result;
+}
+
+QStringList Library::albumsForArtist(const QString &artist) const
+{
+    QStringList result;
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        SELECT DISTINCT album FROM tracks
+        WHERE artist = :artist
+        ORDER BY album ASC
+    )");
+    q.bindValue(":artist", artist);
+    q.exec();
+    while (q.next())
+        result.append(q.value(0).toString());
+    return result;
+}
+
+void Library::sortPlaylist(int playlistId, TrackSort sort, bool ascending)
+{
+    // Fetch current tracks in requested sort order
+    QString sortCol = trackSortColumn(sort);
+    QString dir     = ascending ? "ASC" : "DESC";
+
+    QSqlQuery q(m_db);
+    q.prepare(QString(R"(
+        SELECT pt.path FROM playlist_tracks pt
+        JOIN tracks t ON t.path = pt.path
+        WHERE pt.playlist_id = :id
+        ORDER BY %1 %2
+    )").arg(sortCol, dir));
+    q.bindValue(":id", playlistId);
+    q.exec();
+
+    QStringList ordered;
+    while (q.next())
+        ordered << q.value(0).toString();
+
+    // Rewrite positions
+    QSqlQuery upd(m_db);
+    upd.prepare(R"(
+        UPDATE playlist_tracks SET position = :pos
+        WHERE playlist_id = :id AND path = :path
+    )");
+    for (int i = 0; i < ordered.size(); ++i) {
+        upd.bindValue(":pos",  i);
+        upd.bindValue(":id",   playlistId);
+        upd.bindValue(":path", ordered[i]);
+        upd.exec();
+    }
+    emit playlistsChanged();
+}
+
+void Library::incrementPlayCount(const QString &path)
+{
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        UPDATE tracks
+        SET play_count      = play_count + 1,
+            date_last_played = :now
+        WHERE path = :path
+    )");
+    q.bindValue(":now",  QDateTime::currentSecsSinceEpoch());
+    q.bindValue(":path", path);
+    q.exec();
+
+    if (q.lastError().isValid())
+        qWarning() << "Library: incrementPlayCount error:" << q.lastError().text();
 }

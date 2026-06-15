@@ -1,4 +1,6 @@
 #include "player.h"
+#include "metadata.h"
+#include <QDateTime>
 
 Player::Player(QObject *parent)
     : QObject{parent},
@@ -63,6 +65,12 @@ Player::Player(QObject *parent)
     connect(m_indexer, &FileIndexer::trackFound, this, [this](const Track &track) {
         m_library->addTrack(track);
     }, Qt::QueuedConnection);
+
+    connect(m_library, &Library::playlistsChanged,
+            this, &Player::playlistsChanged);
+
+    m_playlistSort          = Library::TrackSort::TrackNumber;
+    m_playlistSortAscending = true;
 }
 
 Player::~Player()
@@ -102,12 +110,23 @@ void Player::connectQueueSignals(Queue *queue)
 {
     connect(queue, &Queue::trackChanged, this, [this]() {
         emit trackChanged();
+        rebuildLyricLines();       // ← add
         emit metadataChanged();
         emit isFavoriteChanged();
         pushCoverArt();
+
+        // Reset play count credit for new track
+        m_playCountCredited  = false;
+        m_creditThresholdMs  = 0;
+        if (activeQueue()) {
+            qint64 dur = activeQueue()->trackAt(
+                activeQueue()->currentTrackIndex()).duration;
+            m_creditThresholdMs = qint64(dur * 0.10);  // 10% threshold
+        }
     });
 
     connect(queue->playback(), &Playback::readyToPlay, this, [this]() {
+        rebuildLyricLines();       // ← add
         emit metadataChanged();
         emit isFavoriteChanged();
         pushCoverArt();
@@ -129,12 +148,28 @@ void Player::connectQueueSignals(Queue *queue)
         emit isPlayingChanged();
     });
 
-    connect(queue->playback(), &Playback::positionChanged, this, [this]() {
-        emit positionChanged();
-    });
-
     connect(queue->playback(), &Playback::durationChanged, this, [this]() {
         emit durationChanged();
+    });
+
+    connect(queue->playback(), &Playback::positionChanged, this, [this]() {
+        emit positionChanged();
+
+        // ── Play count tracking ────────────────────────────────
+        if (!m_playCountCredited && m_creditThresholdMs > 0) {
+            if (activeQueue() && activeQueue()->position() >= m_creditThresholdMs) {
+                m_playCountCredited = true;
+                QString path = activeQueue()->trackAt(
+                                                activeQueue()->currentTrackIndex()).path;
+                qint64 now = QDateTime::currentSecsSinceEpoch();
+                m_library->incrementPlayCount(path);
+                for (Queue *q : m_queues)
+                    q->updateTrackStats(path, now,
+                                        activeQueue()->trackAt(
+                                                         activeQueue()->currentTrackIndex()).playCount + 1);
+                emit metadataChanged();
+            }
+        }
     });
 }
 
@@ -188,6 +223,23 @@ bool Player::hasCoverArt() const
     Queue *q = activeQueue();
     return q && q->currentTrackIndex() >= 0
                ? q->trackAt(q->currentTrackIndex()).hasCoverArt() : false;
+}
+
+QString Player::rawLyrics() const
+{
+    return m_rawLyrics;
+}
+
+QVariantList Player::lyricLines() const
+{
+    QVariantList result;
+    for (const LrcLine &line : m_lyricLines) {
+        QVariantMap map;
+        map["timestamp"] = line.timestamp;
+        map["text"]      = line.text;
+        result << map;
+    }
+    return result;
 }
 
 // --- Track navigation getters ---
@@ -415,6 +467,7 @@ void Player::openFilesInNewQueue(const QStringList &filePaths,
 
     emit queuesChanged();
     emit trackChanged();
+    rebuildLyricLines();       // ← add
     emit metadataChanged();
     emit isPlayingChanged();
     emit positionChanged();
@@ -450,6 +503,7 @@ void Player::switchToQueue(int index)
     emit isPlayingChanged();
     emit positionChanged();
     emit durationChanged();
+    rebuildLyricLines();       // ← add
     emit metadataChanged();
     emit trackChanged();
     emit isFavoriteChanged();
@@ -480,6 +534,7 @@ void Player::closeQueue(int index)
         // Active queue is still playing — don't touch it
         emit queuesChanged();
         emit trackChanged();
+        rebuildLyricLines();       // ← add
         emit metadataChanged();
         emit isPlayingChanged();
         emit positionChanged();
@@ -496,6 +551,7 @@ void Player::closeQueue(int index)
     emit isPlayingChanged();
     emit positionChanged();
     emit durationChanged();
+    rebuildLyricLines();       // ← add
     emit metadataChanged();
     emit trackChanged();
     emit isFavoriteChanged();
@@ -541,10 +597,11 @@ QVariantList Player::trackList() const
     for (int i = 0; i < q->trackCount(); i++) {
         Track t = q->trackAt(i);
         QVariantMap map;
-        map["title"]  = t.title;
-        map["artist"] = t.artist;
-        map["album"]  = t.album;
-        map["path"]   = t.path;
+        map["title"]    = t.title;
+        map["artist"]   = t.artist;
+        map["album"]    = t.album;
+        map["path"]     = t.path;
+        map["duration"] = t.duration;
         list.append(map);
     }
     return list;
@@ -762,4 +819,137 @@ QVariantMap Player::trackInfoByPath(const QString &path) const
     }
 
     return map;
+}
+
+void Player::rebuildLyricLines()
+{
+    m_lyricLines.clear();
+    if (!activeQueue()) return;
+
+    Track current = activeQueue()->trackAt(activeQueue()->currentTrackIndex());
+    qDebug() << "rebuildLyricLines: path =" << current.path;
+    if (current.path.isEmpty()) return;
+
+    Track fresh = Metadata::read(current.path);
+    qDebug() << "rebuildLyricLines: lyrics length =" << fresh.lyrics.length();
+    qDebug() << "rebuildLyricLines: isLrc =" << LrcParser::isLrc(fresh.lyrics);
+    qDebug() << "rebuildLyricLines: first 100 chars =" << fresh.lyrics.left(100);
+
+    m_rawLyrics = fresh.lyrics;
+
+    if (LrcParser::isLrc(fresh.lyrics))
+        m_lyricLines = LrcParser::parse(fresh.lyrics);
+
+    qDebug() << "rebuildLyricLines: parsed line count =" << m_lyricLines.size();
+}
+
+QStringList Player::albumsForArtist(const QString &artist) const
+{
+    return m_library->albumsForArtist(artist);
+}
+
+QVariantList Player::allPlaylists() const
+{
+    QVariantList result;
+    for (const PlaylistInfo &p : m_library->allPlaylists()) {
+        QVariantMap map;
+        map["id"]   = p.id;
+        map["name"] = p.name;
+        result << map;
+    }
+    return result;
+}
+
+int Player::createPlaylist(const QString &name)
+{
+    return m_library->createPlaylist(name);
+}
+
+void Player::deletePlaylist(int playlistId)
+{
+    m_library->deletePlaylist(playlistId);
+}
+
+void Player::renamePlaylist(int playlistId, const QString &name)
+{
+    m_library->renamePlaylist(playlistId, name);
+}
+
+void Player::addTrackToPlaylist(int playlistId, const QString &path)
+{
+    m_library->addTrackToPlaylist(playlistId, path);
+}
+
+void Player::removeTrackFromPlaylist(int playlistId, const QString &path)
+{
+    m_library->removeTrackFromPlaylist(playlistId, path);
+}
+
+void Player::moveTrackInPlaylist(int playlistId, int from, int to)
+{
+    m_library->moveTrackInPlaylist(playlistId, from, to);
+}
+
+int Player::saveQueueAsPlaylist(const QString &name)
+{
+    if (!activeQueue()) return -1;
+    QStringList paths;
+    for (const Track &t : activeQueue()->tracks())
+        paths << t.path;
+    return m_library->saveQueueAsPlaylist(name, paths);
+}
+
+QVariantList Player::tracksForPlaylist(int playlistId) const
+{
+    QVariantList result;
+    for (const Track &t : m_library->tracksForPlaylist(playlistId)) {
+        QVariantMap map;
+        map["path"]     = t.path;
+        map["title"]    = t.title;
+        map["artist"]   = t.artist;
+        map["album"]    = t.album;
+        map["duration"] = t.duration;
+        result << map;
+    }
+    return result;
+}
+
+void Player::openPlaylistInNewQueue(int playlistId, const QString &name)
+{
+    QList<Track> tracks = m_library->tracksForPlaylist(playlistId);
+    QStringList paths;
+    for (const Track &t : tracks)
+        paths << t.path;
+    if (!paths.isEmpty())
+        openFilesInNewQueue(paths, name);
+}
+
+void Player::requestAddToPlaylist(const QString &path)
+{
+    emit addToPlaylistRequested(path);
+}
+
+void Player::requestAddAlbumToPlaylist(const QString &albumName)
+{
+    emit addAlbumToPlaylistRequested(albumName);
+}
+
+int  Player::playlistSort()          const { return static_cast<int>(m_playlistSort); }
+bool Player::playlistSortAscending() const { return m_playlistSortAscending; }
+
+void Player::setPlaylistSort(int sort)
+{
+    m_playlistSort = static_cast<Library::TrackSort>(sort);
+    emit playlistSortChanged();
+}
+
+void Player::setPlaylistSortAscending(bool ascending)
+{
+    m_playlistSortAscending = ascending;
+    emit playlistSortChanged();
+}
+
+void Player::sortPlaylist(int playlistId)
+{
+    m_library->sortPlaylist(playlistId, m_playlistSort, m_playlistSortAscending);
 }
