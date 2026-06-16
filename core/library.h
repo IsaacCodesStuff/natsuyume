@@ -13,6 +13,15 @@ struct PlaylistInfo {
     QString name;
 };
 
+struct QueueSnapshot {
+    QString     name;
+    QStringList paths;
+    int         currentTrackIndex = 0;
+    qint64      currentPosition   = 0;
+    bool        wasPlaying        = false;
+    bool        isActive          = false;
+};
+
 class Library : public QObject
 {
     Q_OBJECT
@@ -65,6 +74,13 @@ public:
     QList<Track>        tracksForPlaylist(int playlistId) const;
 
     void incrementPlayCount(const QString &path);
+
+    // --- Queue persistence ---
+    void saveQueues(const QList<QueueSnapshot> &queues);
+    QList<QueueSnapshot> loadQueues() const;
+
+    void removeTracksFromFolder(const QString &folderPath);
+    void removeTrackIfMissing(const QString &path);
 
 signals:
     void libraryChanged();

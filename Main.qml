@@ -12,6 +12,11 @@ Window {
     minimumHeight: 520
     visible: true
     title: "Natsuyume"
+    onClosing: function(close) {
+        player.saveQueues()
+        player.saveSettings()
+        close.accepted = true
+    }
 
     // ── Player instance ────────────────────────────────────────
     Player {
@@ -154,8 +159,6 @@ Window {
                 height: parent.height
                 theme: root
                 player: player
-                showLyricsOverlay: root.showLyrics
-                onCoverArtTapped: root.showLyrics = !root.showLyrics
             }
         }
 
@@ -188,8 +191,6 @@ Window {
             NowPlaying {
                 theme: root
                 player: player
-                showLyricsOverlay: root.showLyrics
-                onCoverArtTapped: root.showLyrics = !root.showLyrics
             }
 
             Sidebar {

@@ -21,7 +21,7 @@ Item {
             {
                 label: "Stop after this song",
                 icon: "⏹",
-                disabled: true
+                onTriggered: function() { player.toggleStopAfterCurrent() }
             },
             {
                 label: "Song info",

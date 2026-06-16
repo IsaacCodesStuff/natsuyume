@@ -1,5 +1,7 @@
 #include "queue.h"
 #include <QRandomGenerator>
+#include <QDateTime>
+#include <QTimer>
 
 Queue::Queue(const QString &name, QObject *parent)
     : QObject{parent},
@@ -21,6 +23,13 @@ Queue::~Queue() {}
 void Queue::connectPlaybackSignals()
 {
     connect(m_playback, &Playback::trackEnded, this, [this]() {
+        // Stop after this song
+        if (m_stopAfterCurrent) {
+            m_stopAfterCurrent = false;
+            emit stopAfterCurrentChanged();
+            return;  // don't advance
+        }
+
         // RepeatTrack — restart immediately
         if (m_repeatMode == RepeatTrack) {
             m_playback->seekTo(0);
@@ -227,12 +236,14 @@ void Queue::restoreState()
         return;
 
     connect(m_playback, &Playback::readyToPlay, this, [this]() {
-        m_playback->seekTo(m_savedPosition);
-        if (m_wasPlaying)
-            m_playback->play();
-        else
-            m_playback->pause();
-        emit trackChanged();
+        QTimer::singleShot(200, this, [this]() {
+            m_playback->seekTo(m_savedPosition);
+            if (m_wasPlaying)
+                m_playback->play();
+            else
+                m_playback->pause();
+            emit trackChanged();
+        });
     }, Qt::SingleShotConnection);
 
     m_playback->loadTrack(m_tracks.at(m_currentTrackIndex));
@@ -335,4 +346,20 @@ void Queue::updateTrackStats(const QString &path, qint64 lastPlayed, int playCou
             break;
         }
     }
+}
+
+void Queue::addTrackSilent(const Track &track)
+{
+    m_tracks.append(track);
+    if (m_shuffled)
+        generateShuffleOrder();
+    // deliberately no auto-load, no emit
+}
+
+bool Queue::stopAfterCurrent() const { return m_stopAfterCurrent; }
+
+void Queue::setStopAfterCurrent(bool stop)
+{
+    m_stopAfterCurrent = stop;
+    emit stopAfterCurrentChanged();
 }

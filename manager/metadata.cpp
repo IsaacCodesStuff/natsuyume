@@ -133,7 +133,6 @@ Track Metadata::read(const QString &path)
             track.lyrics = xiphField(xiph, "LYRICS");
             if (track.lyrics.isEmpty())
             track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
-            qDebug() << "FLAC lyrics length:" << track.lyrics.length();
         }
 
         // Cover art

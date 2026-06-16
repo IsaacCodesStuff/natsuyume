@@ -54,6 +54,8 @@ public:
     qint64 position() const;
     qint64 duration() const;
 
+    qint64 savedPosition() const { return m_savedPosition; }
+
     // --- Repeat ---
     RepeatMode repeatMode() const;
     void cycleRepeatMode();
@@ -70,14 +72,21 @@ public:
     void moveTrack(int from, int to);
 
     void updateTrackStats(const QString &path, qint64 lastPlayed, int playCount);
+    void addTrackSilent(const Track &track);
+
+    // --- Stop after this song ---
+    bool stopAfterCurrent() const;
+    void setStopAfterCurrent(bool stop);
 
 signals:
     void trackChanged();
     void queueChanged();
     void repeatModeChanged();
     void shuffleChanged();
+    void stopAfterCurrentChanged();
 
 private:
+    friend class Player;
     QString m_name;
     QList<Track> m_tracks;
     int m_currentTrackIndex;
@@ -101,6 +110,8 @@ private:
     int previousShuffleIndex() const;
 
     void connectPlaybackSignals();
+
+    bool m_stopAfterCurrent = false;
 };
 
 #endif // QUEUE_H

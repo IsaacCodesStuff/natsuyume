@@ -20,6 +20,7 @@ Item {
     required property var  theme
     required property var  player
     required property bool overlayMode
+    property bool artMode: false      // ← add this — replaces album art, no controls
 
     signal closeRequested
 
@@ -34,14 +35,14 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: surfaceColor
-        visible: !overlayMode
+        visible: !overlayMode && !artMode    // ← add && !artMode
     }
 
     // ── Overlay background ─────────────────────────────────────
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(0.27, 0.09, 0.18, 0.96)
-        visible: overlayMode
+        visible: overlayMode && !artMode     // ← add && !artMode
         radius: 16
     }
 
@@ -54,7 +55,8 @@ Item {
         anchors.topMargin: overlayMode ? 14 : 16
         anchors.leftMargin: 16
         anchors.rightMargin: 16
-        height: 24
+        height: visible ? 24 : 0
+        visible: !artMode    // ← hide header in artMode
 
         Rectangle {
             width: syncedLabel.implicitWidth + 16
@@ -97,15 +99,14 @@ Item {
     }
 
     // ── Lyrics list ────────────────────────────────────────────
-    // TODO: wire to real synced lyrics model once backend supports it
     ListView {
         id: lyricsList
-        anchors.top: headerRow.bottom
-        anchors.topMargin: 12
+        anchors.top: artMode ? parent.top : headerRow.bottom
+        anchors.topMargin: artMode ? 16 : 12
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: overlayMode ? overlayControls.top : parent.bottom
-        anchors.bottomMargin: overlayMode ? 8 : 12
+        anchors.bottom: (overlayMode && !artMode) ? overlayControls.top : parent.bottom
+        anchors.bottomMargin: 12
         anchors.leftMargin: 16
         anchors.rightMargin: 16
         clip: true
@@ -172,7 +173,7 @@ Item {
         anchors.leftMargin: 16
         anchors.rightMargin: 16
         spacing: 8
-        visible: overlayMode
+        visible: overlayMode && !artMode    // ← add && !artMode
 
         // Seek bar
         Item {

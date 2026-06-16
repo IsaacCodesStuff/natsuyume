@@ -1,16 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 
-// NowPlaying — the player core. Always visible, never replaced.
-//
-// Required properties:
-//   theme  — reference to root Window for palette + formatTime()
-//   player — the Player instance
-//
-// Signals:
-//   coverArtTapped — toggle lyrics overlay (tablet + mobile)
-//   openFilePicker — open the file picker overlay
-
 Item {
     id: nowPlaying
 
@@ -18,6 +8,7 @@ Item {
     required property var player
 
     property bool showLyricsOverlay: false
+    property bool showLyricsInArtArea: false  // replaces art with lyrics on mobile/tablet
 
     signal coverArtTapped
 
@@ -37,55 +28,74 @@ Item {
         color: bgColor
     }
 
-    // ── Cover art ──────────────────────────────────────────────
-    Rectangle {
-        id: coverArtBlock
+    // ── Art / Lyrics toggle area ───────────────────────────────
+    Item {
+        id: artArea
         width: artSize
-        height: artSize
-        radius: 16
-        color: surfaceColor
+        height: (nowPlaying.showLyricsInArtArea && !theme.isDesktop)
+                ? artSize * 1.6    // taller when showing lyrics
+                : artSize
         anchors.top: parent.top
-        anchors.topMargin: Math.max(height * 0.08, 32)
+        anchors.topMargin: 24
         anchors.horizontalCenter: parent.horizontalCenter
 
-        Image {
+        Behavior on height {
+            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
+        }
+
+        // Album art
+        Rectangle {
+            id: coverArtBlock
             anchors.fill: parent
-            source: theme.coverArtSource
-            fillMode: Image.PreserveAspectCrop
-            visible: theme.coverArtSource !== ""
-            layer.enabled: true
+            radius: 16
+            color: surfaceColor
+            visible: !nowPlaying.showLyricsInArtArea || theme.isDesktop
+
+            Image {
+                anchors.fill: parent
+                source: theme.coverArtSource
+                fillMode: Image.PreserveAspectCrop
+                visible: theme.coverArtSource !== ""
+                layer.enabled: true
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: "♪"
+                font.pixelSize: artSize * 0.28
+                color: mutedText
+                visible: theme.coverArtSource === ""
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                enabled: !theme.isDesktop
+                onClicked: nowPlaying.showLyricsInArtArea = true
+            }
         }
 
-        Text {
-            anchors.centerIn: parent
-            text: "♪"
-            font.pixelSize: artSize * 0.28
-            color: mutedText
-            visible: theme.coverArtSource === ""
-        }
-
-        Text {
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottomMargin: 6
-            text: "tap for lyrics"
-            font.pixelSize: 10
-            color: Qt.rgba(1, 1, 1, 0.35)
-            visible: !theme.isDesktop
-        }
-
-        MouseArea {
+        // Lyrics in art area (mobile/tablet only)
+        Lyrics {
             anchors.fill: parent
-            cursorShape: Qt.PointingHandCursor
-            enabled: !theme.isDesktop
-            onClicked: nowPlaying.coverArtTapped()
+            theme: nowPlaying.theme
+            player: nowPlaying.player
+            overlayMode: false
+            artMode: true
+            visible: nowPlaying.showLyricsInArtArea && !theme.isDesktop
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: nowPlaying.showLyricsInArtArea = false
+            }
         }
     }
 
     // ── Metadata ───────────────────────────────────────────────
     Column {
         id: metadataBlock
-        anchors.top: coverArtBlock.bottom
+        anchors.top: artArea.bottom
         anchors.topMargin: 18
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 5
@@ -121,20 +131,120 @@ Item {
             width: parent.width
             horizontalAlignment: Text.AlignHCenter
         }
+    }
 
-        // Favorite toggle
-        Text {
-            anchors.horizontalCenter: parent.horizontalCenter
-            text: player.isFavorite ? "♥" : "♡"
-            font.pixelSize: 26
-            color: player.isFavorite ? accentColor : mutedText
+    // ── Quick access bar ───────────────────────────────────────
+    Item {
+        id: quickAccessBar
+        anchors.top: metadataBlock.bottom
+        anchors.topMargin: 12
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: sidePad
+        anchors.rightMargin: sidePad
+        height: 44
 
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: player.toggleFavorite()
+        ListView {
+            id: quickAccessList
+            anchors.fill: parent
+            orientation: ListView.Horizontal
+            spacing: 4
+            clip: true
+
+            model: [
+                {
+                    icon: player.isFavorite ? "♥" : "♡",
+                    label: "Favorite",
+                    active: player.isFavorite,
+                    onTapped: function() { player.toggleFavorite() }
+                },
+                {
+                    icon: "ℹ",
+                    label: "Song info",
+                    active: false,
+                    onTapped: function() { quickAccessSongInfo.open(player.trackPath) }
+                },
+                {
+                    icon: "🎵",
+                    label: "Lyrics",
+                    active: nowPlaying.showLyricsInArtArea,
+                    onTapped: function() {
+                        if (theme.isDesktop) {
+                            // on desktop lyrics panel is always visible
+                        } else {
+                            nowPlaying.showLyricsInArtArea = !nowPlaying.showLyricsInArtArea
+                        }
+                    }
+                },
+                {
+                    icon: "≡+",
+                    label: "Add to playlist",
+                    active: false,
+                    onTapped: function() { player.requestAddToPlaylist(player.trackPath) }
+                },
+                {
+                    icon: "⏹",
+                    label: "Stop after",
+                    active: player.stopAfterCurrent,
+                    onTapped: function() { player.toggleStopAfterCurrent() }
+                },
+                {
+                    icon: "⇌",
+                    label: "A-B Repeat",
+                    active: false,
+                    onTapped: function() { /* placeholder */ }
+                }
+            ]
+
+            delegate: Item {
+                width: 60
+                height: quickAccessList.height
+
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    radius: 8
+                    color: modelData.active
+                           ? Qt.rgba(accentColor.r, accentColor.g,
+                                     accentColor.b, 0.18)
+                           : Qt.rgba(1, 1, 1, 0.05)
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 2
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData.icon
+                            font.pixelSize: 16
+                            color: modelData.active ? accentColor : mutedText
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData.label
+                            font.pixelSize: 7
+                            color: modelData.active ? accentColor : mutedText
+                            elide: Text.ElideRight
+                            width: 54
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: modelData.onTapped()
+                    }
+                }
             }
         }
+    }
+
+    // ── Song info dialog ───────────────────────────────────────
+    SongInfo {
+        id: quickAccessSongInfo
+        theme: nowPlaying.theme
     }
 
     // ── Controls ───────────────────────────────────────────────
@@ -206,6 +316,8 @@ Item {
                                 return mutedText
                             if (modelData.action === "next" && !player.hasNext)
                                 return mutedText
+                            if (modelData.action === "playpause")
+                                return accentColor
                             return primaryText
                         }
 
@@ -230,13 +342,13 @@ Item {
             }
         }
 
-        // Shuffle + Repeat
+        // Shuffle + Repeat + Stop
         Row {
             width: parent.width
             anchors.horizontalCenter: parent.horizontalCenter
 
             Item {
-                width: parent.width / 2
+                width: parent.width / 3
                 height: 36
 
                 Text {
@@ -254,7 +366,7 @@ Item {
             }
 
             Item {
-                width: parent.width / 2
+                width: parent.width / 3
                 height: 36
 
                 Text {
@@ -268,6 +380,35 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: player.cycleRepeatMode()
                     }
+                }
+            }
+
+            Item {
+                width: parent.width / 3
+                height: 36
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "⏹"
+                    font.pixelSize: 20
+                    color: player.stopAfterCurrent ? accentColor : mutedText
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: player.toggleStopAfterCurrent()
+                    }
+                }
+
+                Rectangle {
+                    width: 4
+                    height: 4
+                    radius: 2
+                    color: accentColor
+                    visible: player.stopAfterCurrent
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 4
                 }
             }
         }
@@ -289,7 +430,7 @@ Item {
                 width: parent.width - 52
                 from: 0.0
                 to: 1.0
-                value: 0.8
+                value: player.volume
                 onMoved: player.setVolume(value)
             }
 
@@ -308,21 +449,6 @@ Item {
             font.pixelSize: 12
             color: mutedText
             anchors.horizontalCenter: parent.horizontalCenter
-        }
-    }
-
-    // ── Lyrics overlay (tablet + mobile) ──────────────────────
-    Lyrics {
-        anchors.fill: parent
-        theme: nowPlaying.theme
-        player: nowPlaying.player
-        overlayMode: true
-        visible: nowPlaying.showLyricsOverlay && !theme.isDesktop
-
-        onCloseRequested: nowPlaying.coverArtTapped()
-
-        Behavior on opacity {
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
         }
     }
 }

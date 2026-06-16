@@ -27,6 +27,7 @@ bool Library::open()
 
     if (!m_db.open()) {
         qWarning() << "Library: failed to open database:" << m_db.lastError().text();
+        qWarning() << "Library: database path:" << m_db.databaseName();
         return false;
     }
 
@@ -82,6 +83,27 @@ void Library::createSchema()
 
     if (q.lastError().isValid())
         qWarning() << "Library: schema error:" << q.lastError().text();
+
+    q.exec(R"(
+        CREATE TABLE IF NOT EXISTS saved_queues (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            name     TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            track_index    INTEGER NOT NULL DEFAULT 0,
+            track_position INTEGER NOT NULL DEFAULT 0,
+            was_playing    INTEGER NOT NULL DEFAULT 0,
+            is_active      INTEGER NOT NULL DEFAULT 0
+        )
+    )");
+
+    q.exec(R"(
+        CREATE TABLE IF NOT EXISTS saved_queue_tracks (
+            queue_id INTEGER NOT NULL,
+            path     TEXT NOT NULL,
+            position INTEGER NOT NULL,
+            FOREIGN KEY (queue_id) REFERENCES saved_queues(id) ON DELETE CASCADE
+        )
+    )");
 }
 
 void Library::populateCache()
@@ -572,4 +594,93 @@ void Library::incrementPlayCount(const QString &path)
 
     if (q.lastError().isValid())
         qWarning() << "Library: incrementPlayCount error:" << q.lastError().text();
+}
+
+void Library::saveQueues(const QList<QueueSnapshot> &queues)
+{
+    QSqlQuery q(m_db);
+
+    // Clear existing saved queues — CASCADE deletes tracks too
+    q.exec("DELETE FROM saved_queues");
+
+    for (int i = 0; i < queues.size(); ++i) {
+        const QueueSnapshot &snap = queues[i];
+
+        q.prepare(R"(
+            INSERT INTO saved_queues
+                (name, position, track_index, track_position, was_playing, is_active)
+            VALUES
+                (:name, :pos, :trackIndex, :trackPos, :wasPlaying, :isActive)
+        )");
+        q.bindValue(":name",       snap.name);
+        q.bindValue(":pos",        i);
+        q.bindValue(":trackIndex", snap.currentTrackIndex);
+        q.bindValue(":trackPos",   snap.currentPosition);
+        q.bindValue(":wasPlaying", snap.wasPlaying ? 1 : 0);
+        q.bindValue(":isActive",   snap.isActive   ? 1 : 0);
+        q.exec();
+
+        int queueId = q.lastInsertId().toInt();
+
+        q.prepare(R"(
+            INSERT INTO saved_queue_tracks (queue_id, path, position)
+            VALUES (:queueId, :path, :pos)
+        )");
+        for (int j = 0; j < snap.paths.size(); ++j) {
+            q.bindValue(":queueId", queueId);
+            q.bindValue(":path",    snap.paths[j]);
+            q.bindValue(":pos",     j);
+            q.exec();
+        }
+    }
+}
+
+QList<QueueSnapshot> Library::loadQueues() const
+{
+    QList<QueueSnapshot> result;
+    QSqlQuery q(m_db);
+
+    q.exec("SELECT id, name, track_index, track_position, was_playing, is_active FROM saved_queues ORDER BY position ASC");
+
+    while (q.next()) {
+        QueueSnapshot snap;
+        int queueId          = q.value(0).toInt();
+        snap.name            = q.value(1).toString();
+        snap.currentTrackIndex = q.value(2).toInt();
+        snap.currentPosition = q.value(3).toLongLong();
+        snap.wasPlaying      = q.value(4).toInt() == 1;
+        snap.isActive        = q.value(5).toInt() == 1;
+
+        QSqlQuery tq(m_db);
+        tq.prepare("SELECT path FROM saved_queue_tracks WHERE queue_id = :id ORDER BY position ASC");
+        tq.bindValue(":id", queueId);
+        tq.exec();
+        while (tq.next())
+            snap.paths << tq.value(0).toString();
+
+        result.append(snap);
+    }
+
+    return result;
+}
+
+void Library::removeTracksFromFolder(const QString &folderPath)
+{
+    QSqlQuery q(m_db);
+    q.prepare("SELECT path FROM tracks WHERE path LIKE :prefix");
+    q.bindValue(":prefix", folderPath + "%");
+    q.exec();
+
+    QStringList toRemove;
+    while (q.next())
+        toRemove << q.value(0).toString();
+
+    for (const QString &path : toRemove)
+        removeTrack(path);
+}
+
+void Library::removeTrackIfMissing(const QString &path)
+{
+    if (!QFile::exists(path))
+        removeTrack(path);
 }

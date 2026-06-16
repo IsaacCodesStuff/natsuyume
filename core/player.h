@@ -81,6 +81,17 @@ class Player : public QObject
                    WRITE setPlaylistSortAscending
                        NOTIFY playlistSortChanged)
 
+    // --- Settings ---
+    Q_PROPERTY(QStringList scanFolders READ scanFolders NOTIFY scanFoldersChanged)
+    Q_PROPERTY(int playCountThreshold READ playCountThreshold
+                   WRITE setPlayCountThreshold
+                       NOTIFY playCountThresholdChanged)
+
+    Q_PROPERTY(bool stopAfterCurrent READ stopAfterCurrent
+                   NOTIFY stopAfterCurrentChanged)
+
+    Q_PROPERTY(QString trackPath READ trackPath NOTIFY metadataChanged)
+
 public:
     explicit Player(QObject *parent = nullptr);
     ~Player();
@@ -96,6 +107,7 @@ public:
     QString trackArtist() const;
     QString trackAlbum() const;
     bool hasCoverArt() const;
+    QString trackPath() const;
 
     // --- Track navigation getters ---
     int trackIndex() const;
@@ -205,6 +217,23 @@ public:
     Q_INVOKABLE void setPlaylistSortAscending(bool ascending);
     Q_INVOKABLE void sortPlaylist(int playlistId);
 
+    Q_INVOKABLE void saveQueues();
+    Q_INVOKABLE void loadQueues();
+
+    Q_INVOKABLE void addScanFolder(const QString &path);
+    Q_INVOKABLE void removeScanFolder(const QString &path);
+    Q_INVOKABLE void rescanAllFolders();
+
+    QStringList scanFolders() const;
+    int         playCountThreshold() const;
+    Q_INVOKABLE void setPlayCountThreshold(int percent);
+
+    void loadSettings();
+    Q_INVOKABLE void saveSettings();
+
+    bool stopAfterCurrent() const;
+    Q_INVOKABLE void toggleStopAfterCurrent();
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -226,6 +255,9 @@ signals:
     void addToPlaylistRequested(const QString &path);
     void addAlbumToPlaylistRequested(const QString &albumName);
     void playlistSortChanged();
+    void scanFoldersChanged();
+    void playCountThresholdChanged();
+    void stopAfterCurrentChanged();
 
 private:
     QList<Queue*> m_queues;
@@ -263,6 +295,9 @@ private:
 
     bool   m_playCountCredited = false;
     qint64 m_creditThresholdMs = 0;
+
+    QStringList m_scanFolders;
+    int         m_playCountThreshold = 10;
 };
 
 #endif // PLAYER_H

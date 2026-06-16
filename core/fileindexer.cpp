@@ -68,21 +68,21 @@ void FileIndexer::cancel()
 
 QStringList FileIndexer::collectFiles(const QString &folderPath) const
 {
+    QDir dir(folderPath);
     QStringList files;
-
     QDirIterator it(
         folderPath,
         QDir::Files | QDir::NoDotAndDotDot,
         QDirIterator::Subdirectories
         );
-
+    int count = 0;
     while (it.hasNext()) {
         QString path = it.next();
-        QString ext  = QFileInfo(path).suffix().toLower();
+        count++;
+        QString ext = QFileInfo(path).suffix().toLower();
         if (s_supportedExtensions.contains(ext))
             files.append(path);
     }
-
     return files;
 }
 

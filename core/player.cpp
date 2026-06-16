@@ -1,6 +1,9 @@
 #include "player.h"
 #include "metadata.h"
 #include <QDateTime>
+#include <QSettings>
+#include <QFile>
+#include <QTimer>
 
 Player::Player(QObject *parent)
     : QObject{parent},
@@ -15,8 +18,16 @@ Player::Player(QObject *parent)
     m_trackSortAscending(true)
 {
     m_library = new Library(this);
-    if (!m_library->open())
+    if (m_library->open()) {
+        loadSettings();
+        loadQueues();
+        // Rescan on launch to pick up new files and remove missing ones
+        QTimer::singleShot(500, this, [this]() {
+            rescanAllFolders();
+        });
+    } else {
         qWarning() << "Player: failed to open library";
+    }
 
     m_indexer = new FileIndexer(this);
 
@@ -170,6 +181,10 @@ void Player::connectQueueSignals(Queue *queue)
                 emit metadataChanged();
             }
         }
+    });
+
+    connect(queue, &Queue::stopAfterCurrentChanged, this, [this]() {
+        emit stopAfterCurrentChanged();
     });
 }
 
@@ -686,6 +701,7 @@ void Player::setAlbumSort(int sort)
     m_albumSort = static_cast<Library::AlbumSort>(sort);
     emit albumSortChanged();
     emit libraryChanged();
+    saveSettings();
 }
 
 void Player::setAlbumSortAscending(bool ascending)
@@ -693,19 +709,21 @@ void Player::setAlbumSortAscending(bool ascending)
     m_albumSortAscending = ascending;
     emit albumSortChanged();
     emit libraryChanged();
+    saveSettings();
 }
 
 void Player::setTrackSort(int sort)
 {
     m_trackSort = static_cast<Library::TrackSort>(sort);
-    qDebug() << "trackSort changed to" << sort;
     emit trackSortChanged();
+    saveSettings();
 }
 
 void Player::setTrackSortAscending(bool ascending)
 {
     m_trackSortAscending = ascending;
     emit trackSortChanged();
+    saveSettings();
 }
 void Player::moveTrack(int from, int to)
 {
@@ -827,20 +845,14 @@ void Player::rebuildLyricLines()
     if (!activeQueue()) return;
 
     Track current = activeQueue()->trackAt(activeQueue()->currentTrackIndex());
-    qDebug() << "rebuildLyricLines: path =" << current.path;
     if (current.path.isEmpty()) return;
 
     Track fresh = Metadata::read(current.path);
-    qDebug() << "rebuildLyricLines: lyrics length =" << fresh.lyrics.length();
-    qDebug() << "rebuildLyricLines: isLrc =" << LrcParser::isLrc(fresh.lyrics);
-    qDebug() << "rebuildLyricLines: first 100 chars =" << fresh.lyrics.left(100);
 
     m_rawLyrics = fresh.lyrics;
 
     if (LrcParser::isLrc(fresh.lyrics))
         m_lyricLines = LrcParser::parse(fresh.lyrics);
-
-    qDebug() << "rebuildLyricLines: parsed line count =" << m_lyricLines.size();
 }
 
 QStringList Player::albumsForArtist(const QString &artist) const
@@ -941,15 +953,196 @@ void Player::setPlaylistSort(int sort)
 {
     m_playlistSort = static_cast<Library::TrackSort>(sort);
     emit playlistSortChanged();
+    saveSettings();
 }
 
 void Player::setPlaylistSortAscending(bool ascending)
 {
     m_playlistSortAscending = ascending;
     emit playlistSortChanged();
+    saveSettings();
 }
 
 void Player::sortPlaylist(int playlistId)
 {
     m_library->sortPlaylist(playlistId, m_playlistSort, m_playlistSortAscending);
+}
+
+void Player::saveQueues()
+{
+    QList<QueueSnapshot> snapshots;
+    for (int i = 0; i < m_queues.size(); ++i) {
+        Queue *q = m_queues[i];
+        q->saveState();   // ← snapshot current position before reading it
+        QueueSnapshot snap;
+        snap.name              = q->name();
+        snap.currentTrackIndex = q->currentTrackIndex();
+        snap.currentPosition   = q->savedPosition();  // ← read saved position
+        snap.wasPlaying        = q->isPlaying();
+        snap.isActive          = (i == m_activeQueueIndex);
+        for (const Track &t : q->tracks())
+            snap.paths << t.path;
+        snapshots.append(snap);
+    }
+    m_library->saveQueues(snapshots);
+}
+
+void Player::loadQueues()
+{
+    QList<QueueSnapshot> snapshots = m_library->loadQueues();
+    if (snapshots.isEmpty()) return;
+
+    int activeIndex = 0;
+    for (int i = 0; i < snapshots.size(); ++i) {
+        const QueueSnapshot &snap = snapshots[i];
+        // if (snap.paths.isEmpty()) continue;
+
+        Queue *queue = new Queue(snap.name, this);
+        queue->setVolume(m_volume);
+        connectQueueSignals(queue);
+
+        for (const QString &path : snap.paths) {
+            Track t = Metadata::read(path);
+            queue->addTrackSilent(t);
+        }
+
+        // Set saved state directly
+        queue->m_savedPosition     = snap.currentPosition;
+        queue->m_wasPlaying        = false; // never auto-play on restore
+        queue->m_currentTrackIndex = qBound(0, snap.currentTrackIndex,
+                                            (int)snap.paths.size() - 1);
+
+        m_queues.append(queue);
+
+        if (snap.isActive)
+            activeIndex = m_queues.size() - 1;
+    }
+
+    if (m_queues.isEmpty()) return;
+
+    m_activeQueueIndex = activeIndex;
+    m_queues[activeIndex]->restoreState();
+
+    emit queuesChanged();
+    emit trackChanged();
+    emit metadataChanged();
+    emit isPlayingChanged();
+    emit positionChanged();
+    emit durationChanged();
+    emit isFavoriteChanged();
+}
+
+void Player::loadSettings()
+{
+    QSettings s;
+
+    // Scan folders
+    m_scanFolders = s.value("library/scanFolders").toStringList();
+
+    // Volume
+    m_volume = s.value("playback/volume", 0.8f).toFloat();
+    for (Queue *q : m_queues)
+        q->setVolume(m_volume);
+
+    // Play count threshold
+    m_playCountThreshold = s.value("playback/playCountThreshold", 10).toInt();
+
+    // Sort preferences
+    m_albumSort = static_cast<Library::AlbumSort>(
+        s.value("sort/albumSort", 0).toInt());
+    m_albumSortAscending = s.value("sort/albumSortAscending", true).toBool();
+
+    m_trackSort = static_cast<Library::TrackSort>(
+        s.value("sort/trackSort", 0).toInt());
+    m_trackSortAscending = s.value("sort/trackSortAscending", true).toBool();
+
+    m_playlistSort = static_cast<Library::TrackSort>(
+        s.value("sort/playlistSort", 0).toInt());
+    m_playlistSortAscending = s.value("sort/playlistSortAscending", true).toBool();
+
+    emit scanFoldersChanged();
+    emit volumeChanged();
+    emit playCountThresholdChanged();
+    emit albumSortChanged();
+    emit trackSortChanged();
+    emit playlistSortChanged();
+}
+
+void Player::saveSettings()
+{
+    QSettings s;
+    s.setValue("library/scanFolders",        m_scanFolders);
+    s.setValue("playback/volume",            m_volume);
+    s.setValue("playback/playCountThreshold", m_playCountThreshold);
+    s.setValue("sort/albumSort",             static_cast<int>(m_albumSort));
+    s.setValue("sort/albumSortAscending",    m_albumSortAscending);
+    s.setValue("sort/trackSort",             static_cast<int>(m_trackSort));
+    s.setValue("sort/trackSortAscending",    m_trackSortAscending);
+    s.setValue("sort/playlistSort",          static_cast<int>(m_playlistSort));
+    s.setValue("sort/playlistSortAscending", m_playlistSortAscending);
+}
+
+QStringList Player::scanFolders() const { return m_scanFolders; }
+int Player::playCountThreshold() const  { return m_playCountThreshold; }
+
+void Player::setPlayCountThreshold(int percent)
+{
+    m_playCountThreshold = percent;
+    // Rebuild threshold for current track
+    if (activeQueue()) {
+        qint64 dur = activeQueue()->trackAt(
+                                      activeQueue()->currentTrackIndex()).duration;
+        m_creditThresholdMs = qint64(dur * (m_playCountThreshold / 100.0));
+    }
+    emit playCountThresholdChanged();
+}
+
+void Player::addScanFolder(const QString &path)
+{
+    if (m_scanFolders.contains(path)) return;
+    m_scanFolders.append(path);
+    emit scanFoldersChanged();
+    saveSettings();
+    scanFolder(path);
+}
+
+void Player::removeScanFolder(const QString &path)
+{
+    m_scanFolders.removeAll(path);
+    emit scanFoldersChanged();
+    saveSettings();
+    m_library->removeTracksFromFolder(path);
+}
+
+void Player::rescanAllFolders()
+{
+    if (m_scanFolders.isEmpty()) return;
+
+    // First remove any tracks whose files no longer exist
+    for (const Track &t : m_library->allTracks())
+        m_library->removeTrackIfMissing(t.path);
+
+    // Then rescan all folders
+    for (const QString &folder : std::as_const(m_scanFolders))
+        scanFolder(folder);
+}
+
+bool Player::stopAfterCurrent() const
+{
+    Queue *q = activeQueue();
+    return q ? q->stopAfterCurrent() : false;
+}
+
+void Player::toggleStopAfterCurrent()
+{
+    Queue *q = activeQueue();
+    if (!q) return;
+    q->setStopAfterCurrent(!q->stopAfterCurrent());
+}
+
+QString Player::trackPath() const
+{
+    Queue *q = activeQueue();
+    return q && q->currentTrackIndex() >= 0
+               ? q->trackAt(q->currentTrackIndex()).path : "";
 }
