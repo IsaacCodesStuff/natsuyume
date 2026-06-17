@@ -49,6 +49,8 @@ public:
 
     // --- Track reading ---
     QList<Track> allTracks() const;
+    QStringList  allTrackPaths() const;
+    Track        trackByPath(const QString &path) const;
     QList<Track> tracksByAlbum(const QString &album,
                                TrackSort sort = TrackSort::TrackNumber,
                                bool ascending = true) const;

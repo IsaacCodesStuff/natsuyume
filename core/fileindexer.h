@@ -25,6 +25,7 @@ public:
 signals:
     void scanStarted(int totalFiles);
     void trackFound(const Track &track);
+    void tracksFound(const QList<Track> &tracks);
     void scanProgress(int scanned, int total, const QString &currentFile);
     void scanFinished();
     void scanCancelled();
@@ -41,7 +42,6 @@ private:
     static const QStringList s_supportedExtensions;
 
     void doScan(const QString &folderPath);
-    QStringList collectFiles(const QString &folderPath) const;
 };
 
 #endif // FILEINDEXER_H

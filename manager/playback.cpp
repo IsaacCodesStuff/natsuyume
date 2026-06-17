@@ -21,9 +21,9 @@ Playback::Playback(QObject *parent)
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this,
             [this](QMediaPlayer::MediaStatus status) {
-                if (status == QMediaPlayer::LoadedMedia)
-                    m_player->play();
+                if (status == QMediaPlayer::LoadedMedia) {
                     emit readyToPlay();
+                }
                 if (status == QMediaPlayer::EndOfMedia)
                     emit trackEnded();
             });

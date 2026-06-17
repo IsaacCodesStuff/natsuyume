@@ -5,6 +5,7 @@
 #include "core/coverimageprovider.h"
 #include "core/albumcoverprovider.h"
 #include "core/trackcoverprovider.h"
+#include <QPixmapCache>
 
 int main(int argc, char *argv[])
 {
@@ -29,6 +30,7 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
 
+    QPixmapCache::setCacheLimit(10 * 1024); // 10 MB instead of Qt's default 100 MB
     engine.loadFromModule("natsuyume_player", "Main");
 
     const auto rootObjects = engine.rootObjects();

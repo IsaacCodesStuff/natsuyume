@@ -5,8 +5,7 @@ import QtQuick.Dialogs
 Item {
     id: settingsView
 
-    required property var theme
-
+    property var theme: null
     readonly property color primaryText: theme.primaryText
     readonly property color mutedText:   theme.mutedText
     readonly property color accentColor: theme.accentColor

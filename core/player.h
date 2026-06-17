@@ -268,6 +268,7 @@ private:
     Queue *activeQueue() const;
     QString generateQueueName() const;
     void connectQueueSignals(Queue *queue);
+    void connectPlaybackSignals(Queue *queue);
 
     CoverImageProvider *m_coverImageProvider = nullptr;
     void pushCoverArt();

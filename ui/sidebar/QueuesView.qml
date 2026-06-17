@@ -4,7 +4,7 @@ import "queues"
 Item {
     id: queuesView
 
-    required property var theme
+    property var theme: null
 
     // ── Top bar ────────────────────────────────────────────────
     QueueTopBar {

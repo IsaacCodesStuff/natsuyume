@@ -6,8 +6,7 @@ import "../"
 Item {
     id: playlistsView
 
-    required property var theme
-
+    property var theme: null
     property int    selectedPlaylistId:   -1
     property string selectedPlaylistName: ""
     property var    playlistTracks:       []

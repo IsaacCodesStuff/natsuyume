@@ -34,6 +34,18 @@ static QString xiphField(TagLib::Ogg::XiphComment *xiph, const char *key)
     return QString::fromStdString(it->second.front().to8Bit(true));
 }
 
+static QImage loadAndCapImage(const uchar *data, int size, int maxDimension = 1000)
+{
+    QImage img;
+    img.loadFromData(data, size);
+    if (img.isNull()) return img;
+    if (img.width() > maxDimension || img.height() > maxDimension)
+        img = img.scaled(maxDimension, maxDimension,
+                         Qt::KeepAspectRatio,
+                         Qt::SmoothTransformation);
+    return img;
+}
+
 static int xiphInt(TagLib::Ogg::XiphComment *xiph, const char *key)
 {
     QString val = xiphField(xiph, key);
@@ -42,7 +54,7 @@ static int xiphInt(TagLib::Ogg::XiphComment *xiph, const char *key)
     return val.section('/', 0, 0).toInt();
 }
 
-Track Metadata::read(const QString &path)
+Track Metadata::read(const QString &path, bool includeCoverArt)
 {
     Track track(path);
 
@@ -102,16 +114,16 @@ Track Metadata::read(const QString &path)
             }
 
             // Cover art
-            auto apicFrames = id3->frameListMap()["APIC"];
-            if (!apicFrames.isEmpty()) {
-                auto *frame = dynamic_cast<TagLib::ID3v2::AttachedPictureFrame *>(
-                    apicFrames.front());
-                if (frame) {
-                    QImage img;
-                    img.loadFromData(
-                        reinterpret_cast<const uchar *>(frame->picture().data()),
-                        frame->picture().size());
-                    track.coverArt = img;
+            if (includeCoverArt) {
+                auto apicFrames = id3->frameListMap()["APIC"];
+                if (!apicFrames.isEmpty()) {
+                    auto *frame = dynamic_cast<TagLib::ID3v2::AttachedPictureFrame *>(
+                        apicFrames.front());
+                    if (frame) {
+                        track.coverArt = loadAndCapImage(
+                            reinterpret_cast<const uchar *>(frame->picture().data()),
+                            frame->picture().size());
+                    }
                 }
             }
 
@@ -136,13 +148,13 @@ Track Metadata::read(const QString &path)
         }
 
         // Cover art
-        const auto &pics = flac->pictureList();
-        if (!pics.isEmpty()) {
-            QImage img;
-            img.loadFromData(
-                reinterpret_cast<const uchar *>(pics.front()->data().data()),
-                pics.front()->data().size());
-            track.coverArt = img;
+        if (includeCoverArt) {
+            const auto &pics = flac->pictureList();
+            if (!pics.isEmpty()) {
+                track.coverArt = loadAndCapImage(
+                    reinterpret_cast<const uchar *>(pics.front()->data().data()),
+                    pics.front()->data().size());
+            }
         }
     }
     else if (auto *ogg = dynamic_cast<TagLib::Ogg::Vorbis::File *>(ref.file())) {
@@ -156,13 +168,13 @@ Track Metadata::read(const QString &path)
             if (track.lyrics.isEmpty())
             track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
 
-            const auto &pics = xiph->pictureList();
-            if (!pics.isEmpty()) {
-                QImage img;
-                img.loadFromData(
-                    reinterpret_cast<const uchar *>(pics.front()->data().data()),
-                    pics.front()->data().size());
-                track.coverArt = img;
+            if (includeCoverArt) {
+                const auto &pics = xiph->pictureList();
+                if (!pics.isEmpty()) {
+                    track.coverArt = loadAndCapImage(
+                        reinterpret_cast<const uchar *>(pics.front()->data().data()),
+                        pics.front()->data().size());
+                }
             }
         }
     }
@@ -177,13 +189,13 @@ Track Metadata::read(const QString &path)
             if (track.lyrics.isEmpty())
             track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
 
-            const auto &pics = xiph->pictureList();
-            if (!pics.isEmpty()) {
-                QImage img;
-                img.loadFromData(
-                    reinterpret_cast<const uchar *>(pics.front()->data().data()),
-                    pics.front()->data().size());
-                track.coverArt = img;
+            if (includeCoverArt) {
+                const auto &pics = xiph->pictureList();
+                if (!pics.isEmpty()) {
+                    track.coverArt = loadAndCapImage(
+                        reinterpret_cast<const uchar *>(pics.front()->data().data()),
+                        pics.front()->data().size());
+                }
             }
         }
     }
@@ -216,15 +228,15 @@ Track Metadata::read(const QString &path)
             }
 
             // Cover art
-            auto covIt = items.find("covr");
-            if (covIt != items.end()) {
-                auto coverList = covIt->second.toCoverArtList();
-                if (!coverList.isEmpty()) {
-                    QImage img;
-                    img.loadFromData(
-                        reinterpret_cast<const uchar *>(coverList.front().data().data()),
-                        coverList.front().data().size());
-                    track.coverArt = img;
+            if (includeCoverArt) {
+                auto covIt = items.find("covr");
+                if (covIt != items.end()) {
+                    auto coverList = covIt->second.toCoverArtList();
+                    if (!coverList.isEmpty()) {
+                        track.coverArt = loadAndCapImage(
+                            reinterpret_cast<const uchar *>(coverList.front().data().data()),
+                            coverList.front().data().size());
+                    }
                 }
             }
 

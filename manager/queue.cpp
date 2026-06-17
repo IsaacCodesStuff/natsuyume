@@ -11,9 +11,23 @@ Queue::Queue(const QString &name, QObject *parent)
     m_wasPlaying(false),
     m_repeatMode(NoRepeat),
     m_shuffled(false)
+// no m_playback creation here
+{}
+
+void Queue::initPlayback()
 {
+    if (m_playback) return;
     m_playback = new Playback(this);
     connectPlaybackSignals();
+    setVolume(m_volume); // apply stored volume
+}
+
+void Queue::destroyPlayback()
+{
+    if (!m_playback) return;
+    m_playback->pause();
+    m_playback->deleteLater();
+    m_playback = nullptr;
 }
 
 Queue::~Queue() {}
@@ -101,7 +115,7 @@ int Queue::previousShuffleIndex() const
 
 void Queue::addTrack(const QString &filePath)
 {
-    Track track = Metadata::read(filePath);
+    Track track = Metadata::read(filePath, false);
     m_tracks.append(track);
 
     if (m_shuffled)
@@ -109,7 +123,8 @@ void Queue::addTrack(const QString &filePath)
 
     if (m_currentTrackIndex < 0) {
         m_currentTrackIndex = 0;
-        m_playback->loadTrack(m_tracks.at(0));
+        if (m_playback)
+            m_playback->loadTrack(m_tracks.at(0));
     }
 
     emit queueChanged();
@@ -127,7 +142,7 @@ void Queue::removeTrack(int index)
 
     if (m_tracks.isEmpty()) {
         m_currentTrackIndex = -1;
-        m_playback->pause();
+        if (m_playback) m_playback->pause();
     } else if (index == m_currentTrackIndex) {
         // Was playing this track — play the next one, or the previous if it was the last
         m_currentTrackIndex = qMin(index, m_tracks.size() - 1);
@@ -146,7 +161,7 @@ void Queue::removeTrack(int index)
 
 void Queue::clearTracks()
 {
-    m_playback->pause();
+    if (m_playback) m_playback->pause();
     m_tracks.clear();
     m_shuffleOrder.clear();
     m_currentTrackIndex = -1;
@@ -159,12 +174,12 @@ QList<Track> Queue::tracks() const { return m_tracks; }
 
 // --- Playback control ---
 
-void Queue::play()  { m_playback->play(); }
-void Queue::pause() { m_playback->pause(); }
+void Queue::play()  { if (m_playback) m_playback->play(); }
+void Queue::pause() { if (m_playback) m_playback->pause(); }
 
 void Queue::seekTo(qint64 positionMs)
 {
-    m_playback->seekTo(positionMs);
+    if (m_playback) m_playback->seekTo(positionMs);
 }
 
 void Queue::loadTrackAt(int index)
@@ -172,7 +187,8 @@ void Queue::loadTrackAt(int index)
     if (index < 0 || index >= m_tracks.size())
         return;
     m_currentTrackIndex = index;
-    m_playback->loadTrack(m_tracks.at(index));
+    if (m_playback)
+        m_playback->loadTrack(m_tracks.at(index));
     emit trackChanged();
 }
 
@@ -199,7 +215,7 @@ void Queue::playNext()
 void Queue::playPrevious()
 {
     // 3 second rule — restart current track if more than 3s in
-    if (m_playback->position() > 3000) {
+    if (m_playback && m_playback->position() > 3000) {
         m_playback->seekTo(0);
         return;
     }
@@ -225,6 +241,7 @@ void Queue::playPrevious()
 
 void Queue::saveState()
 {
+    if (!m_playback) return;
     m_savedPosition = m_playback->position();
     m_wasPlaying = m_playback->isPlaying();
     m_playback->pause();
@@ -232,6 +249,7 @@ void Queue::saveState()
 
 void Queue::restoreState()
 {
+    if (!m_playback) return;
     if (m_currentTrackIndex < 0 || m_currentTrackIndex >= m_tracks.size())
         return;
 
@@ -270,9 +288,9 @@ bool Queue::hasPrevious() const
     return m_currentTrackIndex > 0;
 }
 
-bool Queue::isPlaying() const { return m_playback->isPlaying(); }
-qint64 Queue::position() const { return m_playback->position(); }
-qint64 Queue::duration() const { return m_playback->duration(); }
+bool Queue::isPlaying() const { return m_playback ? m_playback->isPlaying() : false; }
+qint64 Queue::position() const { return m_playback ? m_playback->position() : 0; }
+qint64 Queue::duration() const { return m_playback ? m_playback->duration() : 0; }
 
 // --- Repeat ---
 
@@ -306,7 +324,8 @@ void Queue::toggleShuffle()
 
 void Queue::setVolume(float volume)
 {
-    m_playback->setVolume(volume);
+    m_volume = volume;
+    if (m_playback) m_playback->setVolume(volume);
 }
 
 Playback *Queue::playback() const { return m_playback; }

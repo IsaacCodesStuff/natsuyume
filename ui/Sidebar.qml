@@ -38,34 +38,38 @@ Item {
             color: Qt.rgba(1, 1, 1, 0.05)
         }
 
-        StackLayout {
-            id: contentStack
+        Item {
             anchors.fill: parent
-            currentIndex: sidebar.currentTab
 
-            // ── Queues ─────────────────────────────────────────
-            QueuesView {
-                theme: sidebar.theme
+            Loader {
+                active: sidebar.currentTab === 0
+                anchors.fill: parent
+                source: "sidebar/QueuesView.qml"
+                onLoaded: item.theme = Qt.binding(function() { return sidebar.theme })
             }
-
-            // ── Albums ─────────────────────────────────────────
-            AlbumsView {
-                theme: sidebar.theme
+            Loader {
+                active: sidebar.currentTab === 1
+                anchors.fill: parent
+                source: "sidebar/AlbumsView.qml"
+                onLoaded: item.theme = Qt.binding(function() { return sidebar.theme })
             }
-
-            // ── Artists ────────────────────────────────────────
-            ArtistsView {
-                theme: sidebar.theme
+            Loader {
+                active: sidebar.currentTab === 2
+                anchors.fill: parent
+                source: "sidebar/ArtistsView.qml"
+                onLoaded: item.theme = Qt.binding(function() { return sidebar.theme })
             }
-
-            // ── Playlists ──────────────────────────────────────
-            PlaylistsView {
-                theme: sidebar.theme
+            Loader {
+                active: sidebar.currentTab === 3
+                anchors.fill: parent
+                source: "sidebar/PlaylistsView.qml"
+                onLoaded: item.theme = Qt.binding(function() { return sidebar.theme })
             }
-
-            // ── Settings ───────────────────────────────────────
-            SettingsView {
-                theme: sidebar.theme
+            Loader {
+                active: sidebar.currentTab === 4
+                anchors.fill: parent
+                source: "sidebar/SettingsView.qml"
+                onLoaded: item.theme = Qt.binding(function() { return sidebar.theme })
             }
         }
     }

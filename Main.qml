@@ -69,148 +69,167 @@ Window {
     // ── Cover art handler ──────────────────────────────────────
     Connections {
         target: player
-
         function onCoverArtChanged() {
-            if (player.hasCoverArt) {
-                coverArtSource = "image://covers/current?t=" + Date.now()
-            } else {
-                coverArtSource = ""
-            }
+            coverArtSource = "image://covers/current?t=" + Date.now()
         }
     }
 
     property string coverArtSource: ""
 
     // ── Desktop layout ─────────────────────────────────────────
-    Item {
+    Loader {
         id: desktopLayout
         anchors.fill: parent
-        visible: isDesktop
+        active: isDesktop
+        sourceComponent: desktopComponent
+    }
 
-        Row {
-            id: desktopPanels
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: desktopNavBar.top
-            spacing: 0
+    Component {
+        id: desktopComponent
+        Item {
+            readonly property var playerRef: player  // capture outer id
 
-            Sidebar {
-                width: Math.round(parent.width * 0.26)
-                height: parent.height
-                theme: root
-                currentTab: root.currentTab
+            Row {
+                id: desktopPanels
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: desktopNavBar.top
+                spacing: 0
+
+                Sidebar {
+                    width: Math.round(parent.width * 0.26)
+                    height: parent.height
+                    theme: root
+                    currentTab: root.currentTab
+                }
+
+                NowPlaying {
+                    width: parent.width
+                           - Math.round(desktopPanels.width * 0.26)
+                           - Math.round(desktopPanels.width * 0.22)
+                    height: parent.height
+                    theme: root
+                    player: playerRef
+                    showLyricsOverlay: false
+                }
+
+                Lyrics {
+                    width: Math.round(parent.width * 0.22)
+                    height: parent.height
+                    theme: root
+                    player: playerRef
+                    overlayMode: false
+                }
             }
 
-            NowPlaying {
-                width: parent.width
-                       - Math.round(desktopPanels.width * 0.26)
-                       - Math.round(desktopPanels.width * 0.22)
-                height: parent.height
+            NavBar {
+                id: desktopNavBar
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
                 theme: root
-                player: player
-                showLyricsOverlay: false
+                isMobile: false
+                activeIndex: root.currentTab
+                onTabSelected: function(index) { root.currentTab = index }
             }
-
-            Lyrics {
-                width: Math.round(parent.width * 0.22)
-                height: parent.height
-                theme: root
-                player: player
-                overlayMode: false
-            }
-        }
-
-        NavBar {
-            id: desktopNavBar
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            theme: root
-            isMobile: false
-            activeIndex: root.currentTab
-            onTabSelected: function(index) { root.currentTab = index }
         }
     }
 
     // ── Tablet layout ──────────────────────────────────────────
-    Item {
+    Loader {
         id: tabletLayout
         anchors.fill: parent
-        visible: isTablet
+        active: isTablet
+        sourceComponent: tabletComponent
+    }
 
-        Row {
-            id: tabletPanels
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: tabletNavBar.top
-            spacing: 0
+    Component {
+        id: tabletComponent
+        Item {
+            readonly property var playerRef: player  // capture outer id
 
-            Sidebar {
-                width: Math.round(parent.width * 0.38)
-                height: parent.height
-                theme: root
-                currentTab: root.currentTab
+            Row {
+                id: tabletPanels
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: tabletNavBar.top
+                spacing: 0
+
+                Sidebar {
+                    width: Math.round(parent.width * 0.38)
+                    height: parent.height
+                    theme: root
+                    currentTab: root.currentTab
+                }
+
+                NowPlaying {
+                    width: parent.width - Math.round(tabletPanels.width * 0.38)
+                    height: parent.height
+                    theme: root
+                    player: playerRef
+                }
             }
 
-            NowPlaying {
-                width: parent.width - Math.round(tabletPanels.width * 0.38)
-                height: parent.height
+            NavBar {
+                id: tabletNavBar
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
                 theme: root
-                player: player
+                isMobile: false
+                activeIndex: root.currentTab
+                onTabSelected: function(index) { root.currentTab = index }
             }
-        }
-
-        NavBar {
-            id: tabletNavBar
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            theme: root
-            isMobile: false
-            activeIndex: root.currentTab
-            onTabSelected: function(index) { root.currentTab = index }
         }
     }
 
     // ── Mobile layout ──────────────────────────────────────────
-    Item {
+    Loader {
         id: mobileLayout
         anchors.fill: parent
-        visible: isMobile
+        active: isMobile
+        sourceComponent: mobileComponent
+    }
 
-        StackLayout {
-            id: mobileStack
-            anchors.top: parent.top
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: mobileNavBar.top
-            currentIndex: root.mobilePanelIndex
+    Component {
+        id: mobileComponent
+        Item {
+            readonly property var playerRef: player  // capture outer id
 
-            NowPlaying {
-                theme: root
-                player: player
+            StackLayout {
+                id: mobileStack
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: mobileNavBar.top
+                currentIndex: root.mobilePanelIndex
+
+                NowPlaying {
+                    theme: root
+                    player: playerRef
+                }
+
+                Sidebar {
+                    theme: root
+                    currentTab: root.currentTab
+                }
             }
 
-            Sidebar {
+            NavBar {
+                id: mobileNavBar
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
                 theme: root
-                currentTab: root.currentTab
-            }
-        }
-
-        NavBar {
-            id: mobileNavBar
-            anchors.bottom: parent.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            theme: root
-            isMobile: true
-            activeIndex: root.mobileTabIndex
-            onTabSelected: function(index) {
-                root.mobileTabIndex = index
-                root.mobilePanelIndex = index === 0 ? 0 : 1
-                if (index > 0) root.currentTab = index - 1
+                isMobile: true
+                activeIndex: root.mobileTabIndex
+                onTabSelected: function(index) {
+                    root.mobileTabIndex = index
+                    root.mobilePanelIndex = index === 0 ? 0 : 1
+                    if (index > 0) root.currentTab = index - 1
+                }
             }
         }
     }

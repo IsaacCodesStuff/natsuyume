@@ -65,10 +65,6 @@ public:
     void toggleShuffle();
 
     // --- Audio ---
-    void setVolume(float volume);
-
-    Playback *playback() const;
-
     void moveTrack(int from, int to);
 
     void updateTrackStats(const QString &path, qint64 lastPlayed, int playCount);
@@ -77,6 +73,12 @@ public:
     // --- Stop after this song ---
     bool stopAfterCurrent() const;
     void setStopAfterCurrent(bool stop);
+
+    void setVolume(float volume);
+    Playback *playback() const;
+    bool hasPlayback() const;
+    void initPlayback();
+    void destroyPlayback();
 
 signals:
     void trackChanged();
@@ -90,27 +92,21 @@ private:
     QString m_name;
     QList<Track> m_tracks;
     int m_currentTrackIndex;
-
-    Playback *m_playback;
-
+    Playback *m_playback = nullptr;
+    float m_volume = 0.8f;
     // Saved state
     qint64 m_savedPosition;
     bool m_wasPlaying;
-
     // Repeat
     RepeatMode m_repeatMode;
-
     // Shuffle
     bool m_shuffled;
     QList<int> m_shuffleOrder;
-
     // Internal helpers
     void generateShuffleOrder();
     int nextShuffleIndex() const;
     int previousShuffleIndex() const;
-
     void connectPlaybackSignals();
-
     bool m_stopAfterCurrent = false;
 };
 

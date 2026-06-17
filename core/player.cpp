@@ -22,7 +22,7 @@ Player::Player(QObject *parent)
         loadSettings();
         loadQueues();
         // Rescan on launch to pick up new files and remove missing ones
-        QTimer::singleShot(500, this, [this]() {
+        QTimer::singleShot(2000, this, [this]() {
             rescanAllFolders();
         });
     } else {
@@ -73,8 +73,10 @@ Player::Player(QObject *parent)
         emit libraryChanged();
     });
 
-    connect(m_indexer, &FileIndexer::trackFound, this, [this](const Track &track) {
-        m_library->addTrack(track);
+    connect(m_indexer, &FileIndexer::tracksFound, this, [this](const QList<Track> &tracks) {
+        for (const Track &track : tracks)
+            m_library->addTrack(track);
+        emit libraryChanged();
     }, Qt::QueuedConnection);
 
     connect(m_library, &Library::playlistsChanged,
@@ -121,26 +123,18 @@ void Player::connectQueueSignals(Queue *queue)
 {
     connect(queue, &Queue::trackChanged, this, [this]() {
         emit trackChanged();
-        rebuildLyricLines();       // ← add
+        rebuildLyricLines();
         emit metadataChanged();
         emit isFavoriteChanged();
         pushCoverArt();
 
-        // Reset play count credit for new track
-        m_playCountCredited  = false;
-        m_creditThresholdMs  = 0;
+        m_playCountCredited = false;
+        m_creditThresholdMs = 0;
         if (activeQueue()) {
             qint64 dur = activeQueue()->trackAt(
-                activeQueue()->currentTrackIndex()).duration;
-            m_creditThresholdMs = qint64(dur * 0.10);  // 10% threshold
+                                          activeQueue()->currentTrackIndex()).duration;
+            m_creditThresholdMs = qint64(dur * 0.10);
         }
-    });
-
-    connect(queue->playback(), &Playback::readyToPlay, this, [this]() {
-        rebuildLyricLines();       // ← add
-        emit metadataChanged();
-        emit isFavoriteChanged();
-        pushCoverArt();
     });
 
     connect(queue, &Queue::queueChanged, this, [this]() {
@@ -153,34 +147,6 @@ void Player::connectQueueSignals(Queue *queue)
 
     connect(queue, &Queue::shuffleChanged, this, [this]() {
         emit shuffleChanged();
-    });
-
-    connect(queue->playback(), &Playback::playbackStateChanged, this, [this]() {
-        emit isPlayingChanged();
-    });
-
-    connect(queue->playback(), &Playback::durationChanged, this, [this]() {
-        emit durationChanged();
-    });
-
-    connect(queue->playback(), &Playback::positionChanged, this, [this]() {
-        emit positionChanged();
-
-        // ── Play count tracking ────────────────────────────────
-        if (!m_playCountCredited && m_creditThresholdMs > 0) {
-            if (activeQueue() && activeQueue()->position() >= m_creditThresholdMs) {
-                m_playCountCredited = true;
-                QString path = activeQueue()->trackAt(
-                                                activeQueue()->currentTrackIndex()).path;
-                qint64 now = QDateTime::currentSecsSinceEpoch();
-                m_library->incrementPlayCount(path);
-                for (Queue *q : m_queues)
-                    q->updateTrackStats(path, now,
-                                        activeQueue()->trackAt(
-                                                         activeQueue()->currentTrackIndex()).playCount + 1);
-                emit metadataChanged();
-            }
-        }
     });
 
     connect(queue, &Queue::stopAfterCurrentChanged, this, [this]() {
@@ -236,8 +202,8 @@ QString Player::trackAlbum() const
 bool Player::hasCoverArt() const
 {
     Queue *q = activeQueue();
-    return q && q->currentTrackIndex() >= 0
-               ? q->trackAt(q->currentTrackIndex()).hasCoverArt() : false;
+    if (!q || q->currentTrackIndex() < 0) return false;
+    return !q->trackAt(q->currentTrackIndex()).path.isEmpty();
 }
 
 QString Player::rawLyrics() const
@@ -467,7 +433,12 @@ void Player::openFilesInNewQueue(const QStringList &filePaths,
     QString queueName = name.isEmpty() ? generateQueueName() : name;
     Queue *newQueue = new Queue(queueName, this);
     newQueue->setVolume(m_volume);
+    // Destroy playback on previously active queue
+    if (Queue *current = activeQueue())
+        current->destroyPlayback();
+    newQueue->initPlayback();
     connectQueueSignals(newQueue);
+    connectPlaybackSignals(newQueue);
 
     for (const QString &path : filePaths)
         newQueue->addTrack(path);
@@ -498,21 +469,23 @@ void Player::addTrackToActiveQueue(const QString &filePath)
 
 void Player::switchToQueue(int index)
 {
-    if (index < 0 || index >= m_queues.size()) return;
-    if (index == m_activeQueueIndex) return;
-
-    if (Queue *current = activeQueue())
+    if (Queue *current = activeQueue()) {
         current->saveState();
+        current->destroyPlayback();
+    }
 
     m_activeQueueIndex = index;
+
+    // Activate new queue
+    m_queues.at(index)->initPlayback();
+    connectPlaybackSignals(m_queues.at(index));
+    m_queues.at(index)->restoreState();
 
     // Clear cover immediately before new queue restores
     if (m_coverImageProvider) {
         m_coverImageProvider->updateCover(QImage());
         emit coverArtChanged();
     }
-
-    m_queues.at(index)->restoreState();
 
     emit queuesChanged();
     emit isPlayingChanged();
@@ -559,8 +532,11 @@ void Player::closeQueue(int index)
     }
 
     // We deleted the active queue — restore the new active one
-    if (Queue *q = activeQueue())
+    if (Queue *q = activeQueue()) {
+        q->initPlayback();
+        connectPlaybackSignals(q);
         q->restoreState();
+    }
 
     emit queuesChanged();
     emit isPlayingChanged();
@@ -644,13 +620,10 @@ void Player::pushCoverArt()
         return;
     }
 
-    Track t = q->trackAt(q->currentTrackIndex());
-
-    // Only push if we actually have cover art
-    if (!t.coverArt.isNull()) {
-        m_coverImageProvider->updateCover(t.coverArt);
-        emit coverArtChanged();
-    }
+    const QString path = q->trackAt(q->currentTrackIndex()).path;
+    Track t = Metadata::read(path, true);
+    m_coverImageProvider->updateCover(t.coverArt);
+    emit coverArtChanged();
 }
 
 void Player::registerAlbumCovers(AlbumCoverProvider *provider)
@@ -814,26 +787,24 @@ QVariantMap Player::trackInfoByPath(const QString &path) const
         }
     }
 
-    // Fall back to library
-    QList<Track> tracks = m_library->allTracks();
-    for (const Track &t : std::as_const(tracks)) {
-        if (t.path == path) {
-            map["path"]        = t.path;
-            map["title"]       = t.title;
-            map["artist"]      = t.artist;
-            map["album"]       = t.album;
-            map["albumArtist"] = t.albumArtist;
-            map["composer"]    = t.composer;
-            map["genre"]       = t.genre;
-            map["trackNumber"] = t.trackNumber;
-            map["discNumber"]  = t.discNumber;
-            map["year"]        = t.year;
-            map["duration"]    = t.duration;
-            map["playCount"]   = t.playCount;
-            map["dateAdded"]   = t.dateAdded;
-            map["dateLastPlayed"] = t.dateLastPlayed;
-            return map;
-        }
+    // Fall back to library — query by path directly, no full load
+    Track t = m_library->trackByPath(path);
+    if (t.isValid()) {
+        map["path"]           = t.path;
+        map["title"]          = t.title;
+        map["artist"]         = t.artist;
+        map["album"]          = t.album;
+        map["albumArtist"]    = t.albumArtist;
+        map["composer"]       = t.composer;
+        map["genre"]          = t.genre;
+        map["trackNumber"]    = t.trackNumber;
+        map["discNumber"]     = t.discNumber;
+        map["year"]           = t.year;
+        map["duration"]       = t.duration;
+        map["playCount"]      = t.playCount;
+        map["dateAdded"]      = t.dateAdded;
+        map["dateLastPlayed"] = t.dateLastPlayed;
+        return map;
     }
 
     return map;
@@ -847,7 +818,7 @@ void Player::rebuildLyricLines()
     Track current = activeQueue()->trackAt(activeQueue()->currentTrackIndex());
     if (current.path.isEmpty()) return;
 
-    Track fresh = Metadata::read(current.path);
+    Track fresh = Metadata::read(current.path, false);
 
     m_rawLyrics = fresh.lyrics;
 
@@ -930,7 +901,7 @@ void Player::openPlaylistInNewQueue(int playlistId, const QString &name)
 {
     QList<Track> tracks = m_library->tracksForPlaylist(playlistId);
     QStringList paths;
-    for (const Track &t : tracks)
+    for (const Track &t : std::as_const(tracks))
         paths << t.path;
     if (!paths.isEmpty())
         openFilesInNewQueue(paths, name);
@@ -989,7 +960,9 @@ void Player::saveQueues()
 
 void Player::loadQueues()
 {
+    qDebug() << "loadQueues: start";
     QList<QueueSnapshot> snapshots = m_library->loadQueues();
+    qDebug() << "loadQueues: snapshots loaded, count=" << snapshots.size();
     if (snapshots.isEmpty()) return;
 
     int activeIndex = 0;
@@ -1002,7 +975,11 @@ void Player::loadQueues()
         connectQueueSignals(queue);
 
         for (const QString &path : snap.paths) {
-            Track t = Metadata::read(path);
+            Track t = m_library->trackByPath(path);
+            if (!t.isValid()) {
+                // File not in library yet — minimal track with just path
+                t = Track(path);
+            }
             queue->addTrackSilent(t);
         }
 
@@ -1021,7 +998,6 @@ void Player::loadQueues()
     if (m_queues.isEmpty()) return;
 
     m_activeQueueIndex = activeIndex;
-    m_queues[activeIndex]->restoreState();
 
     emit queuesChanged();
     emit trackChanged();
@@ -1030,6 +1006,15 @@ void Player::loadQueues()
     emit positionChanged();
     emit durationChanged();
     emit isFavoriteChanged();
+
+    // Defer FFmpeg initialization so UI renders first
+    QTimer::singleShot(100, this, [this, activeIndex]() {
+        if (activeIndex >= m_queues.size()) return;
+        m_queues[activeIndex]->initPlayback();
+        qDebug() << "deferred init: wasPlaying=" << m_queues[activeIndex]->m_wasPlaying;
+        connectPlaybackSignals(m_queues[activeIndex]);
+        m_queues[activeIndex]->restoreState();
+    });
 }
 
 void Player::loadSettings()
@@ -1041,7 +1026,7 @@ void Player::loadSettings()
 
     // Volume
     m_volume = s.value("playback/volume", 0.8f).toFloat();
-    for (Queue *q : m_queues)
+    for (Queue *q : std::as_const(m_queues))
         q->setVolume(m_volume);
 
     // Play count threshold
@@ -1118,9 +1103,9 @@ void Player::rescanAllFolders()
 {
     if (m_scanFolders.isEmpty()) return;
 
-    // First remove any tracks whose files no longer exist
-    for (const Track &t : m_library->allTracks())
-        m_library->removeTrackIfMissing(t.path);
+    const QStringList paths = m_library->allTrackPaths();
+    for (const QString &path : paths)
+        m_library->removeTrackIfMissing(path);
 
     // Then rescan all folders
     for (const QString &folder : std::as_const(m_scanFolders))
@@ -1145,4 +1130,44 @@ QString Player::trackPath() const
     Queue *q = activeQueue();
     return q && q->currentTrackIndex() >= 0
                ? q->trackAt(q->currentTrackIndex()).path : "";
+}
+
+void Player::connectPlaybackSignals(Queue *queue)
+{
+    Playback *pb = queue->playback();
+    if (!pb) return;
+
+    connect(pb, &Playback::readyToPlay, this, [this]() {
+        rebuildLyricLines();
+        emit metadataChanged();
+        emit isFavoriteChanged();
+        pushCoverArt();
+    });
+
+    connect(pb, &Playback::playbackStateChanged, this, [this]() {
+        emit isPlayingChanged();
+    });
+
+    connect(pb, &Playback::durationChanged, this, [this]() {
+        emit durationChanged();
+    });
+
+    connect(pb, &Playback::positionChanged, this, [this]() {
+        emit positionChanged();
+
+        if (!m_playCountCredited && m_creditThresholdMs > 0) {
+            if (activeQueue() && activeQueue()->position() >= m_creditThresholdMs) {
+                m_playCountCredited = true;
+                QString path = activeQueue()->trackAt(
+                                                activeQueue()->currentTrackIndex()).path;
+                qint64 now = QDateTime::currentSecsSinceEpoch();
+                m_library->incrementPlayCount(path);
+                for (Queue *q : std::as_const(m_queues))
+                    q->updateTrackStats(path, now,
+                                        activeQueue()->trackAt(
+                                                         activeQueue()->currentTrackIndex()).playCount + 1);
+                emit metadataChanged();
+            }
+        }
+    });
 }

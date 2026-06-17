@@ -253,6 +253,32 @@ QList<Track> Library::allTracks() const
     return result;
 }
 
+QStringList Library::allTrackPaths() const
+{
+    QStringList result;
+    QSqlQuery q(m_db);
+    q.exec("SELECT path FROM tracks");
+    while (q.next())
+        result.append(q.value(0).toString());
+    return result;
+}
+
+Track Library::trackByPath(const QString &path) const
+{
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        SELECT path, title, artist, album, album_artist,
+               composer, genre, track_number, disc_number,
+               year, duration, date_added, date_last_played, play_count
+        FROM tracks WHERE path = :path
+    )");
+    q.bindValue(":path", path);
+    q.exec();
+    if (q.next())
+        return trackFromQuery(q);
+    return Track();
+}
+
 QList<Track> Library::tracksByAlbum(const QString &album,
                                     TrackSort sort,
                                     bool ascending) const

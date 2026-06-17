@@ -5,8 +5,7 @@ import "albums"
 Item {
     id: albumsView
 
-    required property var theme
-
+    property var theme: null
     property string selectedAlbum: ""
     property var    albumTracks:   []
     property string searchQuery:   ""

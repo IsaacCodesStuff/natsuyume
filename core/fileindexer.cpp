@@ -66,49 +66,59 @@ void FileIndexer::cancel()
     m_scanning = false;
 }
 
-QStringList FileIndexer::collectFiles(const QString &folderPath) const
-{
-    QDir dir(folderPath);
-    QStringList files;
-    QDirIterator it(
-        folderPath,
-        QDir::Files | QDir::NoDotAndDotDot,
-        QDirIterator::Subdirectories
-        );
-    int count = 0;
-    while (it.hasNext()) {
-        QString path = it.next();
-        count++;
-        QString ext = QFileInfo(path).suffix().toLower();
-        if (s_supportedExtensions.contains(ext))
-            files.append(path);
-    }
-    return files;
-}
-
 void FileIndexer::doScan(const QString &folderPath)
 {
-    QStringList files = collectFiles(folderPath);
-    int total = files.size();
+    // Count pass — lightweight, no metadata reads
+    int total = 0;
+    {
+        QDirIterator counter(folderPath, QDir::Files | QDir::NoDotAndDotDot,
+                             QDirIterator::Subdirectories);
+        while (counter.hasNext()) {
+            counter.next();
+            if (s_supportedExtensions.contains(
+                    QFileInfo(counter.filePath()).suffix().toLower()))
+                total++;
+        }
+    }
 
     emit scanStarted(total);
 
-    for (int i = 0; i < total; i++) {
+    QDirIterator it(folderPath, QDir::Files | QDir::NoDotAndDotDot,
+                    QDirIterator::Subdirectories);
+    int i = 0;
+    QList<Track> batch;
+    const int batchSize = 10;
+
+    while (it.hasNext()) {
         if (m_cancelled) {
+            if (!batch.isEmpty())
+                emit tracksFound(batch);
             emit scanCancelled();
             return;
         }
 
-        const QString &path = files.at(i);
+        QString path = it.next();
+        if (!s_supportedExtensions.contains(
+                QFileInfo(path).suffix().toLower()))
+            continue;
 
         if (!m_knownPaths.contains(path)) {
-            Track track = Metadata::read(path);
-            emit trackFound(track);
+            Track track = Metadata::read(path, false);
+            batch.append(track);
             m_knownPaths.insert(path);
+
+            if (batch.size() >= batchSize) {
+                emit tracksFound(batch);
+                batch.clear();
+            }
         }
 
-        emit scanProgress(i + 1, total, QFileInfo(path).fileName());
+        emit scanProgress(++i, total, QFileInfo(path).fileName());
     }
+
+    // Emit any remaining tracks
+    if (!batch.isEmpty())
+        emit tracksFound(batch);
 
     emit scanFinished();
 }

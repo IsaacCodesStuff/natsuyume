@@ -5,8 +5,7 @@ import "artists"
 Item {
     id: artistsView
 
-    required property var theme
-
+    property var theme: null
     property string selectedArtist: ""
     property var    artistTracks:   []
     property string searchQuery:    ""

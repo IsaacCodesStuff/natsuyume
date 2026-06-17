@@ -4,7 +4,8 @@
 #include <QFileInfo>
 
 AlbumCoverProvider::AlbumCoverProvider()
-    : QQuickImageProvider(QQuickImageProvider::Image)
+    : QQuickImageProvider(QQuickImageProvider::Image),
+    m_cache(5 * 1024) // 5 MB is plenty for scaled thumbnails
 {}
 
 void AlbumCoverProvider::registerAlbum(const QString &albumId, const QString &filePath)
@@ -22,22 +23,33 @@ bool AlbumCoverProvider::hasAlbum(const QString &albumId) const
 QImage AlbumCoverProvider::requestImage(const QString &id, QSize *size, const QSize &requestedSize)
 {
     QString albumName = id.section('?', 0, 0);
+    QSize outputSize = requestedSize.isValid() ? requestedSize : QSize(256, 256);
+
+    auto makeFallback = [&]() -> QImage {
+        QImage img(outputSize, QImage::Format_ARGB32);
+        img.fill(Qt::transparent);
+        return img;
+    };
+
+    // Build cache key including size so different sizes cache separately
+    QString cacheKey = albumName + QString("_%1x%2")
+                                       .arg(outputSize.width())
+                                       .arg(outputSize.height());
+
+    // Check cache first
+    {
+        QMutexLocker locker(&m_mutex);
+        if (QImage *cached = m_cache.object(cacheKey)) {
+            if (size) *size = cached->size();
+            return *cached;
+        }
+    }
 
     QString filePath;
     {
         QMutexLocker locker(&m_mutex);
         filePath = m_albumPaths.value(albumName);
     }
-
-    // Determine output size
-    QSize outputSize = requestedSize.isValid() ? requestedSize : QSize(256, 256);
-
-    // Always create a valid fallback image
-    auto makeFallback = [&]() -> QImage {
-        QImage img(outputSize, QImage::Format_ARGB32);
-        img.fill(Qt::transparent);
-        return img;
-    };
 
     if (filePath.isEmpty() || !QFileInfo::exists(filePath))
         return makeFallback();
@@ -46,7 +58,7 @@ QImage AlbumCoverProvider::requestImage(const QString &id, QSize *size, const QS
     {
         QMutexLocker readLocker(&m_readMutex);
         try {
-            track = Metadata::read(filePath);
+            track = Metadata::read(filePath, true);
         } catch (...) {
             qWarning() << "AlbumCoverProvider: crashed on" << filePath;
             return makeFallback();
@@ -56,14 +68,20 @@ QImage AlbumCoverProvider::requestImage(const QString &id, QSize *size, const QS
     if (track.coverArt.isNull())
         return makeFallback();
 
-    QImage result = track.coverArt.scaled(
+    // Scale first, then cache the small thumbnail
+    QImage scaled = track.coverArt.scaled(
         outputSize,
         Qt::KeepAspectRatio,
         Qt::SmoothTransformation
         );
 
-    if (size)
-        *size = result.size();
+    // Cost in KB — scaled thumbnail is tiny
+    int cost = scaled.sizeInBytes() / 1024;
+    {
+        QMutexLocker locker(&m_mutex);
+        m_cache.insert(cacheKey, new QImage(scaled), qMax(1, cost));
+    }
 
-    return result;
+    if (size) *size = scaled.size();
+    return scaled;
 }

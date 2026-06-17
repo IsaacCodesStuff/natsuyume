@@ -4,6 +4,7 @@
 #include <QQuickImageProvider>
 #include <QMap>
 #include <QMutex>
+#include <QCache>
 #include "metadata.h"
 
 class AlbumCoverProvider : public QQuickImageProvider
@@ -19,6 +20,7 @@ private:
     QMap<QString, QString> m_albumPaths;
     mutable QMutex m_mutex;
     mutable QMutex m_readMutex;
+    mutable QCache<QString, QImage> m_cache;
 };
 
 #endif // ALBUMCOVERPROVIDER_H
