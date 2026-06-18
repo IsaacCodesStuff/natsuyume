@@ -13,6 +13,7 @@ Window {
     visible: true
     title: "Natsuyume"
     onClosing: function(close) {
+        root.visible = false
         player.saveQueues()
         player.saveSettings()
         close.accepted = true

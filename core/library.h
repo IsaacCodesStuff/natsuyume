@@ -83,6 +83,7 @@ public:
 
     void removeTracksFromFolder(const QString &folderPath);
     void removeTrackIfMissing(const QString &path);
+    void addTracks(const QList<Track> &tracks);
 
 signals:
     void libraryChanged();

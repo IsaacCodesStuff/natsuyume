@@ -53,7 +53,7 @@ Player::Player(QObject *parent)
         m_scanProgress = m_scanTotal;
         emit scanningChanged();
         emit scanProgressChanged();
-        emit libraryChanged();
+        emit libraryChanged(); // ← single emission after all tracks inserted
         if (m_albumCoverProvider)
             registerAlbumCovers(m_albumCoverProvider);
     });
@@ -74,9 +74,7 @@ Player::Player(QObject *parent)
     });
 
     connect(m_indexer, &FileIndexer::tracksFound, this, [this](const QList<Track> &tracks) {
-        for (const Track &track : tracks)
-            m_library->addTrack(track);
-        emit libraryChanged();
+        m_library->addTracks(tracks);
     }, Qt::QueuedConnection);
 
     connect(m_library, &Library::playlistsChanged,
@@ -1103,13 +1101,24 @@ void Player::rescanAllFolders()
 {
     if (m_scanFolders.isEmpty()) return;
 
-    const QStringList paths = m_library->allTrackPaths();
-    for (const QString &path : paths)
-        m_library->removeTrackIfMissing(path);
+    QThread *cleanupThread = QThread::create([this]() {
+        const QStringList paths = m_library->allTrackPaths();
+        for (const QString &path : paths) {
+            if (!QFile::exists(path)) {
+                QMetaObject::invokeMethod(this, [this, path]() {
+                    m_library->removeTrack(path);
+                }, Qt::QueuedConnection);
+            }
+        }
+    });
 
-    // Then rescan all folders
-    for (const QString &folder : std::as_const(m_scanFolders))
-        scanFolder(folder);
+    connect(cleanupThread, &QThread::finished, this, [this, cleanupThread]() {
+        cleanupThread->deleteLater();
+        for (const QString &folder : std::as_const(m_scanFolders))
+            scanFolder(folder);
+    });
+
+    cleanupThread->start();
 }
 
 bool Player::stopAfterCurrent() const

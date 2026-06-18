@@ -710,3 +710,44 @@ void Library::removeTrackIfMissing(const QString &path)
     if (!QFile::exists(path))
         removeTrack(path);
 }
+
+void Library::addTracks(const QList<Track> &tracks)
+{
+    QSqlQuery q(m_db);
+    q.exec("BEGIN TRANSACTION");
+
+    for (const Track &track : tracks) {
+        q.prepare(R"(
+            INSERT OR REPLACE INTO tracks (
+                path, title, artist, album, album_artist,
+                composer, genre, track_number, disc_number,
+                year, duration, date_added, date_last_played, play_count
+            ) VALUES (
+                :path, :title, :artist, :album, :albumArtist,
+                :composer, :genre, :trackNumber, :discNumber,
+                :year, :duration, :dateAdded, :dateLastPlayed, :playCount
+            )
+        )");
+
+        q.bindValue(":path",          track.path);
+        q.bindValue(":title",         track.title);
+        q.bindValue(":artist",        track.artist);
+        q.bindValue(":album",         track.album);
+        q.bindValue(":albumArtist",   track.albumArtist);
+        q.bindValue(":composer",      track.composer);
+        q.bindValue(":genre",         track.genre);
+        q.bindValue(":trackNumber",   track.trackNumber);
+        q.bindValue(":discNumber",    track.discNumber);
+        q.bindValue(":year",          track.year);
+        q.bindValue(":duration",      track.duration);
+        q.bindValue(":dateAdded",     QDateTime::currentSecsSinceEpoch());
+        q.bindValue(":dateLastPlayed", track.dateLastPlayed);
+        q.bindValue(":playCount",     track.playCount);
+        q.exec();
+
+        QWriteLocker locker(&m_cacheLock);
+        m_pathCache.insert(track.path);
+    }
+
+    q.exec("COMMIT");
+}

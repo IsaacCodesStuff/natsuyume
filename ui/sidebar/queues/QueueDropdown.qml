@@ -93,7 +93,7 @@ Item {
                         spacing: 0
 
                         Item {
-                            width: parent.width - 64
+                            width: parent.width - (index === player.activeQueueIndex && !queueItem.isRenaming ? 96 : 64)
                             height: parent.height
 
                             Text {
