@@ -22,7 +22,7 @@ public:
     ~Queue();
 
     // --- Track management ---
-    void addTrack(const QString &filePath);
+    void addTrack(const QString &filePath, bool autoPlayFirst = false);
     void removeTrack(int index);
     void clearTracks();
 
@@ -34,8 +34,7 @@ public:
     void play();
     void pause();
     void seekTo(qint64 positionMs);
-    void loadTrackAt(int index);
-    void playNext();
+    void loadTrackAt(int index, bool autoPlay = true);    void playNext();
     void playPrevious();
 
     // --- State save / restore ---

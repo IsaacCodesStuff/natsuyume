@@ -4,12 +4,44 @@ import "../.."
 Item {
     id: queueTrackList
 
-    required property var  theme
+    required property var theme
 
     property int  dragFromIndex:    -1
     property int  dragToIndex:      -1
     property bool dragProxyVisible: false
     property real dragProxyY:       0
+
+    // ── Auto-scroll state ──────────────────────────────────────
+    property real  autoScrollSpeed: 0   // px per tick, signed (+ down, - up)
+    readonly property int  edgeZone:    50   // px from edge that triggers scroll
+    readonly property real maxScrollSpeed: 14 // px per tick at the very edge
+
+    Timer {
+        id: autoScrollTimer
+        interval: 16 // ~60fps
+        repeat: true
+        running: queueTrackList.autoScrollSpeed !== 0 && queueTrackList.dragFromIndex >= 0
+        onTriggered: {
+            let newY = trackList.contentY + queueTrackList.autoScrollSpeed
+            newY = Math.max(0, Math.min(newY, trackList.contentHeight - trackList.height))
+            trackList.contentY = newY
+        }
+    }
+
+    function updateAutoScroll(localY) {
+        // localY is position relative to trackList's top
+        if (localY < edgeZone) {
+            // Near top — scroll up, speed increases closer to edge
+            let depth = (edgeZone - localY) / edgeZone // 0..1
+            autoScrollSpeed = -maxScrollSpeed * depth
+        } else if (localY > trackList.height - edgeZone) {
+            // Near bottom — scroll down
+            let depth = (localY - (trackList.height - edgeZone)) / edgeZone
+            autoScrollSpeed = maxScrollSpeed * depth
+        } else {
+            autoScrollSpeed = 0
+        }
+    }
 
     function trackActions(idx, path, title) {
         return [
@@ -112,10 +144,14 @@ Item {
                     delegateRoot.root.dragProxyY = localY - 28
 
                     let listY = localY - 8
-                    let newIndex = Math.floor(listY / 60)
+                    let newIndex = Math.floor((listY + trackList.contentY) / 60)
                     newIndex = Math.max(0, Math.min(newIndex,
                         player.trackList.length - 1))
                     delegateRoot.root.dragToIndex = newIndex
+
+                    // Auto-scroll check relative to viewport, not content
+                    let viewportY = globalY - trackList.mapToItem(null, 0, 0).y
+                    delegateRoot.root.updateAutoScroll(viewportY)
                 }
 
                 onDragHandleReleased: {
@@ -129,6 +165,7 @@ Item {
                     delegateRoot.root.dragProxyVisible = false
                     delegateRoot.root.dragFromIndex    = -1
                     delegateRoot.root.dragToIndex      = -1
+                    delegateRoot.root.autoScrollSpeed  = 0
                 }
             }
         }

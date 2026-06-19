@@ -18,7 +18,7 @@ public:
     void play();
     void pause();
     void seekTo(qint64 positionMs);
-    void loadTrack(const Track &track);
+    void loadTrack(const Track &track, bool autoPlay = false);
 
     // --- Getters ---
     bool isPlaying() const;
@@ -40,6 +40,8 @@ signals:
 private:
     QMediaPlayer *m_player;
     QAudioOutput *m_audioOutput;
+    bool m_pendingAutoPlay = false;
+    bool m_sourceLoading = false;
 };
 
 #endif // PLAYBACK_H

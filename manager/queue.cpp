@@ -113,7 +113,7 @@ int Queue::previousShuffleIndex() const
 
 // --- Track management ---
 
-void Queue::addTrack(const QString &filePath)
+void Queue::addTrack(const QString &filePath, bool autoPlayFirst)
 {
     Track track = Metadata::read(filePath, false);
     m_tracks.append(track);
@@ -124,7 +124,7 @@ void Queue::addTrack(const QString &filePath)
     if (m_currentTrackIndex < 0) {
         m_currentTrackIndex = 0;
         if (m_playback)
-            m_playback->loadTrack(m_tracks.at(0));
+            m_playback->loadTrack(m_tracks.at(0), autoPlayFirst);
     }
 
     emit queueChanged();
@@ -182,13 +182,13 @@ void Queue::seekTo(qint64 positionMs)
     if (m_playback) m_playback->seekTo(positionMs);
 }
 
-void Queue::loadTrackAt(int index)
+void Queue::loadTrackAt(int index, bool autoPlay)
 {
     if (index < 0 || index >= m_tracks.size())
         return;
     m_currentTrackIndex = index;
     if (m_playback)
-        m_playback->loadTrack(m_tracks.at(index));
+        m_playback->loadTrack(m_tracks.at(index), autoPlay);
     emit trackChanged();
 }
 

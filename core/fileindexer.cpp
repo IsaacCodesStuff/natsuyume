@@ -29,10 +29,9 @@ void FileIndexer::scanFolder(const QString &folderPath)
 {
     if (m_scanning)
         return;
-
     m_cancelled = false;
     m_scanning  = true;
-
+    m_knownPaths = m_knownPathsSnapshot; // sync to current library state before scanning
     m_thread = QThread::create([this, folderPath]() {
         doScan(folderPath);
     });

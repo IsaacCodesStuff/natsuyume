@@ -310,10 +310,8 @@ int Player::scanTotal() const    { return m_scanTotal; }
 
 void Player::scanFolder(const QString &folderPath)
 {
-    // Build snapshot of known paths on main thread
-    QSet<QString> known;
-    for (const Track &t : m_library->allTracks())
-        known.insert(t.path);
+    const QStringList paths = m_library->allTrackPaths();
+    QSet<QString> known(paths.begin(), paths.end());
     m_indexer->setKnownPaths(known);
     m_indexer->scanFolder(folderPath);
 }
@@ -438,8 +436,8 @@ void Player::openFilesInNewQueue(const QStringList &filePaths,
     connectQueueSignals(newQueue);
     connectPlaybackSignals(newQueue);
 
-    for (const QString &path : filePaths)
-        newQueue->addTrack(path);
+    for (int i = 0; i < filePaths.size(); ++i)
+        newQueue->addTrack(filePaths.at(i), i == 0);
 
     m_queues.append(newQueue);
     m_activeQueueIndex = m_queues.size() - 1;
@@ -448,6 +446,10 @@ void Player::openFilesInNewQueue(const QStringList &filePaths,
         m_coverImageProvider->updateCover(QImage());
         emit coverArtChanged();
     }
+
+    connect(newQueue->playback(), &Playback::readyToPlay, this, [newQueue]() {
+        newQueue->play();
+    }, Qt::SingleShotConnection);
 
     emit queuesChanged();
     emit trackChanged();

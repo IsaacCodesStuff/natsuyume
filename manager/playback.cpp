@@ -1,4 +1,5 @@
 #include "playback.h"
+#include <QDebug>
 
 Playback::Playback(QObject *parent)
     : QObject{parent}
@@ -21,7 +22,19 @@ Playback::Playback(QObject *parent)
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this,
             [this](QMediaPlayer::MediaStatus status) {
+                if (status == QMediaPlayer::LoadingMedia) {
+                    m_sourceLoading = true;
+                }
                 if (status == QMediaPlayer::LoadedMedia) {
+                    if (!m_sourceLoading) {
+                        // Stale echo from the previous source — ignore
+                        return;
+                    }
+                    m_sourceLoading = false;
+                    if (m_pendingAutoPlay) {
+                        m_pendingAutoPlay = false;
+                        m_player->play();
+                    }
                     emit readyToPlay();
                 }
                 if (status == QMediaPlayer::EndOfMedia)
@@ -46,10 +59,12 @@ void Playback::seekTo(qint64 positionMs)
     m_player->setPosition(positionMs);
 }
 
-void Playback::loadTrack(const Track &track)
+void Playback::loadTrack(const Track &track, bool autoPlay)
 {
     if (!track.isValid())
         return;
+    m_pendingAutoPlay = autoPlay;
+    m_sourceLoading = false; // reset — only the next genuine LoadingMedia counts
     m_player->setSource(QUrl::fromLocalFile(track.path));
 }
 

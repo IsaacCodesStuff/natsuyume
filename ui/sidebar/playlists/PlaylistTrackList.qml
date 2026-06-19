@@ -19,6 +19,36 @@ Item {
     property bool dragProxyVisible: false
     property real dragProxyY:       0
 
+    // ── Auto-scroll state ──────────────────────────────────────
+    property real  autoScrollSpeed: 0
+    readonly property int  edgeZone:       50
+    readonly property real maxScrollSpeed: 14
+
+    Timer {
+        id: autoScrollTimer
+        interval: 16
+        repeat: true
+        running: playlistTrackList.autoScrollSpeed !== 0 && playlistTrackList.dragFromIndex >= 0
+        onTriggered: {
+            let newY = listView.contentY + playlistTrackList.autoScrollSpeed
+            newY = Math.max(0, Math.min(newY, listView.contentHeight - listView.height))
+            listView.contentY = newY
+        }
+    }
+
+    function updateAutoScroll(localY) {
+        if (localY < edgeZone) {
+            let depth = (edgeZone - localY) / edgeZone
+            autoScrollSpeed = -maxScrollSpeed * depth
+        } else if (localY > listView.height - edgeZone) {
+            let depth = (localY - (listView.height - edgeZone)) / edgeZone
+            autoScrollSpeed = maxScrollSpeed * depth
+        } else {
+            autoScrollSpeed = 0
+        }
+    }
+
+
     // ── Song info dialog ───────────────────────────────────────
     SongInfo {
         id: songInfoDialog
@@ -150,10 +180,13 @@ Item {
                     let localY = globalY - listView.y - delegateItem.ptl.y
                     delegateItem.ptl.dragProxyY = localY - 28
                     let listY = localY - 8
-                    let newIndex = Math.floor(listY / 60)
+                    let newIndex = Math.floor((listY + listView.contentY) / 60)
                     newIndex = Math.max(0, Math.min(newIndex,
                         delegateItem.ptl.tracks.length - 1))
                     delegateItem.ptl.dragToIndex = newIndex
+
+                    let viewportY = globalY - listView.mapToItem(null, 0, 0).y
+                    delegateItem.ptl.updateAutoScroll(viewportY)
                 }
 
                 onDragHandleReleased: {
@@ -169,6 +202,7 @@ Item {
                     delegateItem.ptl.dragProxyVisible = false
                     delegateItem.ptl.dragFromIndex    = -1
                     delegateItem.ptl.dragToIndex      = -1
+                    delegateItem.ptl.autoScrollSpeed  = 0
                 }
             }
         }
@@ -216,5 +250,6 @@ Item {
         dragProxyVisible = false
         dragFromIndex    = -1
         dragToIndex      = -1
+        autoScrollSpeed  = 0
     }
 }
