@@ -43,6 +43,13 @@ Item {
                 label: "Add to queue",
                 icon: "+",
                 onTriggered: function() {
+                    player.requestAddAlbumToQueue(albumName)
+                }
+            },
+            {
+                label: "Add to currently playing queue",
+                icon: "⏵+",
+                onTriggered: function() {
                     player.addAlbumToQueue(albumName)
                 }
             },

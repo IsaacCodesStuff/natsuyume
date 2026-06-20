@@ -6,6 +6,7 @@
 #include "track.h"
 #include "playback.h"
 #include "metadata.h"
+#include "library.h"
 
 class Queue : public QObject
 {
@@ -78,6 +79,9 @@ public:
     bool hasPlayback() const;
     void initPlayback();
     void destroyPlayback();
+
+    void sortTracks(Library::TrackSort sort, bool ascending);
+    void reverseTracks();
 
 signals:
     void trackChanged();

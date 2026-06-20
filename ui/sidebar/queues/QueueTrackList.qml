@@ -51,6 +51,11 @@ Item {
                 onTriggered: function() { player.jumpToTrack(idx) }
             },
             {
+                label: "Add to queue",
+                icon: "+",
+                onTriggered: function() { player.requestAddToQueue(path) }
+            },
+            {
                 label: "Stop after this song",
                 icon: "⏹",
                 onTriggered: function() { player.toggleStopAfterCurrent() }

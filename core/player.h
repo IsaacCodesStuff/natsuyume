@@ -92,6 +92,8 @@ class Player : public QObject
 
     Q_PROPERTY(QString trackPath READ trackPath NOTIFY metadataChanged)
 
+    Q_PROPERTY(qint64 queueTotalDuration READ queueTotalDuration NOTIFY trackChanged)
+
 public:
     explicit Player(QObject *parent = nullptr);
     ~Player();
@@ -234,6 +236,14 @@ public:
     bool stopAfterCurrent() const;
     Q_INVOKABLE void toggleStopAfterCurrent();
 
+    Q_INVOKABLE void requestAddToQueue(const QString &path);
+    Q_INVOKABLE void requestAddAlbumToQueue(const QString &album);
+    Q_INVOKABLE void addPathsToQueue(int queueIndex, const QStringList &paths);
+    Q_INVOKABLE void addPathsToNewQueue(const QStringList &paths, const QString &name = QString());
+    Q_INVOKABLE void moveQueue(int from, int to);
+    Q_INVOKABLE void sortActiveQueue(int sort, bool ascending);
+    Q_INVOKABLE void reverseActiveQueue();
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -258,6 +268,7 @@ signals:
     void scanFoldersChanged();
     void playCountThresholdChanged();
     void stopAfterCurrentChanged();
+    void addToQueueRequested(QStringList paths);
 
 private:
     QList<Queue*> m_queues;
@@ -299,6 +310,8 @@ private:
 
     QStringList m_scanFolders;
     int         m_playCountThreshold = 10;
+
+    qint64 queueTotalDuration() const;
 };
 
 #endif // PLAYER_H

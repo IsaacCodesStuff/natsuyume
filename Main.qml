@@ -30,15 +30,21 @@ Window {
         theme: root
     }
 
+    QueuePicker {
+        id: queuePicker
+        theme: root
+    }
+
     Connections {
         target: player
         function onAddToPlaylistRequested(path) {
-            console.log("onAddToPlaylistRequested:", path)
             playlistPicker.open(path)
         }
         function onAddAlbumToPlaylistRequested(albumName) {
-            console.log("onAddAlbumToPlaylistRequested:", albumName)
             playlistPicker.openForAlbum(albumName)
+        }
+        function onAddToQueueRequested(paths) {
+            queuePicker.open(paths)
         }
     }
 

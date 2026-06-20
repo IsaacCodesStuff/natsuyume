@@ -2,6 +2,7 @@
 #include <QRandomGenerator>
 #include <QDateTime>
 #include <QTimer>
+#include <algorithm>
 
 Queue::Queue(const QString &name, QObject *parent)
     : QObject{parent},
@@ -381,4 +382,91 @@ void Queue::setStopAfterCurrent(bool stop)
 {
     m_stopAfterCurrent = stop;
     emit stopAfterCurrentChanged();
+}
+
+void Queue::sortTracks(Library::TrackSort sort, bool ascending)
+{
+    if (m_tracks.isEmpty()) return;
+
+    QString currentPath = (m_currentTrackIndex >= 0 && m_currentTrackIndex < m_tracks.size())
+                              ? m_tracks.at(m_currentTrackIndex).path
+                              : QString();
+
+    auto cmp = [sort, ascending](const Track &a, const Track &b) -> bool {
+        bool result = false;
+        switch (sort) {
+        case Library::TrackSort::Title:
+            result = a.title.localeAwareCompare(b.title) < 0; break;
+        case Library::TrackSort::Artist:
+            result = a.artist.localeAwareCompare(b.artist) < 0; break;
+        case Library::TrackSort::AlbumArtist:
+            result = a.albumArtist.localeAwareCompare(b.albumArtist) < 0; break;
+        case Library::TrackSort::Year:
+            result = a.year < b.year; break;
+        case Library::TrackSort::Duration:
+            result = a.duration < b.duration; break;
+        case Library::TrackSort::Genre:
+            result = a.genre.localeAwareCompare(b.genre) < 0; break;
+        case Library::TrackSort::Composer:
+            result = a.composer.localeAwareCompare(b.composer) < 0; break;
+        case Library::TrackSort::Filename:
+            result = a.path.localeAwareCompare(b.path) < 0; break;
+        case Library::TrackSort::DateAdded:
+            result = a.dateAdded < b.dateAdded; break;
+        case Library::TrackSort::DateLastPlayed:
+            result = a.dateLastPlayed < b.dateLastPlayed; break;
+        case Library::TrackSort::PlayCount:
+            result = a.playCount < b.playCount; break;
+        case Library::TrackSort::TrackNumber:
+        default:
+            if (a.discNumber != b.discNumber)
+                result = a.discNumber < b.discNumber;
+            else
+                result = a.trackNumber < b.trackNumber;
+            break;
+        }
+        return ascending ? result : !result;
+    };
+
+    std::sort(m_tracks.begin(), m_tracks.end(), cmp);
+
+    // Re-find current track's new index so playback isn't disrupted
+    if (!currentPath.isEmpty()) {
+        for (int i = 0; i < m_tracks.size(); ++i) {
+            if (m_tracks.at(i).path == currentPath) {
+                m_currentTrackIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (m_shuffled)
+        generateShuffleOrder();
+
+    emit queueChanged();
+}
+
+void Queue::reverseTracks()
+{
+    if (m_tracks.isEmpty()) return;
+
+    QString currentPath = (m_currentTrackIndex >= 0 && m_currentTrackIndex < m_tracks.size())
+                              ? m_tracks.at(m_currentTrackIndex).path
+                              : QString();
+
+    std::reverse(m_tracks.begin(), m_tracks.end());
+
+    if (!currentPath.isEmpty()) {
+        for (int i = 0; i < m_tracks.size(); ++i) {
+            if (m_tracks.at(i).path == currentPath) {
+                m_currentTrackIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (m_shuffled)
+        generateShuffleOrder();
+
+    emit queueChanged();
 }

@@ -13,6 +13,11 @@ Item {
     property int    renamingIndex: -1
     property string renameBuffer:  ""
 
+    property int  dragFromIndex:    -1
+    property int  dragToIndex:      -1
+    property bool dragProxyVisible: false
+    property real dragProxyY:       0
+
     function open()  { popup.open()  }
     function close() { popup.close() }
 
@@ -22,7 +27,7 @@ Item {
         focus: true
         anchors.centerIn: Overlay.overlay
         width: 280
-        height: Math.min(player.queueCount * 52 + 64, 400)
+        height: Math.min(player.queueCount * 56 + 64, 420)
         padding: 0
 
         background: Rectangle {
@@ -73,27 +78,127 @@ Item {
                 spacing: 4
                 clip: false
                 model: player.queueCount
+                interactive: queueDropdown.dragFromIndex < 0
 
-                delegate: Rectangle {
-                    id: queueItem
+                delegate: Item {
+                    id: queueItemRoot
                     width: queueList.width
-                    height: 44
-                    radius: 8
-                    color: index === player.activeQueueIndex
-                           ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.15)
-                           : Qt.rgba(1, 1, 1, 0.04)
+                    height: 52
 
                     property var dropdown: queueDropdown
                     property bool isRenaming: dropdown.renamingIndex === index
+                    property bool isDragging: dropdown.dragFromIndex === index
+
+                    opacity: isDragging ? 0.5 : 1.0
+                    scale:   isDragging ? 1.02 : 1.0
+
+                    Behavior on opacity { NumberAnimation { duration: 100 } }
+                    Behavior on scale   { NumberAnimation { duration: 100 } }
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 8
+                        color: index === player.activeQueueIndex
+                               ? Qt.rgba(accentColor.r, accentColor.g, accentColor.b, 0.15)
+                               : Qt.rgba(1, 1, 1, 0.04)
+                    }
 
                     Row {
                         anchors.fill: parent
-                        anchors.leftMargin: 10
+                        anchors.leftMargin: 6
                         anchors.rightMargin: 10
                         spacing: 0
 
+                        // Drag handle
                         Item {
-                            width: parent.width - (index === player.activeQueueIndex && !queueItem.isRenaming ? 96 : 64)
+                            width: 28
+                            height: parent.height
+
+                            Text {
+                                text: "⠿"
+                                font.pixelSize: 16
+                                color: queueItemRoot.dropdown.mutedText
+                                anchors.centerIn: parent
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.SizeVerCursor
+                                preventStealing: true
+
+                                onPressed: function(mouse) {
+                                    mouse.accepted = true
+                                    let mapped = mapToItem(null, mouse.x, mouse.y)
+                                    queueItemRoot.dropdown.dragFromIndex    = index
+                                    queueItemRoot.dropdown.dragToIndex      = index
+                                    queueItemRoot.dropdown.dragProxyY       = mapped.y - queueList.y - 26
+                                    queueItemRoot.dropdown.dragProxyVisible = true
+                                }
+
+                                onPositionChanged: function(mouse) {
+                                    let mapped = mapToItem(null, mouse.x, mouse.y)
+                                    let localY = mapped.y - queueList.y
+                                    queueItemRoot.dropdown.dragProxyY = localY - 26
+
+                                    let newIndex = Math.floor((localY + queueList.contentY) / 56)
+                                    newIndex = Math.max(0, Math.min(newIndex, player.queueCount - 1))
+                                    queueItemRoot.dropdown.dragToIndex = newIndex
+                                }
+
+                                onReleased: {
+                                    if (queueItemRoot.dropdown.dragFromIndex >= 0 &&
+                                        queueItemRoot.dropdown.dragToIndex >= 0 &&
+                                        queueItemRoot.dropdown.dragFromIndex !== queueItemRoot.dropdown.dragToIndex) {
+                                        player.moveQueue(
+                                            queueItemRoot.dropdown.dragFromIndex,
+                                            queueItemRoot.dropdown.dragToIndex)
+                                    }
+                                    queueItemRoot.dropdown.dragProxyVisible = false
+                                    queueItemRoot.dropdown.dragFromIndex    = -1
+                                    queueItemRoot.dropdown.dragToIndex      = -1
+                                }
+                            }
+                        }
+
+                        // Radio button
+                        Item {
+                            width: 28
+                            height: parent.height
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 18
+                                height: 18
+                                radius: 9
+                                color: "transparent"
+                                border.color: index === player.activeQueueIndex
+                                              ? queueItemRoot.dropdown.accentColor
+                                              : queueItemRoot.dropdown.mutedText
+                                border.width: 2
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 10
+                                    height: 10
+                                    radius: 5
+                                    color: queueItemRoot.dropdown.accentColor
+                                    visible: index === player.activeQueueIndex
+                                }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    player.switchToQueue(index)
+                                    queueDropdown.close()
+                                }
+                            }
+                        }
+
+                        // Name / rename field
+                        Item {
+                            width: parent.width - 28 - 28 - 24 - 24
                             height: parent.height
 
                             Text {
@@ -102,10 +207,10 @@ Item {
                                 text: player.queueNames[index]
                                 font.pixelSize: 12
                                 color: index === player.activeQueueIndex
-                                       ? queueItem.dropdown.accentColor
-                                       : queueItem.dropdown.primaryText
+                                       ? queueItemRoot.dropdown.accentColor
+                                       : queueItemRoot.dropdown.primaryText
                                 elide: Text.ElideRight
-                                visible: !queueItem.isRenaming
+                                visible: !queueItemRoot.isRenaming
                             }
 
                             Rectangle {
@@ -114,65 +219,47 @@ Item {
                                 height: 28
                                 radius: 6
                                 color: Qt.rgba(1, 1, 1, 0.08)
-                                visible: queueItem.isRenaming
+                                visible: queueItemRoot.isRenaming
 
                                 TextInput {
                                     anchors.fill: parent
                                     anchors.leftMargin: 8
                                     anchors.rightMargin: 8
                                     verticalAlignment: TextInput.AlignVCenter
-                                    text: queueItem.dropdown.renameBuffer
+                                    text: queueItemRoot.dropdown.renameBuffer
                                     font.pixelSize: 12
-                                    color: queueItem.dropdown.primaryText
+                                    color: queueItemRoot.dropdown.primaryText
                                     selectByMouse: true
-                                    focus: queueItem.isRenaming
+                                    focus: queueItemRoot.isRenaming
 
-                                    onTextChanged: queueItem.dropdown.renameBuffer = text
+                                    onTextChanged: queueItemRoot.dropdown.renameBuffer = text
 
                                     onAccepted: {
-                                        if (queueItem.dropdown.renameBuffer.trim().length > 0)
-                                            player.renameQueue(index, queueItem.dropdown.renameBuffer.trim())
-                                        queueItem.dropdown.renamingIndex = -1
+                                        if (queueItemRoot.dropdown.renameBuffer.trim().length > 0)
+                                            player.renameQueue(index, queueItemRoot.dropdown.renameBuffer.trim())
+                                        queueItemRoot.dropdown.renamingIndex = -1
                                     }
 
                                     onActiveFocusChanged: {
-                                        if (!activeFocus && queueItem.isRenaming) {
-                                            if (queueItem.dropdown.renameBuffer.trim().length > 0)
-                                                player.renameQueue(index, queueItem.dropdown.renameBuffer.trim())
-                                            queueItem.dropdown.renamingIndex = -1
+                                        if (!activeFocus && queueItemRoot.isRenaming) {
+                                            if (queueItemRoot.dropdown.renameBuffer.trim().length > 0)
+                                                player.renameQueue(index, queueItemRoot.dropdown.renameBuffer.trim())
+                                            queueItemRoot.dropdown.renamingIndex = -1
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        Item { width: 8; height: 1 }
-
-                        // Save as playlist button (active queue only)
-                        Item {
-                            width: 24
-                            height: parent.height
-                            visible: index === player.activeQueueIndex && !queueItem.isRenaming
-
-                        Text {
-                            text: "💾"
-                            font.pixelSize: 13
-                            color: queueItem.dropdown.mutedText
-                            anchors.centerIn: parent
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                queueDropdown.close()
-                                saveAsPlaylistDialog.queueIndex = index
-                                saveAsPlaylistDialog.open()
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                enabled: !queueItemRoot.isRenaming
+                                onClicked: {
+                                    player.switchToQueue(index)
+                                    queueDropdown.close()
                                 }
                             }
                         }
-
-                        Item { width: 8; height: 1 }
 
                         // Pencil button
                         Item {
@@ -182,22 +269,20 @@ Item {
                             Text {
                                 text: "✎"
                                 font.pixelSize: 13
-                                color: queueItem.dropdown.mutedText
+                                color: queueItemRoot.dropdown.mutedText
                                 anchors.centerIn: parent
-                                visible: !queueItem.isRenaming
+                                visible: !queueItemRoot.isRenaming
                             }
 
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: {
-                                    queueItem.dropdown.renamingIndex = index
-                                    queueItem.dropdown.renameBuffer = player.queueNames[index]
+                                    queueItemRoot.dropdown.renamingIndex = index
+                                    queueItemRoot.dropdown.renameBuffer = player.queueNames[index]
                                 }
                             }
                         }
-
-                        Item { width: 8; height: 1 }
 
                         // Remove button
                         Item {
@@ -207,9 +292,9 @@ Item {
                             Text {
                                 text: "✕"
                                 font.pixelSize: 11
-                                color: queueItem.dropdown.mutedText
+                                color: queueItemRoot.dropdown.mutedText
                                 anchors.centerIn: parent
-                                visible: !queueItem.isRenaming
+                                visible: !queueItemRoot.isRenaming
                             }
 
                             MouseArea {
@@ -219,150 +304,43 @@ Item {
                             }
                         }
                     }
-
-                    // Tap to switch queue
-                    MouseArea {
-                        anchors.fill: parent
-                        anchors.rightMargin: 64
-                        cursorShape: Qt.PointingHandCursor
-                        enabled: !queueItem.isRenaming
-                        onClicked: {
-                            player.switchToQueue(index)
-                            queueDropdown.close()
-                        }
-                    }
                 }
             }
         }
     }
 
-    Popup {
-        id: saveAsPlaylistDialog
-        modal: true
-        focus: true
-        anchors.centerIn: Overlay.overlay
-        width: 280
-        padding: 0
+    // Drag proxy
+    Rectangle {
+        x: 8
+        y: queueDropdown.dragProxyY
+        width: 264
+        height: 52
+        radius: 8
+        visible: queueDropdown.dragProxyVisible
+        opacity: 0.85
+        z: 20
+        parent: popup.contentItem
 
-        property int queueIndex: -1
+        color: Qt.rgba(queueDropdown.accentColor.r, queueDropdown.accentColor.g,
+                       queueDropdown.accentColor.b, 0.25)
+        border.color: Qt.rgba(queueDropdown.accentColor.r, queueDropdown.accentColor.g,
+                              queueDropdown.accentColor.b, 0.5)
+        border.width: 1
 
-        background: Rectangle {
-            radius: 14
-            color: queueDropdown.theme.bgColor
-            border.color: Qt.rgba(1, 1, 1, 0.08)
-            border.width: 1
-        }
-
-        Overlay.modal: Rectangle {
-            color: Qt.rgba(0, 0, 0, 0.6)
-        }
-
-        onOpened: {
-            saveNameField.text = saveAsPlaylistDialog.queueIndex >= 0
-                ? player.queueNames[saveAsPlaylistDialog.queueIndex]
-                : ""
-            saveNameField.forceActiveFocus()
-        }
-
-        contentItem: Column {
-            width: saveAsPlaylistDialog.width
-            spacing: 4
-            topPadding: 16
-            bottomPadding: 12
-            leftPadding: 12
-            rightPadding: 12
-
-            Text {
-                width: saveAsPlaylistDialog.width - 24
-                height: 24
-                text: "Save queue as playlist"
-                font.pixelSize: 13
-                font.weight: Font.Medium
-                color: queueDropdown.primaryText
-                horizontalAlignment: Text.AlignHCenter
-                verticalAlignment: Text.AlignVCenter
+        Text {
+            anchors.centerIn: parent
+            text: {
+                let idx = queueDropdown.dragFromIndex
+                let names = player.queueNames
+                if (idx >= 0 && names && idx < names.length)
+                    return names[idx]
+                return ""
             }
-
-            Item { width: saveAsPlaylistDialog.width; height: 8 }
-
-            Rectangle {
-                width: saveAsPlaylistDialog.width - 24
-                height: 40
-                radius: 8
-                color: Qt.rgba(1, 1, 1, 0.06)
-
-                TextField {
-                    id: saveNameField
-                    anchors.fill: parent
-                    anchors.margins: 4
-                    font.pixelSize: 13
-                    color: queueDropdown.primaryText
-                    placeholderText: "Playlist name"
-                    placeholderTextColor: queueDropdown.mutedText
-                    background: Item {}
-                    onAccepted: doSave()
-                }
-            }
-
-            Item { width: saveAsPlaylistDialog.width; height: 8 }
-
-            Rectangle {
-                width: saveAsPlaylistDialog.width - 24
-                height: 44
-                radius: 8
-                color: Qt.rgba(
-                    queueDropdown.accentColor.r,
-                    queueDropdown.accentColor.g,
-                    queueDropdown.accentColor.b, 0.18)
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "Save"
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
-                    color: queueDropdown.accentColor
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: doSave()
-                }
-            }
-
-            Item { width: saveAsPlaylistDialog.width; height: 4 }
-
-            Rectangle {
-                width: saveAsPlaylistDialog.width - 24
-                height: 44
-                radius: 8
-                property bool hovered: false
-                color: hovered ? Qt.rgba(1, 1, 1, 0.06) : "transparent"
-                Behavior on color { ColorAnimation { duration: 100 } }
-
-                Text {
-                    anchors.centerIn: parent
-                    text: "Cancel"
-                    font.pixelSize: 13
-                    color: queueDropdown.mutedText
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    hoverEnabled: true
-                    onEntered: parent.hovered = true
-                    onExited:  parent.hovered = false
-                    onClicked: saveAsPlaylistDialog.close()
-                }
-            }
+            font.pixelSize: 12
+            color: queueDropdown.primaryText
+            elide: Text.ElideRight
+            width: parent.width - 24
+            horizontalAlignment: Text.AlignHCenter
         }
-    }
-
-    function doSave() {
-        let name = saveNameField.text.trim()
-        if (name.length === 0) return
-        player.saveQueueAsPlaylist(name)
-        saveAsPlaylistDialog.close()
     }
 }

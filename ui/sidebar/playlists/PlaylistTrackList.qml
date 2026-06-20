@@ -69,6 +69,11 @@ Item {
             {
                 label: "Add to queue",
                 icon: "+",
+                onTriggered: function() { player.requestAddToQueue(path) }
+            },
+            {
+                label: "Add to currently playing queue",
+                icon: "⏵+",
                 onTriggered: function() { player.addTrackToQueue(path) }
             },
             {

@@ -1182,3 +1182,90 @@ void Player::connectPlaybackSignals(Queue *queue)
         }
     });
 }
+
+void Player::requestAddToQueue(const QString &path)
+{
+    emit addToQueueRequested(QStringList{path});
+}
+
+void Player::requestAddAlbumToQueue(const QString &album)
+{
+    QList<Track> tracks = m_library->tracksByAlbum(album, m_trackSort, m_trackSortAscending);
+    QStringList paths;
+    for (const Track &t : std::as_const(tracks))
+        paths << t.path;
+    emit addToQueueRequested(paths);
+}
+
+void Player::addPathsToQueue(int queueIndex, const QStringList &paths)
+{
+    if (queueIndex < 0 || queueIndex >= m_queues.size()) return;
+    Queue *q = m_queues.at(queueIndex);
+    for (const QString &path : paths)
+        q->addTrack(path);
+}
+
+void Player::addPathsToNewQueue(const QStringList &paths, const QString &name)
+{
+    if (paths.isEmpty()) return;
+
+    QString queueName = name.isEmpty() ? generateQueueName() : name;
+    Queue *newQueue = new Queue(queueName, this);
+    newQueue->setVolume(m_volume);
+    connectQueueSignals(newQueue);
+
+    m_queues.append(newQueue);
+
+    for (const QString &path : paths)
+        newQueue->addTrack(path);
+
+    emit queuesChanged();
+}
+
+void Player::moveQueue(int from, int to)
+{
+    if (from < 0 || from >= m_queues.size()) return;
+    if (to < 0   || to   >= m_queues.size()) return;
+    if (from == to) return;
+
+    m_queues.move(from, to);
+
+    // Keep activeQueueIndex tracking the same queue object
+    if (m_activeQueueIndex == from) {
+        m_activeQueueIndex = to;
+    } else if (from < to) {
+        if (m_activeQueueIndex > from && m_activeQueueIndex <= to)
+            m_activeQueueIndex--;
+    } else {
+        if (m_activeQueueIndex >= to && m_activeQueueIndex < from)
+            m_activeQueueIndex++;
+    }
+
+    emit queuesChanged();
+}
+
+void Player::sortActiveQueue(int sort, bool ascending)
+{
+    Queue *q = activeQueue();
+    if (!q) return;
+    q->sortTracks(static_cast<Library::TrackSort>(sort), ascending);
+    emit trackChanged();
+}
+
+void Player::reverseActiveQueue()
+{
+    Queue *q = activeQueue();
+    if (!q) return;
+    q->reverseTracks();
+    emit trackChanged();
+}
+
+qint64 Player::queueTotalDuration() const
+{
+    Queue *q = activeQueue();
+    if (!q) return 0;
+    qint64 total = 0;
+    for (const Track &t : q->tracks())
+        total += t.duration;
+    return total;
+}
