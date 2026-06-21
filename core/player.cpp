@@ -886,7 +886,13 @@ int Player::saveQueueAsPlaylist(const QString &name)
 QVariantList Player::tracksForPlaylist(int playlistId) const
 {
     QVariantList result;
-    for (const Track &t : m_library->tracksForPlaylist(playlistId)) {
+    if (playlistId == kFavoritesPlaylistId)
+        return result; // empty shell — favorites tracking not yet implemented
+
+    QList<Track> tracks = (playlistId == kAllSongsPlaylistId)
+                              ? m_library->allTracks()
+                              : m_library->tracksForPlaylist(playlistId);
+    for (const Track &t : tracks) {
         QVariantMap map;
         map["path"]     = t.path;
         map["title"]    = t.title;
@@ -900,7 +906,9 @@ QVariantList Player::tracksForPlaylist(int playlistId) const
 
 void Player::openPlaylistInNewQueue(int playlistId, const QString &name)
 {
-    QList<Track> tracks = m_library->tracksForPlaylist(playlistId);
+    QList<Track> tracks = (playlistId == kAllSongsPlaylistId)
+    ? m_library->allTracks()
+    : m_library->tracksForPlaylist(playlistId);
     QStringList paths;
     for (const Track &t : std::as_const(tracks))
         paths << t.path;

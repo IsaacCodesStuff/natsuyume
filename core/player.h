@@ -251,6 +251,9 @@ public:
     Q_INVOKABLE void sortActiveQueue(int sort, bool ascending);
     Q_INVOKABLE void reverseActiveQueue();
 
+    static constexpr int kAllSongsPlaylistId = -2;
+    static constexpr int kFavoritesPlaylistId = -3;
+
 signals:
     void isPlayingChanged();
     void positionChanged();

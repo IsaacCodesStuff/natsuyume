@@ -27,6 +27,19 @@ Item {
         { label: "Play Count",   value: 11 }
     ]
 
+    function formatTotalDuration(tracks) {
+        let totalMs = 0
+        for (let i = 0; i < tracks.length; i++)
+            totalMs += tracks[i].duration
+        let totalSeconds = Math.floor(totalMs / 1000)
+        let hours = Math.floor(totalSeconds / 3600)
+        let minutes = Math.floor((totalSeconds % 3600) / 60)
+        let seconds = totalSeconds % 60
+        let mm = (hours > 0 && minutes < 10) ? "0" + minutes : minutes
+        let ss = seconds < 10 ? "0" + seconds : seconds
+        return hours > 0 ? (hours + ":" + mm + ":" + ss) : (minutes + ":" + ss)
+    }
+
     Connections {
         target: player
         function onPlaylistsChanged() {
@@ -373,14 +386,104 @@ Item {
         newPlaylistDialog.close()
     }
 
+    // ── All songs (virtual playlist) ────────────────────────────
+    Rectangle {
+        id: allSongsRow
+        anchors.top: newPlaylistBtn.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: 8
+        anchors.topMargin: 4
+        height: 48
+        radius: 8
+        visible: playlistsView.selectedPlaylistId === -1
+        color: "transparent"
+
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            spacing: 10
+
+            Text {
+                text: "🎵"
+                font.pixelSize: 16
+                color: playlistsView.theme.primaryText
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                text: "All songs"
+                font.pixelSize: 13
+                font.weight: Font.Medium
+                color: playlistsView.theme.primaryText
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                playlistsView.selectedPlaylistId   = -2 // Player.kAllSongsPlaylistId
+                playlistsView.selectedPlaylistName = "All songs"
+                playlistsView.playlistTracks       = player.tracksForPlaylist(-2)
+            }
+        }
+    }
+
+    Rectangle {
+        id: favoritesRow
+        anchors.top: allSongsRow.bottom
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: 8
+        anchors.topMargin: 0
+        height: 48
+        radius: 8
+        visible: playlistsView.selectedPlaylistId === -1
+        color: "transparent"
+
+        Row {
+            anchors.fill: parent
+            anchors.leftMargin: 12
+            spacing: 10
+
+            Text {
+                text: "♥"
+                font.pixelSize: 16
+                color: playlistsView.theme.primaryText
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                text: "Favorites"
+                font.pixelSize: 13
+                font.weight: Font.Medium
+                color: playlistsView.theme.primaryText
+                anchors.verticalCenter: parent.verticalCenter
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                playlistsView.selectedPlaylistId   = -3 // Player.kFavoritesPlaylistId
+                playlistsView.selectedPlaylistName = "Favorites"
+                playlistsView.playlistTracks       = player.tracksForPlaylist(-3)
+            }
+        }
+    }
+
     // ── Playlist list ──────────────────────────────────────────
     ListView {
         id: playlistList
-        anchors.top: newPlaylistBtn.bottom
+        anchors.top: favoritesRow.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.margins: 8
+        anchors.topMargin: 4
         clip: true
         visible: playlistsView.selectedPlaylistId === -1
         model: player.allPlaylists
@@ -470,7 +573,7 @@ Item {
                             playlistsView.selectedPlaylistId   = -1
                             playlistsView.selectedPlaylistName = ""
                             playlistsView.playlistTracks       = []
-                            playlistsView.playlistEditMode     = false  // ← add this
+                            playlistsView.playlistEditMode     = false
                         }
                     }
                 }
@@ -478,22 +581,95 @@ Item {
                 // Playlist name
                 Text {
                     text: playlistsView.selectedPlaylistName
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
+                    font.pixelSize: 16
+                    font.weight: Font.Bold
                     color: playlistsView.theme.primaryText
                     elide: Text.ElideRight
-                    width: parent.width - 80
+                    width: parent.width - 60
                     anchors.verticalCenter: parent.verticalCenter
                 }
+            }
 
-                // Edit mode toggle
-                Text {
-                    text: playlistsView.playlistEditMode ? "Done" : "✎"
-                    font.pixelSize: playlistsView.playlistEditMode ? 12 : 16
+            // Gear — top right
+            Text {
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: "⚙"
+                font.pixelSize: 16
+                color: playlistsView.theme.mutedText
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        // Stage 2: playlist view options dialog — not yet implemented
+                    }
+                }
+            }
+        }
+
+        // ── Summary line ──────────────────────────────────────────
+        Text {
+            id: playlistSummary
+            anchors.top: playlistHeader.bottom
+            anchors.left: parent.left
+            anchors.topMargin: 10
+            anchors.leftMargin: 12
+            text: playlistsView.playlistTracks.length + " songs · " +
+                  playlistsView.formatTotalDuration(playlistsView.playlistTracks)
+            font.pixelSize: 11
+            color: playlistsView.theme.mutedText
+        }
+
+        // ── Action bar — edit | shuffle | sort | overflow ──────────
+        Item {
+            id: actionBar
+            anchors.top: playlistSummary.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.topMargin: 10
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            height: 36
+
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+
+                // Edit toggle — hidden for virtual playlists (All songs / Favorites)
+                Rectangle {
+                    width: editLabel.implicitWidth + 16
+                    height: 36
+                    radius: 8
+                    visible: playlistsView.selectedPlaylistId >= 0
                     color: playlistsView.playlistEditMode
-                           ? playlistsView.theme.accentColor
-                           : playlistsView.theme.mutedText
-                    anchors.verticalCenter: parent.verticalCenter
+                           ? Qt.rgba(playlistsView.theme.accentColor.r,
+                                     playlistsView.theme.accentColor.g,
+                                     playlistsView.theme.accentColor.b, 0.18)
+                           : Qt.rgba(1, 1, 1, 0.06)
+
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 4
+
+                        Text {
+                            text: "✎"
+                            font.pixelSize: 13
+                            color: playlistsView.playlistEditMode
+                                   ? playlistsView.theme.accentColor
+                                   : playlistsView.theme.mutedText
+                        }
+
+                        Text {
+                            id: editLabel
+                            text: playlistsView.playlistEditMode ? "Done" : "Edit"
+                            font.pixelSize: 12
+                            color: playlistsView.playlistEditMode
+                                   ? playlistsView.theme.accentColor
+                                   : playlistsView.theme.mutedText
+                        }
+                    }
 
                     MouseArea {
                         anchors.fill: parent
@@ -501,88 +677,92 @@ Item {
                         onClicked: playlistsView.playlistEditMode = !playlistsView.playlistEditMode
                     }
                 }
+
+                // Shuffle
+                Rectangle {
+                    width: 36
+                    height: 36
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.06)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⤨"
+                        font.pixelSize: 15
+                        color: playlistsView.theme.mutedText
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            let paths = playlistsView.playlistTracks.map(t => t.path)
+                            player.openFilesInNewQueue(paths, playlistsView.selectedPlaylistName, true)
+                        }
+                    }
+                }
+
+                // Sort
+                SortBar {
+                    width: 36
+                    height: 36
+                    iconOnly: true
+                    theme: playlistsView.theme
+                    sortOptions: playlistsView.trackSortOptions
+                    currentSort: player.playlistSort
+                    currentAscending: player.playlistSortAscending
+
+                    onSortChanged: function(value, label) {
+                        player.setPlaylistSort(value)
+                        if (playlistsView.selectedPlaylistId >= 0) {
+                            player.sortPlaylist(playlistsView.selectedPlaylistId)
+                            playlistsView.playlistTracks = player.tracksForPlaylist(
+                                playlistsView.selectedPlaylistId)
+                        }
+                    }
+
+                    onAscendingChanged: function(ascending) {
+                        player.setPlaylistSortAscending(ascending)
+                        if (playlistsView.selectedPlaylistId >= 0) {
+                            player.sortPlaylist(playlistsView.selectedPlaylistId)
+                            playlistsView.playlistTracks = player.tracksForPlaylist(
+                                playlistsView.selectedPlaylistId)
+                        }
+                    }
+                }
+
+                // Overflow
+                Rectangle {
+                    width: 36
+                    height: 36
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.06)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⋯"
+                        font.pixelSize: 16
+                        color: playlistsView.theme.mutedText
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: playlistOverflowMenu.open()
+                    }
+                }
             }
         }
 
-        // Action bar
-        Item {
-            id: actionBar
-            anchors.top: playlistHeader.bottom
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 8
-            height: 36
-
-            // Play All
-            Rectangle {
-                anchors.left: parent.left
-                width: parent.width / 2 - 4
-                height: parent.height
-                radius: 8
-                color: Qt.rgba(
-                    playlistsView.theme.accentColor.r,
-                    playlistsView.theme.accentColor.g,
-                    playlistsView.theme.accentColor.b, 0.15)
-
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 6
-
-                    Text {
-                        text: "▶"
-                        font.pixelSize: 12
-                        color: playlistsView.theme.accentColor
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: "Play All"
-                        font.pixelSize: 12
-                        color: playlistsView.theme.accentColor
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        player.openPlaylistInNewQueue(
-                            playlistsView.selectedPlaylistId,
-                            playlistsView.selectedPlaylistName)
-                    }
-                }
-            }
-
-            // Sort bar
-            SortBar {
-                id: playlistSortBar
-                anchors.right: parent.right
-                width: parent.width / 2 - 4
-                height: parent.height
-                theme: playlistsView.theme
-                sortOptions: playlistsView.trackSortOptions
-                currentSort: player.playlistSort
-                currentAscending: player.playlistSortAscending
-
-                onSortChanged: function(value, label) {
-                    player.setPlaylistSort(value)
-                    if (playlistsView.selectedPlaylistId !== -1) {
-                        player.sortPlaylist(playlistsView.selectedPlaylistId)
-                        playlistsView.playlistTracks = player.tracksForPlaylist(
-                            playlistsView.selectedPlaylistId)
-                    }
-                }
-
-                onAscendingChanged: function(ascending) {
-                    player.setPlaylistSortAscending(ascending)
-                    if (playlistsView.selectedPlaylistId !== -1) {
-                        player.sortPlaylist(playlistsView.selectedPlaylistId)
-                        playlistsView.playlistTracks = player.tracksForPlaylist(
-                            playlistsView.selectedPlaylistId)
-                    }
-                }
-            }
+        ContextMenu {
+            id: playlistOverflowMenu
+            theme: playlistsView.theme
+            title: "Playlist options"
+            actions: [
+                { label: "Share songs",     icon: "🔗", disabled: true },
+                { label: "Export as .M3U",  icon: "⬇",  disabled: true },
+                { label: "Select multiple", icon: "☑",  disabled: true }
+            ]
         }
 
         // Track list
