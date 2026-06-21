@@ -162,7 +162,8 @@ public:
     Q_INVOKABLE void toggleShuffle();
 
     Q_INVOKABLE void openFilesInNewQueue(const QStringList &filePaths,
-                                         const QString &name = QString());    Q_INVOKABLE void addTrackToActiveQueue(const QString &filePath);
+                                         const QString &name = QString(), bool shuffle = false);
+    Q_INVOKABLE void addTrackToActiveQueue(const QString &filePath);
     Q_INVOKABLE void switchToQueue(int index);
     Q_INVOKABLE void closeQueue(int index);
     Q_INVOKABLE void renameQueue(int index, const QString &name);

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import "albums"
+import "../"
 
 Item {
     id: albumsView
@@ -36,72 +37,108 @@ Item {
         { label: "Play Count",   value: 11 }
     ]
 
-    // ── Search bar ─────────────────────────────────────────────
-    Rectangle {
-        id: searchBar
+    function formatTotalDuration(tracks) {
+        let totalMs = 0
+        for (let i = 0; i < tracks.length; i++)
+            totalMs += tracks[i].duration
+
+        let totalSeconds = Math.floor(totalMs / 1000)
+        let hours = Math.floor(totalSeconds / 3600)
+        let minutes = Math.floor((totalSeconds % 3600) / 60)
+        let seconds = totalSeconds % 60
+        let mm = (hours > 0 && minutes < 10) ? "0" + minutes : minutes
+        let ss = seconds < 10 ? "0" + seconds : seconds
+        return hours > 0 ? (hours + ":" + mm + ":" + ss) : (minutes + ":" + ss)
+    }
+
+    // ── Top bar: search + sort + settings ───────────────────────
+    Item {
+        id: topBar
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: 8
         height: 36
-        radius: 8
-        color: Qt.rgba(1, 1, 1, 0.06)
         visible: albumsView.selectedAlbum === ""
 
         Row {
             anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 6
+            spacing: 8
 
-            Text {
-                text: "⌕"
-                font.pixelSize: 16
-                color: albumsView.theme.mutedText
-                anchors.verticalCenter: parent.verticalCenter
+            Rectangle {
+                width: parent.width - 36 - 36 - 16
+                height: 36
+                radius: 8
+                color: Qt.rgba(1, 1, 1, 0.06)
+
+                Row {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    spacing: 6
+
+                    Text {
+                        text: "⌕"
+                        font.pixelSize: 16
+                        color: albumsView.theme.mutedText
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+
+                    TextField {
+                        width: parent.width - 26
+                        anchors.verticalCenter: parent.verticalCenter
+                        font.pixelSize: 12
+                        color: albumsView.theme.primaryText
+                        placeholderText: "Search an album..."
+                        placeholderTextColor: albumsView.theme.mutedText
+                        background: Item {}
+                        onTextChanged: albumsView.searchQuery = text.toLowerCase()
+                    }
+                }
             }
 
-            TextField {
-                width: parent.width - 26
-                anchors.verticalCenter: parent.verticalCenter
-                font.pixelSize: 12
-                color: albumsView.theme.primaryText
-                placeholderText: "Search albums..."
-                placeholderTextColor: albumsView.theme.mutedText
-                background: Item {}
-                onTextChanged: albumsView.searchQuery = text.toLowerCase()
+            SortIconButton {
+                theme: albumsView.theme
+                sortOptions: albumsView.albumSortOptions
+                currentSort: player.albumSort
+                currentAscending: player.albumSortAscending
+
+                onSortChanged: function(value, label) {
+                    player.setAlbumSort(value)
+                }
+                onAscendingChanged: function(ascending) {
+                    player.setAlbumSortAscending(ascending)
+                }
             }
-        }
-    }
 
-    // ── Album sort bar ─────────────────────────────────────────
-    SortBar {
-        id: albumSortBar
-        anchors.top: searchBar.bottom
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.leftMargin: 8
-        anchors.rightMargin: 8
-        anchors.topMargin: 4
-        visible: albumsView.selectedAlbum === ""
-        theme: albumsView.theme
-        sortOptions: albumsView.albumSortOptions
-        currentSort: player.albumSort
-        currentAscending: player.albumSortAscending
+            Rectangle {
+                width: 36
+                height: 36
+                radius: 8
+                color: Qt.rgba(1, 1, 1, 0.06)
 
-        onSortChanged: function(value, label) {
-            player.setAlbumSort(value)
-        }
+                Text {
+                    anchors.centerIn: parent
+                    text: "⚙"
+                    font.pixelSize: 16
+                    color: albumsView.theme.mutedText
+                }
 
-        onAscendingChanged: function(ascending) {
-            player.setAlbumSortAscending(ascending)
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        // Stage 2: album view options dialog — not yet implemented
+                    }
+                }
+            }
         }
     }
 
     // ── Album grid ─────────────────────────────────────────────
     AlbumGrid {
         id: grid
-        anchors.top: albumSortBar.bottom
+        anchors.top: topBar.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -162,82 +199,156 @@ Item {
             }
         }
 
-        // Action bar — Play All | Sort
-        Item {
-            id: actionBar
+        // ── Artist chip row ──────────────────────────────────────
+        property var albumArtists: {
+            let seen = []
+            for (let i = 0; i < albumsView.albumTracks.length; i++) {
+                let a = albumsView.albumTracks[i].artist
+                if (a && seen.indexOf(a) === -1) seen.push(a)
+            }
+            return seen
+        }
+
+        Text {
+            id: artistsLabel
             anchors.top: albumHeader.bottom
             anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.margins: 8
-            height: 36
+            anchors.topMargin: 10
+            anchors.leftMargin: 12
+            text: "Artists"
+            font.pixelSize: 11
+            color: albumsView.theme.mutedText
+        }
 
-            // Play All
-            Rectangle {
-                anchors.left: parent.left
-                width: parent.width / 2 - 4
-                height: parent.height
-                radius: 8
-                color: Qt.rgba(
-                    albumsView.theme.accentColor.r,
-                    albumsView.theme.accentColor.g,
-                    albumsView.theme.accentColor.b, 0.15)
+        Row {
+            id: artistChips
+            anchors.top: artistsLabel.bottom
+            anchors.left: parent.left
+            anchors.topMargin: 6
+            anchors.leftMargin: 12
+            spacing: 8
 
-                Row {
-                    anchors.centerIn: parent
-                    spacing: 6
+            Repeater {
+                model: parent.parent.albumArtists
+
+                Rectangle {
+                    height: 36
+                    width: chipText.implicitWidth + 24
+                    radius: 8
+                    color: "transparent"
+                    border.color: Qt.rgba(1, 1, 1, 0.15)
+                    border.width: 1
 
                     Text {
-                        text: "▶"
+                        id: chipText
+                        anchors.centerIn: parent
+                        text: modelData
                         font.pixelSize: 12
-                        color: albumsView.theme.accentColor
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    Text {
-                        text: "Play All"
-                        font.pixelSize: 12
-                        color: albumsView.theme.accentColor
-                        anchors.verticalCenter: parent.verticalCenter
+                        color: albumsView.theme.primaryText
                     }
                 }
+            }
+        }
 
-                MouseArea {
-                    anchors.fill: parent
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (player.isAlbumActiveQueue(albumsView.selectedAlbum)) {
-                            player.jumpToTrack(0)
-                        } else {
+        // ── Summary line ──────────────────────────────────────────
+        Text {
+            id: summaryLine
+            anchors.top: artistChips.bottom
+            anchors.left: parent.left
+            anchors.topMargin: 10
+            anchors.leftMargin: 12
+            text: albumsView.albumTracks.length + " songs · " +
+                  albumsView.formatTotalDuration(albumsView.albumTracks)
+            font.pixelSize: 11
+            color: albumsView.theme.mutedText
+        }
+
+        // ── Action bar — shuffle | sort ────────────────────────────
+        Item {
+            id: actionBar
+            anchors.top: summaryLine.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.topMargin: 10
+            anchors.leftMargin: 8
+            anchors.rightMargin: 8
+            height: 36
+
+            Row {
+                anchors.right: parent.right
+                spacing: 8
+
+                Rectangle {
+                    width: 36
+                    height: 36
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.06)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⤨"
+                        font.pixelSize: 15
+                        color: albumsView.theme.mutedText
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
                             let paths = albumsView.albumTracks.map(t => t.path)
-                            player.openFilesInNewQueue(paths, albumsView.selectedAlbum)
+                            player.openFilesInNewQueue(paths, albumsView.selectedAlbum, true)
                         }
                     }
                 }
-            }
 
-            // Track sort bar
-            SortBar {
-                id: trackSortBar
-                anchors.right: parent.right
-                width: parent.width / 2 - 4
-                height: parent.height
-                theme: albumsView.theme
-                sortOptions: albumsView.trackSortOptions
-                currentSort: player.trackSort
-                currentAscending: player.trackSortAscending
+                SortIconButton {
+                    theme: albumsView.theme
+                    sortOptions: albumsView.trackSortOptions
+                    currentSort: player.trackSort
+                    currentAscending: player.trackSortAscending
 
-                onSortChanged: function(value, label) {
-                    player.setTrackSort(value)
-                    albumsView.albumTracks = player.tracksForAlbum(
-                        albumsView.selectedAlbum)
+                    onSortChanged: function(value, label) {
+                        player.setTrackSort(value)
+                        albumsView.albumTracks = player.tracksForAlbum(albumsView.selectedAlbum)
+                    }
+                    onAscendingChanged: function(ascending) {
+                        player.setTrackSortAscending(ascending)
+                        albumsView.albumTracks = player.tracksForAlbum(albumsView.selectedAlbum)
+                    }
                 }
 
-                onAscendingChanged: function(ascending) {
-                    player.setTrackSortAscending(ascending)
-                    albumsView.albumTracks = player.tracksForAlbum(
-                        albumsView.selectedAlbum)
+                Rectangle {
+                    id: albumOverflowBtn
+                    width: 36
+                    height: 36
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.06)
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "⋯"
+                        font.pixelSize: 16
+                        color: albumsView.theme.mutedText
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: albumOverflowMenu.open()
+                    }
                 }
             }
+        }
+
+        ContextMenu {
+            id: albumOverflowMenu
+            theme: albumsView.theme
+            title: "Album options"
+            actions: [
+                { label: "Share songs",     icon: "🔗", disabled: true },
+                { label: "Export as .M3U",  icon: "⬇",  disabled: true },
+                { label: "Select multiple", icon: "☑",  disabled: true }
+            ]
         }
 
         // Track list

@@ -83,6 +83,8 @@ public:
     void sortTracks(Library::TrackSort sort, bool ascending);
     void reverseTracks();
 
+    void addTracksBatch(const QStringList &filePaths, bool autoPlayFirst = false);
+
 signals:
     void trackChanged();
     void queueChanged();

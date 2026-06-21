@@ -418,7 +418,7 @@ void Player::toggleShuffle()
 // --- Multi-queue actions ---
 
 void Player::openFilesInNewQueue(const QStringList &filePaths,
-                                 const QString &name)
+                                 const QString &name, bool shuffle)
 {
     if (filePaths.isEmpty())
         return;
@@ -429,6 +429,8 @@ void Player::openFilesInNewQueue(const QStringList &filePaths,
     QString queueName = name.isEmpty() ? generateQueueName() : name;
     Queue *newQueue = new Queue(queueName, this);
     newQueue->setVolume(m_volume);
+    if (shuffle)
+        newQueue->toggleShuffle();
     // Destroy playback on previously active queue
     if (Queue *current = activeQueue())
         current->destroyPlayback();
@@ -436,8 +438,7 @@ void Player::openFilesInNewQueue(const QStringList &filePaths,
     connectQueueSignals(newQueue);
     connectPlaybackSignals(newQueue);
 
-    for (int i = 0; i < filePaths.size(); ++i)
-        newQueue->addTrack(filePaths.at(i), i == 0);
+    newQueue->addTracksBatch(filePaths, true);
 
     m_queues.append(newQueue);
     m_activeQueueIndex = m_queues.size() - 1;

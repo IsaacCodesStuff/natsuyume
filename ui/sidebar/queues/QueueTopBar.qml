@@ -15,10 +15,13 @@ Item {
     property bool dropdownOpen: false
 
     function formatDuration(ms) {
-        let totalMinutes = Math.floor(ms / 60000)
-        let hours = Math.floor(totalMinutes / 60)
-        let minutes = totalMinutes % 60
-        return hours > 0 ? (hours + "h " + minutes + "m") : (minutes + "m")
+        let totalSeconds = Math.floor(ms / 1000)
+        let hours = Math.floor(totalSeconds / 3600)
+        let minutes = Math.floor((totalSeconds % 3600) / 60)
+        let seconds = totalSeconds % 60
+        let mm = (hours > 0 && minutes < 10) ? "0" + minutes : minutes
+        let ss = seconds < 10 ? "0" + seconds : seconds
+        return hours > 0 ? (hours + ":" + mm + ":" + ss) : (minutes + ":" + ss)
     }
 
     QueueSortMenu {
@@ -172,7 +175,7 @@ Item {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: player.trackCount + " / " + player.trackCount
+                        text: (player.trackIndex + 1) + " / " + player.trackCount
                         font.pixelSize: 11
                         color: queueTopBar.mutedText
                         horizontalAlignment: Text.AlignHCenter

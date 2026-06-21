@@ -470,3 +470,27 @@ void Queue::reverseTracks()
 
     emit queueChanged();
 }
+
+void Queue::addTracksBatch(const QStringList &filePaths, bool autoPlayFirst)
+{
+    for (const QString &path : filePaths) {
+        Track track = Metadata::read(path, false);
+        m_tracks.append(track);
+    }
+
+    if (m_tracks.isEmpty()) return;
+
+    if (m_shuffled)
+        generateShuffleOrder();
+
+    if (m_currentTrackIndex < 0) {
+        int startIndex = (m_shuffled && !m_shuffleOrder.isEmpty())
+        ? m_shuffleOrder.first()
+        : 0;
+        m_currentTrackIndex = startIndex;
+        if (m_playback)
+            m_playback->loadTrack(m_tracks.at(startIndex), autoPlayFirst);
+    }
+
+    emit queueChanged();
+}
