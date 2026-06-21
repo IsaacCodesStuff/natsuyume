@@ -94,6 +94,14 @@ Player::~Player()
 
 Queue *Player::activeQueue() const
 {
+    // "active" for playback purposes = the queue that owns live Playback
+    if (m_playingQueueIndex < 0 || m_playingQueueIndex >= m_queues.size())
+        return nullptr;
+    return m_queues.at(m_playingQueueIndex);
+}
+
+Queue *Player::viewedQueue() const
+{
     if (m_activeQueueIndex < 0 || m_activeQueueIndex >= m_queues.size())
         return nullptr;
     return m_queues.at(m_activeQueueIndex);
@@ -422,35 +430,28 @@ void Player::openFilesInNewQueue(const QStringList &filePaths,
 {
     if (filePaths.isEmpty())
         return;
-
     if (Queue *current = activeQueue())
         current->saveState();
-
     QString queueName = name.isEmpty() ? generateQueueName() : name;
     Queue *newQueue = new Queue(queueName, this);
     newQueue->setVolume(m_volume);
     if (shuffle)
         newQueue->toggleShuffle();
-    // Destroy playback on previously active queue
+    // Destroy playback on previously playing queue
     if (Queue *current = activeQueue())
         current->destroyPlayback();
     newQueue->initPlayback();
     connectQueueSignals(newQueue);
     connectPlaybackSignals(newQueue);
-
     newQueue->addTracksBatch(filePaths, true);
-
     m_queues.append(newQueue);
-    m_activeQueueIndex = m_queues.size() - 1;
+    m_activeQueueIndex  = m_queues.size() - 1;
+    m_playingQueueIndex = m_activeQueueIndex;
 
     if (m_coverImageProvider) {
         m_coverImageProvider->updateCover(QImage());
         emit coverArtChanged();
     }
-
-    connect(newQueue->playback(), &Playback::readyToPlay, this, [newQueue]() {
-        newQueue->play();
-    }, Qt::SingleShotConnection);
 
     emit queuesChanged();
     emit trackChanged();
@@ -470,60 +471,46 @@ void Player::addTrackToActiveQueue(const QString &filePath)
 
 void Player::switchToQueue(int index)
 {
-    if (Queue *current = activeQueue()) {
-        current->saveState();
-        current->destroyPlayback();
-    }
-
-    m_activeQueueIndex = index;
-
-    // Activate new queue
-    m_queues.at(index)->initPlayback();
-    connectPlaybackSignals(m_queues.at(index));
-    m_queues.at(index)->restoreState();
-
-    // Clear cover immediately before new queue restores
-    if (m_coverImageProvider) {
-        m_coverImageProvider->updateCover(QImage());
-        emit coverArtChanged();
-    }
-
-    emit queuesChanged();
-    emit isPlayingChanged();
-    emit positionChanged();
-    emit durationChanged();
-    rebuildLyricLines();       // ← add
-    emit metadataChanged();
-    emit trackChanged();
-    emit isFavoriteChanged();
+    viewQueue(index);
 }
 
 void Player::closeQueue(int index)
 {
+    qDebug() << "closeQueue CALLED. index=" << index << "playingQueueIndex=" << m_playingQueueIndex << "activeQueueIndex=" << m_activeQueueIndex;
     if (index < 0 || index >= m_queues.size())
         return;
 
-    bool deletingActive = (index == m_activeQueueIndex);
+    bool deletingActive  = (index == m_activeQueueIndex);
+    bool deletingPlaying = (index == m_playingQueueIndex);
 
     Queue *toDelete = m_queues.takeAt(index);
     toDelete->pause();
     toDelete->deleteLater();
 
     if (m_queues.isEmpty()) {
-        m_activeQueueIndex = -1;
-    } else if (m_activeQueueIndex >= m_queues.size()) {
-        m_activeQueueIndex = m_queues.size() - 1;
-    } else if (index < m_activeQueueIndex) {
-        m_activeQueueIndex--;
+        m_activeQueueIndex  = -1;
+        m_playingQueueIndex = -1;
+    } else {
+        if (m_activeQueueIndex >= m_queues.size())
+            m_activeQueueIndex = m_queues.size() - 1;
+        else if (index < m_activeQueueIndex)
+            m_activeQueueIndex--;
+
+        if (deletingPlaying) {
+            // The playing queue itself was removed — nothing plays until the user picks one.
+            m_playingQueueIndex = -1;
+        } else if (index < m_playingQueueIndex) {
+            m_playingQueueIndex--;
+        }
+        // else: playingQueueIndex was already < the closed index, or queues.size()
+        // shrank in a way that doesn't affect it — leave it as-is.
     }
 
-    // Only restore state if we deleted the active queue
-    // and need to switch to a different one
-    if (!deletingActive) {
-        // Active queue is still playing — don't touch it
+    // Only restore playback if we deleted the queue that was playing
+    if (!deletingPlaying) {
         emit queuesChanged();
         emit trackChanged();
-        rebuildLyricLines();       // ← add
+        rebuildLyricLines();
         emit metadataChanged();
         emit isPlayingChanged();
         emit positionChanged();
@@ -532,18 +519,23 @@ void Player::closeQueue(int index)
         return;
     }
 
-    // We deleted the active queue — restore the new active one
-    if (Queue *q = activeQueue()) {
-        q->initPlayback();
-        connectPlaybackSignals(q);
-        q->restoreState();
+    // We deleted the playing queue — promote whichever queue shifted up
+    // into its old slot (the one that was right below it), matching
+    // Musicolet's behavior. Fall back to the one above if it was last.
+    if (!m_queues.isEmpty()) {
+        int promoteIndex = qBound(0, index, m_queues.size() - 1);
+        m_playingQueueIndex = promoteIndex;
+        Queue *promoted = m_queues.at(promoteIndex);
+        promoted->initPlayback();
+        connectPlaybackSignals(promoted);
+        promoted->restoreState();
     }
 
     emit queuesChanged();
     emit isPlayingChanged();
     emit positionChanged();
     emit durationChanged();
-    rebuildLyricLines();       // ← add
+    rebuildLyricLines();
     emit metadataChanged();
     emit trackChanged();
     emit isFavoriteChanged();
@@ -576,14 +568,31 @@ void Player::toggleFavorite()
 
 void Player::jumpToTrack(int index)
 {
-    if (Queue *q = activeQueue())
-        q->loadTrackAt(index);
+    qDebug() << "jumpToTrack CALLED. index=" << index
+             << "activeQueueIndex=" << m_activeQueueIndex
+             << "playingQueueIndex=" << m_playingQueueIndex;
+    Queue *viewed = viewedQueue();
+    if (!viewed) return;
+
+    if (m_playingQueueIndex != m_activeQueueIndex) {
+        // Transfer playback to the viewed queue
+        if (Queue *oldPlaying = activeQueue()) {
+            oldPlaying->saveState();
+            oldPlaying->destroyPlayback();
+        }
+        m_playingQueueIndex = m_activeQueueIndex;
+        viewed->initPlayback();
+        connectPlaybackSignals(viewed);
+        emit queuesChanged(); // playing queue changed — refresh play indicator
+    }
+
+    viewed->loadTrackAt(index);
 }
 
 QVariantList Player::trackList() const
 {
     QVariantList list;
-    Queue *q = activeQueue();
+    Queue *q = viewedQueue();
     if (!q) return list;
 
     for (int i = 0; i < q->trackCount(); i++) {
@@ -601,7 +610,7 @@ QVariantList Player::trackList() const
 
 void Player::removeTrackAt(int index)
 {
-    if (Queue *q = activeQueue())
+    if (Queue *q = viewedQueue())
         q->removeTrack(index);
 }
 
@@ -701,7 +710,7 @@ void Player::setTrackSortAscending(bool ascending)
 }
 void Player::moveTrack(int from, int to)
 {
-    if (Queue *q = activeQueue())
+    if (Queue *q = viewedQueue())
         q->moveTrack(from, to);
 }
 
@@ -724,17 +733,23 @@ bool Player::isAlbumActiveQueue(const QString &album) const
 
 void Player::jumpToTrackByPath(const QString &path)
 {
-    Queue *q = activeQueue();
-    if (!q) return;
-    for (int i = 0; i < q->trackCount(); i++) {
-        if (q->trackAt(i).path == path) {
-            q->loadTrackAt(i);
-            return;
+    Queue *viewed = viewedQueue();
+    if (!viewed) return;
+
+    int foundIndex = -1;
+    for (int i = 0; i < viewed->trackCount(); i++) {
+        if (viewed->trackAt(i).path == path) {
+            foundIndex = i;
+            break;
         }
     }
-    // Path not found in queue — add it and play
-    q->addTrack(path);
-    q->loadTrackAt(q->trackCount() - 1);
+
+    if (foundIndex < 0) {
+        viewed->addTrack(path);
+        foundIndex = viewed->trackCount() - 1;
+    }
+
+    jumpToTrack(foundIndex); // reuse the transfer logic above
 }
 
 void Player::addAlbumToQueue(const QString &album)
@@ -876,9 +891,10 @@ void Player::moveTrackInPlaylist(int playlistId, int from, int to)
 
 int Player::saveQueueAsPlaylist(const QString &name)
 {
-    if (!activeQueue()) return -1;
+    Queue *q = viewedQueue();
+    if (!q) return -1;
     QStringList paths;
-    for (const Track &t : activeQueue()->tracks())
+    for (const Track &t : q->tracks())
         paths << t.path;
     return m_library->saveQueueAsPlaylist(name, paths);
 }
@@ -1006,7 +1022,8 @@ void Player::loadQueues()
 
     if (m_queues.isEmpty()) return;
 
-    m_activeQueueIndex = activeIndex;
+    m_activeQueueIndex  = activeIndex;
+    m_playingQueueIndex = activeIndex;
 
     emit queuesChanged();
     emit trackChanged();
@@ -1020,7 +1037,6 @@ void Player::loadQueues()
     QTimer::singleShot(100, this, [this, activeIndex]() {
         if (activeIndex >= m_queues.size()) return;
         m_queues[activeIndex]->initPlayback();
-        qDebug() << "deferred init: wasPlaying=" << m_queues[activeIndex]->m_wasPlaying;
         connectPlaybackSignals(m_queues[activeIndex]);
         m_queues[activeIndex]->restoreState();
     });
@@ -1263,7 +1279,7 @@ void Player::moveQueue(int from, int to)
 
 void Player::sortActiveQueue(int sort, bool ascending)
 {
-    Queue *q = activeQueue();
+    Queue *q = viewedQueue();
     if (!q) return;
     q->sortTracks(static_cast<Library::TrackSort>(sort), ascending);
     emit trackChanged();
@@ -1271,7 +1287,7 @@ void Player::sortActiveQueue(int sort, bool ascending)
 
 void Player::reverseActiveQueue()
 {
-    Queue *q = activeQueue();
+    Queue *q = viewedQueue();
     if (!q) return;
     q->reverseTracks();
     emit trackChanged();
@@ -1279,7 +1295,7 @@ void Player::reverseActiveQueue()
 
 qint64 Player::queueTotalDuration() const
 {
-    Queue *q = activeQueue();
+    Queue *q = viewedQueue();
     if (!q) return 0;
     qint64 total = 0;
     for (const Track &t : q->tracks())
@@ -1307,4 +1323,27 @@ void Player::setArtistSortAscending(bool ascending)
     m_artistSortAscending = ascending;
     emit artistSortChanged();
     saveSettings();
+}
+
+int Player::playingQueueIndex() const { return m_playingQueueIndex; }
+
+void Player::viewQueue(int index)
+{
+    qDebug() << "viewQueue CALLED. index=" << index;
+    if (index < 0 || index >= m_queues.size()) return;
+    m_activeQueueIndex = index;
+    emit queuesChanged();
+    emit trackChanged();
+}
+
+int Player::viewedTrackIndex() const
+{
+    Queue *q = viewedQueue();
+    return q ? q->currentTrackIndex() : -1;
+}
+
+int Player::viewedTrackCount() const
+{
+    Queue *q = viewedQueue();
+    return q ? q->trackCount() : 0;
 }

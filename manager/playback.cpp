@@ -4,13 +4,21 @@
 Playback::Playback(QObject *parent)
     : QObject{parent}
 {
+    qDebug() << "Playback instance CREATED:" << this;
+
     m_player = new QMediaPlayer(this);
     m_audioOutput = new QAudioOutput(this);
     m_player->setAudioOutput(m_audioOutput);
 
     connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this]() {
+        qDebug() << "[" << this << "] playbackStateChanged ->" << m_player->playbackState();
         emit playbackStateChanged();
     });
+
+    connect(m_player, &QMediaPlayer::errorOccurred, this,
+            [this](QMediaPlayer::Error error, const QString &errorString) {
+                qDebug() << "[" << this << "] QMediaPlayer ERROR:" << error << errorString;
+            });
 
     connect(m_player, &QMediaPlayer::positionChanged, this, [this]() {
         emit positionChanged();
@@ -22,15 +30,13 @@ Playback::Playback(QObject *parent)
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this,
             [this](QMediaPlayer::MediaStatus status) {
-                if (status == QMediaPlayer::LoadingMedia) {
-                    m_sourceLoading = true;
-                }
                 if (status == QMediaPlayer::LoadedMedia) {
-                    if (!m_sourceLoading) {
-                        // Stale echo from the previous source — ignore
+                    // Only trust this event if it's actually reporting the source
+                    // we most recently asked for — ignore stale echoes from a
+                    // previous source's lifecycle.
+                    if (m_player->source() != m_expectedSource) {
                         return;
                     }
-                    m_sourceLoading = false;
                     if (m_pendingAutoPlay) {
                         m_pendingAutoPlay = false;
                         m_player->play();
@@ -42,15 +48,21 @@ Playback::Playback(QObject *parent)
             });
 }
 
-Playback::~Playback() {}
+Playback::~Playback()
+{
+    qDebug() << "Playback instance DESTROYED:" << this;
+}
 
 void Playback::play()
 {
+    qDebug() << "[" << this << "] Playback::play() CALLED. State before:" << m_player->playbackState();
     m_player->play();
+    qDebug() << "[" << this << "] State immediately after play():" << m_player->playbackState();
 }
 
 void Playback::pause()
 {
+    qDebug() << "[" << this << "] Playback::pause() CALLED. State before:" << m_player->playbackState();
     m_player->pause();
 }
 
@@ -64,8 +76,8 @@ void Playback::loadTrack(const Track &track, bool autoPlay)
     if (!track.isValid())
         return;
     m_pendingAutoPlay = autoPlay;
-    m_sourceLoading = false; // reset — only the next genuine LoadingMedia counts
-    m_player->setSource(QUrl::fromLocalFile(track.path));
+    m_expectedSource = QUrl::fromLocalFile(track.path);
+    m_player->setSource(m_expectedSource);
 }
 
 bool Playback::isPlaying() const

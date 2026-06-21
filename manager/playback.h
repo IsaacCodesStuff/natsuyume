@@ -41,7 +41,7 @@ private:
     QMediaPlayer *m_player;
     QAudioOutput *m_audioOutput;
     bool m_pendingAutoPlay = false;
-    bool m_sourceLoading = false;
+    QUrl m_expectedSource;
 };
 
 #endif // PLAYBACK_H

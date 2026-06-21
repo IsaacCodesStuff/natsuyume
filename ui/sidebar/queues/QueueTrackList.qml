@@ -130,8 +130,8 @@ Item {
                 duration:       modelData.duration
                 showAlbum:      true
                 showDragHandle: true
-                isCurrentTrack: index === player.trackIndex
-                isPlaying:      index === player.trackIndex && player.isPlaying
+                isCurrentTrack: (player.activeQueueIndex === player.playingQueueIndex) && index === player.viewedTrackIndex
+                isPlaying:      (player.activeQueueIndex === player.playingQueueIndex) && index === player.viewedTrackIndex && player.isPlaying
                 actions:        queueTrackList.trackActions(
                                     index, modelData.path, modelData.title)
 

@@ -175,7 +175,7 @@ Item {
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: (player.trackIndex + 1) + " / " + player.trackCount
+                        text: (player.viewedTrackIndex + 1) + " / " + player.viewedTrackCount
                         font.pixelSize: 11
                         color: queueTopBar.mutedText
                         horizontalAlignment: Text.AlignHCenter

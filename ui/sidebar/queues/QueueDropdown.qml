@@ -201,16 +201,32 @@ Item {
                             width: parent.width - 28 - 28 - 24 - 24
                             height: parent.height
 
-                            Text {
+                            Row {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: parent.width
-                                text: player.queueNames[index]
-                                font.pixelSize: 12
-                                color: index === player.activeQueueIndex
-                                       ? queueItemRoot.dropdown.accentColor
-                                       : queueItemRoot.dropdown.primaryText
-                                elide: Text.ElideRight
+                                spacing: 4
                                 visible: !queueItemRoot.isRenaming
+
+                                Text {
+                                    text: "▶"
+                                    font.pixelSize: 10
+                                    color: queueItemRoot.dropdown.accentColor
+                                    visible: index === player.playingQueueIndex
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    width: index === player.playingQueueIndex
+                                           ? parent.width - 16
+                                           : parent.width
+                                    text: player.queueNames[index]
+                                    font.pixelSize: 12
+                                    color: index === player.activeQueueIndex
+                                           ? queueItemRoot.dropdown.accentColor
+                                           : queueItemRoot.dropdown.primaryText
+                                    elide: Text.ElideRight
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
                             }
 
                             Rectangle {

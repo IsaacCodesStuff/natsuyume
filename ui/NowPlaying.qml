@@ -441,14 +441,5 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
-
-        Text {
-            text: player.trackCount > 1
-                  ? "Track " + (player.trackIndex + 1) + " of " + player.trackCount
-                  : ""
-            font.pixelSize: 12
-            color: mutedText
-            anchors.horizontalCenter: parent.horizontalCenter
-        }
     }
 }

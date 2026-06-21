@@ -147,8 +147,13 @@ Item {
         Connections {
             target: player
             function onPositionChanged() {
+                if (!player.lyricsAreSynced || !player.lyricLines || player.lyricLines.length === 0)
+                    return
+
                 for (let i = lyricsList.count - 1; i >= 0; i--) {
-                    if (player.position >= player.lyricLines[i].timestamp) {
+                    let line = player.lyricLines[i]
+                    if (!line) continue
+                    if (player.position >= line.timestamp) {
                         lyricsList.currentIndex = i
                         lyricsList.positionViewAtIndex(i, ListView.Center)
                         break

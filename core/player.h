@@ -43,6 +43,7 @@ class Player : public QObject
     Q_PROPERTY(int queueCount READ queueCount NOTIFY queuesChanged)
     Q_PROPERTY(int activeQueueIndex READ activeQueueIndex NOTIFY queuesChanged)
     Q_PROPERTY(QStringList queueNames READ queueNames NOTIFY queuesChanged)
+    Q_PROPERTY(int playingQueueIndex READ playingQueueIndex NOTIFY queuesChanged)
 
     // --- Repeat ---
     Q_PROPERTY(int repeatMode READ repeatMode NOTIFY repeatModeChanged)
@@ -93,6 +94,9 @@ class Player : public QObject
     Q_PROPERTY(QString trackPath READ trackPath NOTIFY metadataChanged)
 
     Q_PROPERTY(qint64 queueTotalDuration READ queueTotalDuration NOTIFY trackChanged)
+
+    Q_PROPERTY(int viewedTrackIndex READ viewedTrackIndex NOTIFY trackChanged)
+    Q_PROPERTY(int viewedTrackCount READ viewedTrackCount NOTIFY trackChanged)
 
 public:
     explicit Player(QObject *parent = nullptr);
@@ -254,6 +258,12 @@ public:
     static constexpr int kAllSongsPlaylistId = -2;
     static constexpr int kFavoritesPlaylistId = -3;
 
+    int playingQueueIndex() const;
+    Q_INVOKABLE void viewQueue(int index);
+
+    int viewedTrackIndex() const;
+    int viewedTrackCount() const;
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -283,11 +293,13 @@ signals:
 
 private:
     QList<Queue*> m_queues;
-    int m_activeQueueIndex;
+    int m_activeQueueIndex;   // which queue the UI is currently VIEWING
+    int m_playingQueueIndex = -1; // which queue actually owns live Playback
     float m_volume;
     QStringList m_favorites;
 
     Queue *activeQueue() const;
+    Queue *viewedQueue() const;
     QString generateQueueName() const;
     void connectQueueSignals(Queue *queue);
     void connectPlaybackSignals(Queue *queue);
