@@ -367,6 +367,33 @@ QStringList Library::allArtists() const
     return result;
 }
 
+QStringList Library::allArtists(ArtistSort sort, bool ascending) const
+{
+    QStringList result;
+    QSqlQuery q(m_db);
+
+    QString dir = ascending ? "ASC" : "DESC";
+    QString sortCol;
+    switch (sort) {
+    case ArtistSort::SongCount: sortCol = "COUNT(*)";        break;
+    case ArtistSort::Duration:  sortCol = "SUM(duration)";   break;
+    case ArtistSort::DateAdded: sortCol = "MAX(date_added)"; break;
+    case ArtistSort::Name:
+    default:                    sortCol = "artist";          break;
+    }
+
+    QString sql = QString(R"(
+        SELECT artist FROM tracks
+        GROUP BY artist
+        ORDER BY %1 %2
+    )").arg(sortCol, dir);
+
+    q.exec(sql);
+    while (q.next())
+        result.append(q.value(0).toString());
+    return result;
+}
+
 bool Library::containsPath(const QString &path) const
 {
     QReadLocker locker(&m_cacheLock);

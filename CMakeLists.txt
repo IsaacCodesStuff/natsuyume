@@ -55,7 +55,7 @@ qt_add_qml_module(appnatsuyume_player
         QML_FILES ui/QueuePicker.qml
         QML_FILES ui/sidebar/queues/QueueSortMenu.qml
         QML_FILES ui/sidebar/queues/SaveAsPlaylistDialog.qml
-        QML_FILES ui/SortIconButton.qml
+        QML_FILES
 )
 
 set_target_properties(appnatsuyume_player PROPERTIES

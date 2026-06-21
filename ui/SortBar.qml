@@ -21,8 +21,16 @@ Item {
     required property var   sortOptions
     required property int   currentSort
     required property bool  currentAscending
+    property bool iconOnly: false
 
-    property string currentLabel: sortOptions.length > 0 ? sortOptions[0].label : ""
+    readonly property string currentLabel: {
+        if (!sortOptions || sortOptions.length === 0) return ""
+        for (let i = 0; i < sortOptions.length; i++) {
+            if (sortOptions[i].value === currentSort)
+                return sortOptions[i].label
+        }
+        return sortOptions[0].label
+    }
 
     signal sortChanged(int value, string label)
     signal ascendingChanged(bool ascending)
@@ -46,14 +54,15 @@ Item {
         }
 
         Row {
-            anchors.fill: parent
-            anchors.leftMargin: 10
-            anchors.rightMargin: 10
-            spacing: 6
+            anchors.centerIn: sortBar.iconOnly ? parent : undefined
+            anchors.fill: sortBar.iconOnly ? undefined : parent
+            anchors.leftMargin: sortBar.iconOnly ? 0 : 10
+            anchors.rightMargin: sortBar.iconOnly ? 0 : 10
+            spacing: sortBar.iconOnly ? 0 : 6
 
             Text {
                 text: "⇅"
-                font.pixelSize: 13
+                font.pixelSize: sortBar.iconOnly ? 16 : 13
                 color: dropdown.opened ? sortBar.accentColor : sortBar.mutedText
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -64,7 +73,8 @@ Item {
                 color: dropdown.opened ? sortBar.accentColor : sortBar.mutedText
                 anchors.verticalCenter: parent.verticalCenter
                 elide: Text.ElideRight
-                width: parent.width - 36
+                width: sortBar.iconOnly ? 0 : parent.width - 36
+                visible: !sortBar.iconOnly
             }
         }
 
@@ -82,7 +92,7 @@ Item {
         focus: true
         anchors.centerIn: Overlay.overlay
         width: 280
-        height: Math.min(400, 36 + 1 + (sortBar.sortOptions.length * 38) + 24)
+        height: Math.min(440, 44 + 36 + 1 + (sortBar.sortOptions.length * 38) + 24)
         padding: 0
 
         background: Rectangle {
@@ -216,7 +226,6 @@ Item {
                                 onExited:  parent.hovered = false
                                 onClicked: {
                                     sortBar.sortChanged(modelData.value, modelData.label)
-                                    sortBar.currentLabel = modelData.label
                                     dropdown.close()
                                 }
                             }

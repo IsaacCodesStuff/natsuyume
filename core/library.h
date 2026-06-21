@@ -30,6 +30,12 @@ public:
     enum class AlbumSort {
         Name, Artist, AlbumArtist, Year, SongCount, Duration, Composer, DateAdded
     };
+
+    // --- Artist sort options ---
+    enum class ArtistSort {
+        Name, SongCount, Duration, DateAdded
+    };
+
     // --- Track sort options ---
     enum class TrackSort {
         TrackNumber, Title, Artist, AlbumArtist, Year, Duration, Genre,
@@ -58,6 +64,7 @@ public:
     QStringList  allAlbums(AlbumSort sort = AlbumSort::Name,
                           bool ascending = true) const;
     QStringList  allArtists() const;
+    QStringList  allArtists(ArtistSort sort, bool ascending) const;
     bool         containsPath(const QString &path) const;
     QStringList  albumsForArtist(const QString &artist) const;
 

@@ -1046,6 +1046,11 @@ void Player::loadSettings()
         s.value("sort/playlistSort", 0).toInt());
     m_playlistSortAscending = s.value("sort/playlistSortAscending", true).toBool();
 
+    m_artistSortAscending = s.value("sort/artistSortAscending", true).toBool();
+
+    m_artistSort = static_cast<Library::ArtistSort>(s.value("sort/artistSort", 0).toInt());
+    m_artistSortAscending = s.value("sort/artistSortAscending", true).toBool();
+
     emit scanFoldersChanged();
     emit volumeChanged();
     emit playCountThresholdChanged();
@@ -1066,6 +1071,9 @@ void Player::saveSettings()
     s.setValue("sort/trackSortAscending",    m_trackSortAscending);
     s.setValue("sort/playlistSort",          static_cast<int>(m_playlistSort));
     s.setValue("sort/playlistSortAscending", m_playlistSortAscending);
+    s.setValue("sort/artistSortAscending", m_artistSortAscending);
+    s.setValue("sort/artistSort", static_cast<int>(m_artistSort));
+    s.setValue("sort/artistSortAscending", m_artistSortAscending);
 }
 
 QStringList Player::scanFolders() const { return m_scanFolders; }
@@ -1269,4 +1277,26 @@ qint64 Player::queueTotalDuration() const
     for (const Track &t : q->tracks())
         total += t.duration;
     return total;
+}
+
+QStringList Player::allArtistsSorted() const
+{
+    return m_library->allArtists(m_artistSort, m_artistSortAscending);
+}
+
+int Player::artistSort() const { return static_cast<int>(m_artistSort); }
+bool Player::artistSortAscending() const { return m_artistSortAscending; }
+
+void Player::setArtistSort(int sort)
+{
+    m_artistSort = static_cast<Library::ArtistSort>(sort);
+    emit artistSortChanged();
+    saveSettings();
+}
+
+void Player::setArtistSortAscending(bool ascending)
+{
+    m_artistSortAscending = ascending;
+    emit artistSortChanged();
+    saveSettings();
 }

@@ -201,6 +201,12 @@ public:
 
     Q_INVOKABLE QStringList albumsForArtist(const QString &artist) const;
 
+    Q_INVOKABLE QStringList allArtistsSorted() const;
+    Q_INVOKABLE int artistSort() const;
+    Q_INVOKABLE bool artistSortAscending() const;
+    Q_INVOKABLE void setArtistSort(int sort);
+    Q_INVOKABLE void setArtistSortAscending(bool ascending);
+
     // --- Playlists ---
     Q_INVOKABLE QVariantList allPlaylists() const;
     Q_INVOKABLE int          createPlaylist(const QString &name);
@@ -270,6 +276,7 @@ signals:
     void playCountThresholdChanged();
     void stopAfterCurrentChanged();
     void addToQueueRequested(QStringList paths);
+    void artistSortChanged();
 
 private:
     QList<Queue*> m_queues;
@@ -313,6 +320,9 @@ private:
     int         m_playCountThreshold = 10;
 
     qint64 queueTotalDuration() const;
+
+    bool m_artistSortAscending = true;
+    Library::ArtistSort m_artistSort = Library::ArtistSort::Name;
 };
 
 #endif // PLAYER_H

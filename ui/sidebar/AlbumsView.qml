@@ -97,7 +97,10 @@ Item {
                 }
             }
 
-            SortIconButton {
+            SortBar {
+                width: 36
+                height: 36
+                iconOnly: true
                 theme: albumsView.theme
                 sortOptions: albumsView.albumSortOptions
                 currentSort: player.albumSort
@@ -301,7 +304,10 @@ Item {
                     }
                 }
 
-                SortIconButton {
+                SortBar {
+                    width: 36
+                    height: 36
+                    iconOnly: true
                     theme: albumsView.theme
                     sortOptions: albumsView.trackSortOptions
                     currentSort: player.trackSort
