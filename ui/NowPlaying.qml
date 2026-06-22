@@ -32,16 +32,10 @@ Item {
     Item {
         id: artArea
         width: artSize
-        height: (nowPlaying.showLyricsInArtArea && !theme.isDesktop)
-                ? artSize * 1.6    // taller when showing lyrics
-                : artSize
+        height: artSize
         anchors.top: parent.top
         anchors.topMargin: 24
         anchors.horizontalCenter: parent.horizontalCenter
-
-        Behavior on height {
-            NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
-        }
 
         // Album art
         Rectangle {
@@ -84,11 +78,7 @@ Item {
             artMode: true
             visible: nowPlaying.showLyricsInArtArea && !theme.isDesktop
 
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: nowPlaying.showLyricsInArtArea = false
-            }
+            onCloseRequested: nowPlaying.showLyricsInArtArea = false
         }
     }
 

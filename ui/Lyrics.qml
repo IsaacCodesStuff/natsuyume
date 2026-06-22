@@ -1,99 +1,150 @@
 import QtQuick
 import QtQuick.Controls
 
-// Lyrics — two modes:
-//
-//   overlayMode: false — desktop column, sits alongside NowPlaying
-//   overlayMode: true  — overlay covering NowPlaying on tablet + mobile,
-//                        with playback controls replicated at the bottom
-//
-// Required properties:
-//   theme  — reference to root Window for palette access
-//   player — the Player instance
-//
-// Signal:
-//   closeRequested — emitted when user taps close in overlay mode
-
 Item {
     id: lyrics
 
     required property var  theme
     required property var  player
     required property bool overlayMode
-    property bool artMode: false      // ← add this — replaces album art, no controls
+    property bool artMode: false
 
     signal closeRequested
 
-    readonly property color bgColor:       theme.bgColor
-    readonly property color surfaceColor:  theme.surfaceColor
-    readonly property color primaryText:   theme.primaryText
-    readonly property color secondaryText: theme.secondaryText
-    readonly property color mutedText:     theme.mutedText
-    readonly property color accentColor:   theme.accentColor
+    readonly property color bgColor:      theme.bgColor
+    readonly property color surfaceColor: theme.surfaceColor
+    readonly property color primaryText:  theme.primaryText
+    readonly property color secondaryText:theme.secondaryText
+    readonly property color mutedText:    theme.mutedText
+    readonly property color accentColor:  theme.accentColor
+
+    // Text size state — toggled by Tt button
+    property bool largeText: false
+    readonly property int baseFontSize:    largeText ? 16 : 13
+    readonly property int currentFontSize: largeText ? 19 : 15
 
     // ── Desktop column background ──────────────────────────────
     Rectangle {
         anchors.fill: parent
         color: surfaceColor
-        visible: !overlayMode && !artMode    // ← add && !artMode
+        visible: !overlayMode && !artMode
     }
 
     // ── Overlay background ─────────────────────────────────────
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(0.27, 0.09, 0.18, 0.96)
-        visible: overlayMode && !artMode     // ← add && !artMode
-        radius: 16
+        color: Qt.rgba(
+            lyrics.theme.bgColor.r * 0.6,
+            lyrics.theme.bgColor.g * 0.6,
+            lyrics.theme.bgColor.b * 0.6,
+            0.97)
+        visible: overlayMode && !artMode
+        radius: overlayMode ? 0 : 0
     }
 
     // ── Header ─────────────────────────────────────────────────
-    Row {
+    Item {
         id: headerRow
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.topMargin: overlayMode ? 14 : 16
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
-        height: visible ? 24 : 0
-        visible: !artMode    // ← hide header in artMode
+        anchors.topMargin: 14
+        height: visible ? 36 : 0
+        visible: !artMode
 
+        // Source indicator pill
         Rectangle {
-            width: syncedLabel.implicitWidth + 16
-            height: 22
-            radius: 11
+            id: sourcePill
+            anchors.left: parent.left
+            anchors.leftMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            width: sourceLabel.implicitWidth + 20
+            height: 26
+            radius: 13
             color: Qt.rgba(1, 1, 1, 0.08)
-            anchors.verticalCenter: parent.verticalCenter
 
-            Text {
-                id: syncedLabel
+            Row {
                 anchors.centerIn: parent
-                text: player.lyricsAreSynced ? "Synced" : "Lyrics"
-                font.pixelSize: 10
-                font.weight: Font.Medium
-                color: secondaryText
+                spacing: 4
+
+                Text {
+                    id: sourceLabel
+                    text: player.lyricsAreSynced ? "Synced lyrics" : "Embedded lyrics"
+                    font.pixelSize: 11
+                    font.weight: Font.Medium
+                    color: lyrics.secondaryText
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                Text {
+                    text: "▾"
+                    font.pixelSize: 9
+                    color: lyrics.secondaryText
+                    anchors.verticalCenter: parent.verticalCenter
+                }
             }
-        }
-
-        Item {
-            width: parent.width
-                   - syncedLabel.implicitWidth - 16
-                   - (overlayMode ? closeBtn.implicitWidth + 8 : 0)
-            height: 1
-        }
-
-        Text {
-            id: closeBtn
-            text: "✕  close"
-            font.pixelSize: 10
-            color: mutedText
-            visible: overlayMode
-            anchors.verticalCenter: parent.verticalCenter
 
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: lyrics.closeRequested()
+                onClicked: {
+                    // Stage 2: lyrics source picker — not yet implemented
+                }
+            }
+        }
+
+        // Right-side controls
+        Row {
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+
+            // Text size toggle
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 8
+                color: lyrics.largeText
+                       ? Qt.rgba(lyrics.accentColor.r, lyrics.accentColor.g,
+                                 lyrics.accentColor.b, 0.18)
+                       : Qt.rgba(1, 1, 1, 0.06)
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "Tt"
+                    font.pixelSize: 12
+                    font.weight: Font.Medium
+                    color: lyrics.largeText ? lyrics.accentColor : lyrics.mutedText
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: lyrics.largeText = !lyrics.largeText
+                }
+            }
+
+            // Close button (overlay/artMode only)
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 8
+                color: Qt.rgba(1, 1, 1, 0.06)
+                visible: overlayMode || artMode
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "✕"
+                    font.pixelSize: 13
+                    color: lyrics.mutedText
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: lyrics.closeRequested()
+                }
             }
         }
     }
@@ -102,15 +153,15 @@ Item {
     ListView {
         id: lyricsList
         anchors.top: artMode ? parent.top : headerRow.bottom
-        anchors.topMargin: artMode ? 16 : 12
+        anchors.topMargin: artMode ? 8 : 8
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: (overlayMode && !artMode) ? overlayControls.top : parent.bottom
         anchors.bottomMargin: 12
-        anchors.leftMargin: 16
-        anchors.rightMargin: 16
+        anchors.leftMargin: 20
+        anchors.rightMargin: 20
         clip: true
-        spacing: 14
+        spacing: 18
 
         model: player.lyricsAreSynced
             ? player.lyricLines
@@ -121,11 +172,12 @@ Item {
             required property int index
             width: lyricsList.width
             text: player.lyricsAreSynced ? modelData.text : modelData
-            font.pixelSize: isCurrent ? 15 : 12
-            font.weight:    isCurrent ? Font.Medium : Font.Normal
+            font.pixelSize: isCurrent ? lyrics.currentFontSize : lyrics.baseFontSize
+            font.weight:    isCurrent ? Font.SemiBold : Font.Normal
             color: isCurrent ? lyrics.primaryText : lyrics.secondaryText
-            opacity: isCurrent ? 1.0 : (overlayMode ? 0.45 : 0.6)
+            opacity: isCurrent ? 1.0 : (overlayMode || artMode ? 0.45 : 0.65)
             wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
 
             readonly property bool isCurrent: {
                 if (!player.lyricsAreSynced) return false
@@ -141,7 +193,6 @@ Item {
             Behavior on font.pixelSize { NumberAnimation { duration: 200 } }
         }
 
-        // Auto-scroll to current line
         onCountChanged: currentIndex = 0
 
         Connections {
@@ -149,7 +200,6 @@ Item {
             function onPositionChanged() {
                 if (!player.lyricsAreSynced || !player.lyricLines || player.lyricLines.length === 0)
                     return
-
                 for (let i = lyricsList.count - 1; i >= 0; i--) {
                     let line = player.lyricLines[i]
                     if (!line) continue
@@ -164,7 +214,9 @@ Item {
 
         QtObject {
             id: plainLyrics
-            property var lines: player.rawLyrics.length > 0 ? player.rawLyrics.split('\n') : []
+            property var lines: player.rawLyrics.length > 0
+                ? player.rawLyrics.split('\n').filter(l => l.trim() !== '')
+                : []
         }
     }
 
@@ -178,9 +230,8 @@ Item {
         anchors.leftMargin: 16
         anchors.rightMargin: 16
         spacing: 8
-        visible: overlayMode && !artMode    // ← add && !artMode
+        visible: overlayMode && !artMode
 
-        // Seek bar
         Item {
             width: parent.width
             height: 28
@@ -195,7 +246,6 @@ Item {
             }
         }
 
-        // Playback buttons
         Row {
             width: parent.width
             spacing: 0
