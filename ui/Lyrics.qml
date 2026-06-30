@@ -33,13 +33,8 @@ Item {
     // ── Overlay background ─────────────────────────────────────
     Rectangle {
         anchors.fill: parent
-        color: Qt.rgba(
-            lyrics.theme.bgColor.r * 0.6,
-            lyrics.theme.bgColor.g * 0.6,
-            lyrics.theme.bgColor.b * 0.6,
-            0.97)
+        color: lyrics.surfaceColor
         visible: overlayMode && !artMode
-        radius: overlayMode ? 0 : 0
     }
 
     // ── Header ─────────────────────────────────────────────────
@@ -230,74 +225,6 @@ Item {
         anchors.leftMargin: 16
         anchors.rightMargin: 16
         spacing: 8
-        visible: overlayMode && !artMode
-
-        Item {
-            width: parent.width
-            height: 28
-
-            Slider {
-                width: parent.width
-                anchors.verticalCenter: parent.verticalCenter
-                from: 0
-                to: Math.max(player.duration, 1)
-                value: player.position
-                onMoved: player.seekTo(value)
-            }
-        }
-
-        Row {
-            width: parent.width
-            spacing: 0
-
-            Repeater {
-                model: [
-                    { icon: "⏮", action: "previous"  },
-                    { icon: "⏪", action: "rewind"    },
-                    { icon: player.isPlaying ? "⏸" : "▶", action: "playpause" },
-                    { icon: "⏩", action: "forward"   },
-                    { icon: "⏭", action: "next"      }
-                ]
-
-                delegate: Item {
-                    width: overlayControls.width / 5
-                    height: 44
-
-                    Text {
-                        anchors.centerIn: parent
-                        text: modelData.icon
-                        font.pixelSize: 22
-                        color: {
-                            if (modelData.action === "previous"
-                                    && !player.hasPrevious
-                                    && player.position <= 3000)
-                                return mutedText
-                            if (modelData.action === "next" && !player.hasNext)
-                                return mutedText
-                            if (modelData.action === "playpause")
-                                return accentColor
-                            return "#ffffff"
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (modelData.action === "previous")
-                                    player.playPrevious()
-                                else if (modelData.action === "rewind")
-                                    player.seekTo(Math.max(0, player.position - 10000))
-                                else if (modelData.action === "playpause")
-                                    player.isPlaying ? player.pause() : player.play()
-                                else if (modelData.action === "forward")
-                                    player.seekTo(Math.min(player.duration, player.position + 10000))
-                                else if (modelData.action === "next")
-                                    player.playNext()
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        visible: false
     }
 }
