@@ -494,3 +494,18 @@ void Queue::addTracksBatch(const QStringList &filePaths, bool autoPlayFirst)
 
     emit queueChanged();
 }
+
+void Queue::setSavedPosition(qint64 position)
+{
+    m_savedPosition = position;
+}
+
+void Queue::setWasPlaying(bool wasPlaying)
+{
+    m_wasPlaying = wasPlaying;
+}
+
+void Queue::setCurrentTrackIndex(int index)
+{
+    m_currentTrackIndex = index;
+}

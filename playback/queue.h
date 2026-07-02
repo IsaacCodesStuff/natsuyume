@@ -85,6 +85,10 @@ public:
 
     void addTracksBatch(const QStringList &filePaths, bool autoPlayFirst = false);
 
+    void setSavedPosition(qint64 position);
+    void setWasPlaying(bool wasPlaying);
+    void setCurrentTrackIndex(int index);
+
 signals:
     void trackChanged();
     void queueChanged();

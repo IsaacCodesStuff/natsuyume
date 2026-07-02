@@ -1,17 +1,16 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
-#include "core/player.h"
-#include "core/coverimageprovider.h"
-#include "core/albumcoverprovider.h"
-#include "core/trackcoverprovider.h"
+#include "playercontroller.h"
+#include "coverimageprovider.h"
+#include "albumcoverprovider.h"
+#include "trackcoverprovider.h"
 #include <QPixmapCache>
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
     QQuickStyle::setStyle("Basic");
-
     QQmlApplicationEngine engine;
 
     CoverImageProvider *coverProvider = new CoverImageProvider();
@@ -31,15 +30,15 @@ int main(int argc, char *argv[])
         Qt::QueuedConnection);
 
     QPixmapCache::setCacheLimit(10 * 1024); // 10 MB instead of Qt's default 100 MB
+
     engine.loadFromModule("natsuyume_player", "Main");
 
     const auto rootObjects = engine.rootObjects();
     QObject *root = rootObjects.first();
-    Player *player = root->findChild<Player*>();
+    PlayerController *player = root->findChild<PlayerController*>();
     if (player) {
         player->setCoverImageProvider(coverProvider);
         player->setAlbumCoverProvider(albumCoverProvider);
-        player->registerAlbumCovers(albumCoverProvider);
     }
 
     return QGuiApplication::exec();

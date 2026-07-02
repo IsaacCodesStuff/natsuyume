@@ -20,7 +20,7 @@ Window {
     }
 
     // ── Player instance ────────────────────────────────────────
-    Player {
+    PlayerController {
         id: player
     }
 

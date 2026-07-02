@@ -1,17 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 project(natsuyume_player VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia QuickControls2 Sql QuickDialogs2)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(TAGLIB REQUIRED taglib)
-
 qt_standard_project_setup(REQUIRES 6.10)
-
 qt_add_executable(appnatsuyume_player
     main.cpp
 )
-
 qt_add_qml_module(appnatsuyume_player
     URI natsuyume_player
     VERSION 1.0
@@ -37,40 +33,44 @@ qt_add_qml_module(appnatsuyume_player
         ui/sidebar/queues/QueueTrackList.qml
         ui/sidebar/queues/QueueDropdown.qml
         ui/sidebar/queues/QueueAddButton.qml
+        ui/sidebar/queues/SaveAsPlaylistDialog.qml
+        ui/PlaylistPicker.qml
+        ui/sidebar/playlists/PlaylistTrackList.qml
+        ui/sidebar/PlaylistsView.qml
+        ui/QueuePicker.qml
+        ui/sidebar/queues/QueueSortMenu.qml
     SOURCES
         core/trackcoverprovider.h core/trackcoverprovider.cpp
         core/albumcoverprovider.h core/albumcoverprovider.cpp
         core/coverimageprovider.h core/coverimageprovider.cpp
-        core/fileindexer.h core/fileindexer.cpp
-        core/library.h core/library.cpp
-        core/track.h core/track.cpp
-        core/player.h core/player.cpp
         core/lrcparser.h core/lrcparser.cpp
-        manager/playback.h manager/playback.cpp
-        manager/metadata.h manager/metadata.cpp
-        manager/queue.h manager/queue.cpp
-        QML_FILES ui/PlaylistPicker.qml
-        QML_FILES ui/sidebar/playlists/PlaylistTrackList.qml
-        QML_FILES ui/sidebar/PlaylistsView.qml
-        QML_FILES ui/QueuePicker.qml
-        QML_FILES ui/sidebar/queues/QueueSortMenu.qml
-        QML_FILES ui/sidebar/queues/SaveAsPlaylistDialog.qml
-        QML_FILES
+        domain/track.h domain/track.cpp
+        library/fileindexer.h library/fileindexer.cpp
+        library/library.h library/library.cpp
+        library/metadata.h library/metadata.cpp
+        playback/playback.h playback/playback.cpp
+        playback/queue.h playback/queue.cpp
+        player/queuesession.h player/queuesession.cpp
+        player/queuemanager.h player/queuemanager.cpp
+        player/playbackmanager.h player/playbackmanager.cpp
+        player/playlistmanager.h player/playlistmanager.cpp
+        player/librarymanager.h player/librarymanager.cpp
+        player/playercontroller.h player/playercontroller.cpp
 )
-
 set_target_properties(appnatsuyume_player PROPERTIES
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
     MACOSX_BUNDLE TRUE
     WIN32_EXECUTABLE TRUE
 )
-
 target_include_directories(appnatsuyume_player PRIVATE
     ${TAGLIB_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/manager
+    ${CMAKE_CURRENT_SOURCE_DIR}/domain
+    ${CMAKE_CURRENT_SOURCE_DIR}/library
+    ${CMAKE_CURRENT_SOURCE_DIR}/playback
+    ${CMAKE_CURRENT_SOURCE_DIR}/player
 )
-
 target_link_libraries(appnatsuyume_player PRIVATE
     Qt6::Core
     Qt6::Gui
@@ -82,7 +82,6 @@ target_link_libraries(appnatsuyume_player PRIVATE
     Qt6::QuickDialogs2
     ${TAGLIB_LIBRARIES}
 )
-
 install(TARGETS appnatsuyume_player
     BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
