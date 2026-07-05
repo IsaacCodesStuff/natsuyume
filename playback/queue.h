@@ -95,6 +95,7 @@ signals:
     void repeatModeChanged();
     void shuffleChanged();
     void stopAfterCurrentChanged();
+    void restoreCompleted();
 
 private:
     friend class Player;

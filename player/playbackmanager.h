@@ -69,6 +69,7 @@ public:
     void initPlayback(int queueIndex);
     void destroyPlayback(int queueIndex);
     void restorePlaybackState(int queueIndex);
+    void resetPlayCountState();
 
     // Returns whichever Playback instance is currently active.
     // Today this is always the playing queue's single Playback;
@@ -105,7 +106,7 @@ private:
     void connectPlaybackSignals(Queue *queue);
     void rebuildLyricLines();
     void pushCoverArt();
-    void resetPlayCountState();
+    bool m_isSeeking = false;
 };
 
 #endif // PLAYBACKMANAGER_H

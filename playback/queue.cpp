@@ -49,6 +49,7 @@ void Queue::connectPlaybackSignals()
         if (m_repeatMode == RepeatTrack) {
             m_playback->seekTo(0);
             m_playback->play();
+            emit trackChanged(); // ← triggers resetPlayCountState in PlaybackManager
             return;
         }
 
@@ -262,6 +263,7 @@ void Queue::restoreState()
             else
                 m_playback->pause();
             emit trackChanged();
+            emit restoreCompleted(); // ← add this
         });
     }, Qt::SingleShotConnection);
 

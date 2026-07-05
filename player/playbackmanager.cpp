@@ -3,6 +3,7 @@
 #include "metadata.h"
 #include <QDateTime>
 #include <QSettings>
+#include <QDebug>
 
 PlaybackManager::PlaybackManager(QueueSession *session, QObject *parent)
     : QObject{parent},
@@ -70,7 +71,9 @@ void PlaybackManager::pause()
 
 void PlaybackManager::seekTo(qint64 positionMs)
 {
+    m_isSeeking = true;
     if (Queue *q = m_session->playingQueue()) q->seekTo(positionMs);
+    m_isSeeking = false;
 }
 
 void PlaybackManager::playNext()
@@ -268,6 +271,9 @@ void PlaybackManager::resetPlayCountState()
     if (q && q->currentTrackIndex() >= 0) {
         qint64 dur = q->trackAt(q->currentTrackIndex()).duration;
         m_creditThresholdMs = qint64(dur * (m_playCountThreshold / 100.0));
+        qDebug() << "resetPlayCountState: dur=" << dur
+                 << "threshold=" << m_playCountThreshold
+                 << "creditThreshold=" << m_creditThresholdMs;
     }
 }
 
@@ -322,14 +328,25 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
 
     connect(pb, &Playback::durationChanged, this, [this]() {
         emit durationChanged();
+        if (m_creditThresholdMs == 0 && !m_playCountCredited) {
+            Queue *q = m_session->playingQueue();
+            if (q && q->currentTrackIndex() >= 0) {
+                qint64 dur = q->duration();
+                qDebug() << "durationChanged recalc: dur=" << dur;
+                if (dur > 0)
+                    m_creditThresholdMs = qint64(dur * (m_playCountThreshold / 100.0));
+            }
+        }
     });
 
     connect(pb, &Playback::positionChanged, this, [this]() {
         emit positionChanged();
 
-        if (!m_playCountCredited && m_creditThresholdMs > 0) {
+        if (!m_playCountCredited && m_creditThresholdMs > 1000) {
             Queue *q = m_session->playingQueue();
             if (q && q->position() >= m_creditThresholdMs) {
+                qDebug() << "crediting play: position=" << q->position()
+                << "threshold=" << m_creditThresholdMs;
                 m_playCountCredited = true;
                 QString path = q->trackAt(q->currentTrackIndex()).path;
                 qint64 now   = QDateTime::currentSecsSinceEpoch();
@@ -343,6 +360,10 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
                 }
                 emit metadataChanged();
             }
+        } else if (!m_playCountCredited) {
+            qDebug() << "position check skipped: credited=" << m_playCountCredited
+                     << "threshold=" << m_creditThresholdMs
+                     << "position=" << (m_session->playingQueue() ? m_session->playingQueue()->position() : -1);
         }
     });
 
@@ -356,6 +377,12 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
         emit positionChanged();
         emit durationChanged();
         qDebug() << "trackChanged fired. position() =" << (m_session->playingQueue() ? m_session->playingQueue()->position() : -1);
+    });
+
+    connect(queue, &Queue::restoreCompleted, this, [this]() {
+        // Reset play count state AFTER the restore seek completes
+        // so the seek itself doesn't trigger a false credit
+        resetPlayCountState();
     });
 
     connect(queue, &Queue::repeatModeChanged, this, [this]() {

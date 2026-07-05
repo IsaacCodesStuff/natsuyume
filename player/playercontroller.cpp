@@ -80,6 +80,7 @@ void PlayerController::wireSignals()
             this, [this](int index) {
                 m_playbackManager->initPlayback(index);
                 m_playbackManager->restorePlaybackState(index);
+                // resetPlayCountState() removed — Queue::restoreCompleted handles it
             });
 
     connect(m_queueManager, &QueueManager::playbackDestroyRequested,
