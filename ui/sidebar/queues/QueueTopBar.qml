@@ -79,9 +79,9 @@ Item {
                     }
 
                     Text {
-                        text: player.queueCount > 0
+                        text: player.queueCount > 0 && player.activeQueueIndex >= 0
                               ? player.queueNames[player.activeQueueIndex]
-                              : "No Queue"
+                              : ""
                         font.pixelSize: 13
                         font.weight: Font.Medium
                         color: queueTopBar.primaryText

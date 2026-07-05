@@ -56,7 +56,6 @@ void QueueManager::openFilesInNewQueue(const QStringList &paths,
 {
     if (paths.isEmpty()) return;
 
-    // Ask PlaybackManager to destroy playback on current playing queue
     int oldPlayingIndex = m_session->playingQueueIndex();
     if (oldPlayingIndex >= 0)
         emit playbackDestroyRequested(oldPlayingIndex);
@@ -68,15 +67,19 @@ void QueueManager::openFilesInNewQueue(const QStringList &paths,
     if (shuffle)
         newQueue->toggleShuffle();
 
-    newQueue->addTracksBatch(paths, true);
     m_session->appendQueue(newQueue);
-
     int newIndex = m_session->queueCount() - 1;
+
     m_session->setViewedQueueIndex(newIndex);
     m_session->setPlayingQueueIndex(newIndex);
 
-    // Ask PlaybackManager to init playback on new queue
-    emit playbackInitRequested(newIndex);
+    // Init playback BEFORE addTracksBatch so QMediaPlayer exists
+    // when addTracksBatch tries to load the first track
+    emit playbackInitNewRequested(newIndex);
+
+    // Now add tracks — initPlayback has already run so m_playback exists
+    // and addTracksBatch's internal loadTrack call will succeed first time
+    newQueue->addTracksBatch(paths, true);
 }
 
 void QueueManager::addPathsToNewQueue(const QStringList &paths,
@@ -435,7 +438,7 @@ void QueueManager::loadQueues(float volume)
 
     // Defer playback init so UI renders first
     QTimer::singleShot(100, this, [this, activeIndex]() {
-        emit playbackInitRequested(activeIndex);
+        emit playbackRestoreRequested(activeIndex);
     });
 }
 

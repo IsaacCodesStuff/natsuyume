@@ -70,6 +70,12 @@ public:
     void destroyPlayback(int queueIndex);
     void restorePlaybackState(int queueIndex);
 
+    // Returns whichever Playback instance is currently active.
+    // Today this is always the playing queue's single Playback;
+    // in 0.4.x this will return whichever of the two ping-pong
+    // players is currently playing rather than preloading.
+    Playback *activePlayback() const;
+
 signals:
     void isPlayingChanged();
     void positionChanged();

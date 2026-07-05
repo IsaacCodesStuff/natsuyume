@@ -61,7 +61,22 @@ void PlayerController::saveSettings()
 void PlayerController::wireSignals()
 {
     // --- QueueManager → PlaybackManager (cross-manager, via PlayerController) ---
+    connect(m_queueManager, &QueueManager::playbackInitNewRequested,
+            this, [this](int index) {
+                m_playbackManager->initPlayback(index);
+                emit positionChanged();
+                emit durationChanged();
+            });
+
     connect(m_queueManager, &QueueManager::playbackInitRequested,
+            this, [this](int index) {
+                m_playbackManager->initPlayback(index);
+                // Do NOT call restorePlaybackState here — jumpToTrack handles
+                // loading the specific track itself via loadTrackAt.
+                // restorePlaybackState is only for app startup queue restoration.
+            });
+
+    connect(m_queueManager, &QueueManager::playbackRestoreRequested,
             this, [this](int index) {
                 m_playbackManager->initPlayback(index);
                 m_playbackManager->restorePlaybackState(index);
@@ -70,6 +85,9 @@ void PlayerController::wireSignals()
     connect(m_queueManager, &QueueManager::playbackDestroyRequested,
             this, [this](int index) {
                 m_playbackManager->destroyPlayback(index);
+                // Reset position and duration immediately so QML doesn't show stale values
+                emit positionChanged();
+                emit durationChanged();
             });
 
     // --- PlaylistManager → QueueManager ---
@@ -115,7 +133,13 @@ void PlayerController::wireSignals()
     connect(m_playbackManager, &PlaybackManager::stopAfterCurrentChanged,
             this, &PlayerController::stopAfterCurrentChanged);
     connect(m_playbackManager, &PlaybackManager::playingTrackChanged,
-            this, &PlayerController::playingTrackChanged);
+            this, [this]() {
+                emit playingTrackChanged();
+                // Only emit trackChanged if viewed and playing queues are the same —
+                // otherwise the viewed queue counter updates incorrectly from playing queue state
+                if (m_session->viewedQueueIndex() == m_session->playingQueueIndex())
+                    emit trackChanged();
+            });
     connect(m_playbackManager, &PlaybackManager::isFavoriteChanged,
             this, &PlayerController::isFavoriteChanged);
 

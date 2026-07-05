@@ -27,7 +27,7 @@ void Queue::destroyPlayback()
 {
     if (!m_playback) return;
     m_playback->pause();
-    m_playback->deleteLater();
+    delete m_playback;
     m_playback = nullptr;
 }
 

@@ -249,6 +249,8 @@ public:
     Q_INVOKABLE int allSongsPlaylistId()  const { return PlaylistManager::kAllSongsPlaylistId; }
     Q_INVOKABLE int favoritesPlaylistId() const { return PlaylistManager::kFavoritesPlaylistId; }
 
+    Q_INVOKABLE void saveSettings();
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -286,7 +288,6 @@ private:
 
     void wireSignals();
     void loadSettings();
-    void saveSettings();
 };
 
 #endif // PLAYERCONTROLLER_H

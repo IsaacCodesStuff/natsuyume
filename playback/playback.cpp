@@ -30,19 +30,23 @@ Playback::Playback(QObject *parent)
 
     connect(m_player, &QMediaPlayer::mediaStatusChanged, this,
             [this](QMediaPlayer::MediaStatus status) {
+                // Reset position immediately when new source starts loading
+                // so QML doesn't show stale position during the async load window
+                if (status == QMediaPlayer::LoadingMedia) {
+                    emit positionChanged();
+                    emit durationChanged();
+                }
+
                 if (status == QMediaPlayer::LoadedMedia) {
-                    // Only trust this event if it's actually reporting the source
-                    // we most recently asked for — ignore stale echoes from a
-                    // previous source's lifecycle.
-                    if (m_player->source() != m_expectedSource) {
+                    if (m_player->source() != m_expectedSource)
                         return;
-                    }
                     if (m_pendingAutoPlay) {
                         m_pendingAutoPlay = false;
                         m_player->play();
                     }
                     emit readyToPlay();
                 }
+
                 if (status == QMediaPlayer::EndOfMedia)
                     emit trackEnded();
             });

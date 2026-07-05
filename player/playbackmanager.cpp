@@ -353,6 +353,9 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
         emit metadataChanged();
         emit isFavoriteChanged();
         pushCoverArt();
+        emit positionChanged();
+        emit durationChanged();
+        qDebug() << "trackChanged fired. position() =" << (m_session->playingQueue() ? m_session->playingQueue()->position() : -1);
     });
 
     connect(queue, &Queue::repeatModeChanged, this, [this]() {
@@ -366,4 +369,10 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
     connect(queue, &Queue::stopAfterCurrentChanged, this, [this]() {
         emit stopAfterCurrentChanged();
     });
+}
+
+Playback *PlaybackManager::activePlayback() const
+{
+    Queue *q = m_session->playingQueue();
+    return q ? q->playback() : nullptr;
 }

@@ -66,6 +66,8 @@ signals:
     void playbackTransferRequested(int newQueueIndex);
     void playbackDestroyRequested(int queueIndex);
     void playbackInitRequested(int queueIndex);
+    void playbackInitNewRequested(int queueIndex);
+    void playbackRestoreRequested(int queueIndex); // startup only
 
 private:
     QueueSession *m_session;
