@@ -4,20 +4,16 @@
 Playback::Playback(QObject *parent)
     : QObject{parent}
 {
-    qDebug() << "Playback instance CREATED:" << this;
-
     m_player = new QMediaPlayer(this);
     m_audioOutput = new QAudioOutput(this);
     m_player->setAudioOutput(m_audioOutput);
 
     connect(m_player, &QMediaPlayer::playbackStateChanged, this, [this]() {
-        qDebug() << "[" << this << "] playbackStateChanged ->" << m_player->playbackState();
         emit playbackStateChanged();
     });
 
     connect(m_player, &QMediaPlayer::errorOccurred, this,
             [this](QMediaPlayer::Error error, const QString &errorString) {
-                qDebug() << "[" << this << "] QMediaPlayer ERROR:" << error << errorString;
             });
 
     connect(m_player, &QMediaPlayer::positionChanged, this, [this]() {

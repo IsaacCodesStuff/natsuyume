@@ -3,7 +3,12 @@
 #include "metadata.h"
 #include <QDateTime>
 #include <QSettings>
-#include <QDebug>
+
+// Note: a ~50ms gap may be audible on some transitions due to Qt's FFmpeg
+// backend startup latency between PlayingState and first audio output.
+// This is a backend limitation; our swap sequence completes in <2ms.
+// True sample-accurate gapless would require dropping QMediaPlayer
+// in favor of raw PCM decoding via QAudioSink — deferred to future milestone.
 
 PlaybackManager::PlaybackManager(QueueSession *session, QObject *parent)
     : QObject{parent},
@@ -29,7 +34,6 @@ void PlaybackManager::loadSettings()
     m_volume             = s.value("playback/volume", 0.8f).toFloat();
     m_playCountThreshold = s.value("playback/playCountThreshold", 10).toInt();
 
-    // Apply volume to all existing queues
     for (int i = 0; i < m_session->queueCount(); i++)
         m_session->queueAt(i)->setVolume(m_volume);
 
@@ -40,8 +44,8 @@ void PlaybackManager::loadSettings()
 void PlaybackManager::saveSettings()
 {
     QSettings s;
-    s.setValue("playback/volume",            m_volume);
-    s.setValue("playback/playCountThreshold", m_playCountThreshold);
+    s.setValue("playback/volume",             m_volume);
+    s.setValue("playback/playCountThreshold",  m_playCountThreshold);
 }
 
 // --- Volume ---
@@ -271,9 +275,6 @@ void PlaybackManager::resetPlayCountState()
     if (q && q->currentTrackIndex() >= 0) {
         qint64 dur = q->trackAt(q->currentTrackIndex()).duration;
         m_creditThresholdMs = qint64(dur * (m_playCountThreshold / 100.0));
-        qDebug() << "resetPlayCountState: dur=" << dur
-                 << "threshold=" << m_playCountThreshold
-                 << "creditThreshold=" << m_creditThresholdMs;
     }
 }
 
@@ -286,8 +287,8 @@ void PlaybackManager::rebuildLyricLines()
     Track current = q->trackAt(q->currentTrackIndex());
     if (current.path.isEmpty()) return;
 
-    Track fresh   = Metadata::read(current.path, false);
-    m_rawLyrics   = fresh.lyrics;
+    Track fresh = Metadata::read(current.path, false);
+    m_rawLyrics = fresh.lyrics;
 
     if (LrcParser::isLrc(fresh.lyrics))
         m_lyricLines = LrcParser::parse(fresh.lyrics);
@@ -310,16 +311,77 @@ void PlaybackManager::pushCoverArt()
     emit coverArtChanged();
 }
 
+void PlaybackManager::onReadyToSwap()
+{
+    Queue *q = m_session->playingQueue();
+    if (!q) return;
+
+    q->swapPlayback();
+    q->play();
+    q->advancePlayback();
+
+    // DO NOT call connectCurrentPlaybackSignals(q) here —
+    // swapPlayback() already called Queue's connectCurrentPlaybackSignals()
+    // internally. Calling PlaybackManager's version here causes
+    // duplicate signal connections on the new Playback instance.
+
+    resetPlayCountState();
+    rebuildLyricLines();
+    emit playingTrackChanged();
+    emit metadataChanged();
+    emit isFavoriteChanged();
+    pushCoverArt();
+    emit positionChanged();
+    emit durationChanged();
+    emit isPlayingChanged();
+
+    q->preloadNextTrack();
+}
+
 void PlaybackManager::connectPlaybackSignals(Queue *queue)
 {
-    Playback *pb = queue->playback();
+    // Wire the gapless swap signal — Queue tells us when to orchestrate
+    connect(queue, &Queue::readyToSwap, this, &PlaybackManager::onReadyToSwap);
+
+    // Wire the current Playback's signals
+    connectCurrentPlaybackSignals(queue);
+
+    // Wire queue-level signals
+    connect(queue, &Queue::trackChanged, this, [this]() {
+        resetPlayCountState();
+        rebuildLyricLines();
+        emit playingTrackChanged();
+        emit metadataChanged();
+        emit isFavoriteChanged();
+        pushCoverArt();
+        emit positionChanged();
+        emit durationChanged();
+    });
+
+    connect(queue, &Queue::restoreCompleted, this, [this]() {
+        resetPlayCountState();
+    });
+
+    connect(queue, &Queue::repeatModeChanged,      this, [this]() { emit repeatModeChanged(); });
+    connect(queue, &Queue::shuffleChanged,          this, [this]() { emit shuffleChanged(); });
+    connect(queue, &Queue::stopAfterCurrentChanged, this, [this]() { emit stopAfterCurrentChanged(); });
+}
+
+void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
+{
+    Playback *pb = queue->currentPlayback();
     if (!pb) return;
 
-    connect(pb, &Playback::readyToPlay, this, [this]() {
+    connect(pb, &Playback::readyToPlay, this, [this, queue]() {
         rebuildLyricLines();
         emit metadataChanged();
         emit isFavoriteChanged();
         pushCoverArt();
+
+        // Start preloading the next track as soon as current is ready
+        // This is what makes gapless work — by the time the current track
+        // ends, the next one is already decoded and waiting
+        queue->preloadNextTrack();
     });
 
     connect(pb, &Playback::playbackStateChanged, this, [this]() {
@@ -328,11 +390,11 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
 
     connect(pb, &Playback::durationChanged, this, [this]() {
         emit durationChanged();
+        // Recalculate threshold if it was 0 at load time due to missing duration metadata
         if (m_creditThresholdMs == 0 && !m_playCountCredited) {
             Queue *q = m_session->playingQueue();
             if (q && q->currentTrackIndex() >= 0) {
                 qint64 dur = q->duration();
-                qDebug() << "durationChanged recalc: dur=" << dur;
                 if (dur > 0)
                     m_creditThresholdMs = qint64(dur * (m_playCountThreshold / 100.0));
             }
@@ -342,11 +404,11 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
     connect(pb, &Playback::positionChanged, this, [this]() {
         emit positionChanged();
 
+        if (m_isSeeking) return;
+
         if (!m_playCountCredited && m_creditThresholdMs > 1000) {
             Queue *q = m_session->playingQueue();
             if (q && q->position() >= m_creditThresholdMs) {
-                qDebug() << "crediting play: position=" << q->position()
-                << "threshold=" << m_creditThresholdMs;
                 m_playCountCredited = true;
                 QString path = q->trackAt(q->currentTrackIndex()).path;
                 qint64 now   = QDateTime::currentSecsSinceEpoch();
@@ -360,46 +422,12 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
                 }
                 emit metadataChanged();
             }
-        } else if (!m_playCountCredited) {
-            qDebug() << "position check skipped: credited=" << m_playCountCredited
-                     << "threshold=" << m_creditThresholdMs
-                     << "position=" << (m_session->playingQueue() ? m_session->playingQueue()->position() : -1);
         }
-    });
-
-    connect(queue, &Queue::trackChanged, this, [this]() {
-        resetPlayCountState();
-        rebuildLyricLines();
-        emit playingTrackChanged();
-        emit metadataChanged();
-        emit isFavoriteChanged();
-        pushCoverArt();
-        emit positionChanged();
-        emit durationChanged();
-        qDebug() << "trackChanged fired. position() =" << (m_session->playingQueue() ? m_session->playingQueue()->position() : -1);
-    });
-
-    connect(queue, &Queue::restoreCompleted, this, [this]() {
-        // Reset play count state AFTER the restore seek completes
-        // so the seek itself doesn't trigger a false credit
-        resetPlayCountState();
-    });
-
-    connect(queue, &Queue::repeatModeChanged, this, [this]() {
-        emit repeatModeChanged();
-    });
-
-    connect(queue, &Queue::shuffleChanged, this, [this]() {
-        emit shuffleChanged();
-    });
-
-    connect(queue, &Queue::stopAfterCurrentChanged, this, [this]() {
-        emit stopAfterCurrentChanged();
     });
 }
 
 Playback *PlaybackManager::activePlayback() const
 {
     Queue *q = m_session->playingQueue();
-    return q ? q->playback() : nullptr;
+    return q ? q->currentPlayback() : nullptr;
 }

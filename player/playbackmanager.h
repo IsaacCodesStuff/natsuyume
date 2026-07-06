@@ -90,6 +90,9 @@ signals:
     void playingTrackChanged();
     void isFavoriteChanged();
 
+private slots:
+    void onReadyToSwap();
+
 private:
     QueueSession       *m_session;
     Library            *m_library  = nullptr;
@@ -107,6 +110,8 @@ private:
     void rebuildLyricLines();
     void pushCoverArt();
     bool m_isSeeking = false;
+
+    void connectCurrentPlaybackSignals(Queue *queue);
 };
 
 #endif // PLAYBACKMANAGER_H
