@@ -17,6 +17,7 @@ PlayerController::PlayerController(QObject *parent)
 
     if (m_libraryManager->open()) {
         loadSettings();
+        m_playlistManager->initialize(); // ← load favorites now that db is open
         loadQueues();
         QTimer::singleShot(2000, this, [this]() {
             m_libraryManager->rescanAllFolders();

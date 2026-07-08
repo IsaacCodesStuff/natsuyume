@@ -6,6 +6,7 @@
 #include <QStringList>
 #include "queuesession.h"
 #include "library.h"
+#include <QSet>
 
 class PlaylistManager : public QObject
 {
@@ -15,6 +16,7 @@ public:
     explicit PlaylistManager(QueueSession *session, QObject *parent = nullptr);
 
     void setLibrary(Library *library);
+    void initialize(); // call after library is open
 
     // --- Playlists ---
     QVariantList allPlaylists()                                        const;
@@ -63,7 +65,7 @@ private:
     QueueSession       *m_session;
     Library            *m_library = nullptr;
 
-    QStringList            m_favorites;
+    QSet<QString>          m_favorites;
     Library::TrackSort     m_playlistSort          = Library::TrackSort::TrackNumber;
     bool                   m_playlistSortAscending = true;
 };

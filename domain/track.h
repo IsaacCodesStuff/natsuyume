@@ -27,9 +27,10 @@ public:
     qint64  duration    = 0;  // milliseconds
 
     // --- Library timestamps ---
-    qint64  dateAdded      = 0;  // Unix timestamp, set when added to library
-    qint64  dateLastPlayed = 0;  // Unix timestamp, updated on play
+    qint64  dateAdded      = 0;
+    qint64  dateLastPlayed = 0;
     int     playCount      = 0;
+    bool    isFavorite     = false;
 
     // --- Cover art ---
     QImage  coverArt;

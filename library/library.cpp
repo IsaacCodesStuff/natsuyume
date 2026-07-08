@@ -41,25 +41,41 @@ void Library::createSchema()
 {
     QSqlQuery q(m_db);
 
-    // Enable WAL mode for better concurrent read performance
     q.exec("PRAGMA journal_mode=WAL");
 
     q.exec(R"(
         CREATE TABLE IF NOT EXISTS tracks (
-            path            TEXT PRIMARY KEY,
-            title           TEXT NOT NULL,
-            artist          TEXT NOT NULL,
-            album           TEXT NOT NULL,
-            album_artist    TEXT NOT NULL DEFAULT '',
-            composer        TEXT NOT NULL DEFAULT '',
-            genre           TEXT NOT NULL DEFAULT '',
-            track_number    INTEGER NOT NULL DEFAULT 0,
-            disc_number     INTEGER NOT NULL DEFAULT 1,
-            year            INTEGER NOT NULL DEFAULT 0,
-            duration        INTEGER NOT NULL DEFAULT 0,
-            date_added      INTEGER NOT NULL DEFAULT 0,
+            path             TEXT PRIMARY KEY,
+            title            TEXT NOT NULL,
+            artist           TEXT NOT NULL,
+            album            TEXT NOT NULL,
+            album_artist     TEXT NOT NULL DEFAULT '',
+            composer         TEXT NOT NULL DEFAULT '',
+            genre            TEXT NOT NULL DEFAULT '',
+            track_number     INTEGER NOT NULL DEFAULT 0,
+            disc_number      INTEGER NOT NULL DEFAULT 1,
+            year             INTEGER NOT NULL DEFAULT 0,
+            duration         INTEGER NOT NULL DEFAULT 0,
+            date_added       INTEGER NOT NULL DEFAULT 0,
             date_last_played INTEGER NOT NULL DEFAULT 0,
-            play_count      INTEGER NOT NULL DEFAULT 0
+            play_count       INTEGER NOT NULL DEFAULT 0,
+            is_favorite      INTEGER NOT NULL DEFAULT 0
+        )
+    )");
+
+    // Migrate existing databases that don't have is_favorite yet
+    // This is safe to run every launch — ALTER TABLE fails silently if
+    // the column already exists, which we catch and ignore
+    QSqlQuery migrate(m_db);
+    if (!migrate.exec("ALTER TABLE tracks ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")) {
+        // Column already exists — not an error, just skip
+    }
+
+    // Separate table for favorited paths that aren't in the library
+    // (tracks that were moved/deleted but should stay favorited)
+    q.exec(R"(
+        CREATE TABLE IF NOT EXISTS favorite_paths (
+            path TEXT PRIMARY KEY
         )
     )");
 
@@ -123,11 +139,13 @@ void Library::addTrack(const Track &track)
         INSERT OR REPLACE INTO tracks (
             path, title, artist, album, album_artist,
             composer, genre, track_number, disc_number,
-            year, duration, date_added, date_last_played, play_count
+            year, duration, date_added, date_last_played, play_count,
+            is_favorite
         ) VALUES (
             :path, :title, :artist, :album, :albumArtist,
             :composer, :genre, :trackNumber, :discNumber,
-            :year, :duration, :dateAdded, :dateLastPlayed, :playCount
+            :year, :duration, :dateAdded, :dateLastPlayed, :playCount,
+            :isFavorite
         )
     )");
 
@@ -145,6 +163,7 @@ void Library::addTrack(const Track &track)
     q.bindValue(":dateAdded",     QDateTime::currentSecsSinceEpoch());
     q.bindValue(":dateLastPlayed", track.dateLastPlayed);
     q.bindValue(":playCount",     track.playCount);
+    q.bindValue(":isFavorite", track.isFavorite ? 1 : 0);
     q.exec();
 
     if (q.lastError().isValid()) {
@@ -236,6 +255,7 @@ static Track trackFromQuery(QSqlQuery &q)
     t.dateAdded      = q.value(11).toLongLong();
     t.dateLastPlayed = q.value(12).toLongLong();
     t.playCount      = q.value(13).toInt();
+    t.isFavorite     = q.value(14).toInt() == 1;
     return t;
 }
 
@@ -246,7 +266,8 @@ QList<Track> Library::allTracks() const
     q.exec(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count
+               year, duration, date_added, date_last_played, play_count,
+               is_favorite
         FROM tracks ORDER BY title
     )");
     while (q.next())
@@ -270,7 +291,8 @@ Track Library::trackByPath(const QString &path) const
     q.prepare(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count
+               year, duration, date_added, date_last_played, play_count,
+               is_favorite
         FROM tracks WHERE path = :path
     )");
     q.bindValue(":path", path);
@@ -293,7 +315,8 @@ QList<Track> Library::tracksByAlbum(const QString &album,
     q.prepare(QString(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count
+               year, duration, date_added, date_last_played, play_count,
+               is_favorite
         FROM tracks
         WHERE album = :album
         ORDER BY %1 %2
@@ -314,7 +337,8 @@ QList<Track> Library::tracksByArtist(const QString &artist) const
     q.prepare(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count
+               year, duration, date_added, date_last_played, play_count,
+               is_favorite
         FROM tracks
         WHERE artist = :artist
         ORDER BY disc_number, track_number
@@ -557,8 +581,12 @@ QList<PlaylistInfo> Library::allPlaylists() const
     QList<PlaylistInfo> result;
     QSqlQuery q(m_db);
     q.exec("SELECT id, name FROM playlists ORDER BY name ASC");
-    while (q.next())
-        result.append({ q.value(0).toInt(), q.value(1).toString() });
+    while (q.next()) {
+        PlaylistInfo info;
+        info.id   = q.value(0).toInt();
+        info.name = q.value(1).toString();
+        result.append(info);
+    }
     return result;
 }
 
@@ -569,7 +597,8 @@ QList<Track> Library::tracksForPlaylist(int playlistId) const
     q.prepare(R"(
         SELECT t.path, t.title, t.artist, t.album, t.album_artist,
                t.composer, t.genre, t.track_number, t.disc_number,
-               t.year, t.duration, t.date_added, t.date_last_played, t.play_count
+               t.year, t.duration, t.date_added, t.date_last_played, t.play_count,
+               t.is_favorite
         FROM playlist_tracks pt
         JOIN tracks t ON t.path = pt.path
         WHERE pt.playlist_id = :id
@@ -635,8 +664,6 @@ void Library::sortPlaylist(int playlistId, TrackSort sort, bool ascending)
 
 void Library::incrementPlayCount(const QString &path)
 {
-    qDebug() << "incrementPlayCount CALLED for:" << path;
-    qDebug() << "  called from:" << QThread::currentThread();
 }
 
 void Library::saveQueues(const QList<QueueSnapshot> &queues)
@@ -740,11 +767,13 @@ void Library::addTracks(const QList<Track> &tracks)
             INSERT OR IGNORE INTO tracks (
                 path, title, artist, album, album_artist,
                 composer, genre, track_number, disc_number,
-                year, duration, date_added, date_last_played, play_count
+                year, duration, date_added, date_last_played, play_count,
+                is_favorite
             ) VALUES (
                 :path, :title, :artist, :album, :albumArtist,
                 :composer, :genre, :trackNumber, :discNumber,
-                :year, :duration, :dateAdded, 0, 0
+                :year, :duration, :dateAdded, 0, 0,
+                0
             )
         )");
 
@@ -802,4 +831,67 @@ void Library::addTracks(const QList<Track> &tracks)
     }
 
     q.exec("COMMIT");
+}
+
+void Library::setFavorite(const QString &path, bool favorite)
+{
+    // Check if path exists in tracks table
+    QSqlQuery check(m_db);
+    check.prepare("SELECT 1 FROM tracks WHERE path = :path");
+    check.bindValue(":path", path);
+    check.exec();
+
+    if (check.next()) {
+        // Track is in library — update is_favorite column
+        QSqlQuery q(m_db);
+        q.prepare("UPDATE tracks SET is_favorite = :fav WHERE path = :path");
+        q.bindValue(":fav",  favorite ? 1 : 0);
+        q.bindValue(":path", path);
+        q.exec();
+    } else {
+        // Track not in library (missing/moved) — use favorite_paths table
+        QSqlQuery q(m_db);
+        if (favorite) {
+            q.prepare("INSERT OR IGNORE INTO favorite_paths (path) VALUES (:path)");
+        } else {
+            q.prepare("DELETE FROM favorite_paths WHERE path = :path");
+        }
+        q.bindValue(":path", path);
+        q.exec();
+    }
+}
+
+bool Library::isFavoriteInDb(const QString &path) const
+{
+    // Check tracks table first
+    QSqlQuery q(m_db);
+    q.prepare("SELECT is_favorite FROM tracks WHERE path = :path");
+    q.bindValue(":path", path);
+    q.exec();
+    if (q.next())
+        return q.value(0).toInt() == 1;
+
+    // Fall back to favorite_paths for non-library tracks
+    q.prepare("SELECT 1 FROM favorite_paths WHERE path = :path");
+    q.bindValue(":path", path);
+    q.exec();
+    return q.next();
+}
+
+QSet<QString> Library::allFavoritePaths() const
+{
+    QSet<QString> result;
+
+    // Favorited library tracks
+    QSqlQuery q(m_db);
+    q.exec("SELECT path FROM tracks WHERE is_favorite = 1");
+    while (q.next())
+        result.insert(q.value(0).toString());
+
+    // Favorited non-library tracks
+    q.exec("SELECT path FROM favorite_paths");
+    while (q.next())
+        result.insert(q.value(0).toString());
+
+    return result;
 }

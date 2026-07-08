@@ -14,7 +14,14 @@ void PlaylistManager::setLibrary(Library *library)
     if (m_library) {
         connect(m_library, &Library::playlistsChanged,
                 this, &PlaylistManager::playlistsChanged);
+        // Don't load favorites here — database isn't open yet
     }
+}
+
+void PlaylistManager::initialize()
+{
+    if (m_library)
+        m_favorites = m_library->allFavoritePaths();
 }
 
 // --- Settings ---
@@ -108,8 +115,25 @@ QVariantList PlaylistManager::tracksForPlaylist(int playlistId) const
     QVariantList result;
     if (!m_library) return result;
 
-    if (playlistId == kFavoritesPlaylistId)
-        return result; // favorites tracking not yet implemented
+    if (playlistId == kFavoritesPlaylistId) {
+        if (!m_library) return result;
+        // Get all favorited paths
+        QSet<QString> favPaths = m_library->allFavoritePaths();
+        // Fetch full track data for each, using library sort order
+        QList<Track> allTracks = m_library->allTracks();
+        for (const Track &t : allTracks) {
+            if (favPaths.contains(t.path)) {
+                QVariantMap map;
+                map["path"]     = t.path;
+                map["title"]    = t.title;
+                map["artist"]   = t.artist;
+                map["album"]    = t.album;
+                map["duration"] = t.duration;
+                result << map;
+            }
+        }
+        return result;
+    }
 
     QList<Track> tracks = (playlistId == kAllSongsPlaylistId)
                               ? m_library->allTracks()
@@ -173,12 +197,18 @@ void PlaylistManager::toggleFavorite(const QString &path)
 {
     if (path.isEmpty()) return;
 
-    if (m_favorites.contains(path))
-        m_favorites.removeAll(path);
+    bool nowFavorite = !m_favorites.contains(path);
+
+    if (nowFavorite)
+        m_favorites.insert(path);
     else
-        m_favorites.append(path);
+        m_favorites.remove(path);
+
+    if (m_library)
+        m_library->setFavorite(path, nowFavorite);
 
     emit isFavoriteChanged();
+    emit playlistsChanged(); // ← refresh Favorites playlist view
 }
 
 // --- Request relays ---

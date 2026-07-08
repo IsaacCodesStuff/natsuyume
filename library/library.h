@@ -92,6 +92,11 @@ public:
     void removeTrackIfMissing(const QString &path);
     void addTracks(const QList<Track> &tracks);
 
+    // --- Favorites ---
+    void         setFavorite(const QString &path, bool favorite);
+    bool         isFavoriteInDb(const QString &path) const;
+    QSet<QString> allFavoritePaths() const;
+
 signals:
     void libraryChanged();
     void playlistsChanged();

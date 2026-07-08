@@ -56,7 +56,7 @@ Item {
     }
 
     function trackActions(path) {
-        return [
+        let actions = [
             {
                 label: "Play",
                 icon: "▶",
@@ -82,6 +82,15 @@ Item {
                 onTriggered: function() { player.requestAddToPlaylist(path) }
             },
             {
+                label: "Song info",
+                icon: "ℹ",
+                onTriggered: function() { songInfoDialog.open(path) }
+            }
+        ]
+
+        // Only show Remove for real playlists, not virtual ones
+        if (playlistTrackList.playlistId >= 0) {
+            actions.push({
                 label: "Remove from playlist",
                 icon: "✕",
                 destructive: true,
@@ -89,13 +98,10 @@ Item {
                     player.removeTrackFromPlaylist(playlistTrackList.playlistId, path)
                     playlistTrackList.trackListUpdated()
                 }
-            },
-            {
-                label: "Song info",
-                icon: "ℹ",
-                onTriggered: function() { songInfoDialog.open(path) }
-            }
-        ]
+            })
+        }
+
+        return actions
     }
 
     // ── Edit mode hint ─────────────────────────────────────────
