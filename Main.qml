@@ -19,6 +19,31 @@ Window {
         close.accepted = true
     }
 
+    Shortcut {
+        sequence: "A"
+        onActivated: {
+            player.setPointA()
+            console.log("Point A set at:", player.pointA)
+        }
+    }
+
+    Shortcut {
+        sequence: "B"
+        onActivated: {
+            player.setPointB()
+            console.log("Point B set at:", player.pointB,
+                        "AB active:", player.abRepeatActive)
+        }
+    }
+
+    Shortcut {
+        sequence: "C"
+        onActivated: {
+            player.clearAbRepeat()
+            console.log("AB repeat cleared")
+        }
+    }
+
     // ── Player instance ────────────────────────────────────────
     PlayerController {
         id: player

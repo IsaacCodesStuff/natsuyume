@@ -84,6 +84,11 @@ class PlayerController : public QObject
                    WRITE setPlayCountThreshold NOTIFY playCountThresholdChanged)
     Q_PROPERTY(bool stopAfterCurrent READ stopAfterCurrent NOTIFY stopAfterCurrentChanged)
 
+    // --- A-B Repeat ---
+    Q_PROPERTY(bool   abRepeatActive READ abRepeatActive NOTIFY abRepeatChanged)
+    Q_PROPERTY(qint64 pointA         READ pointA         NOTIFY abRepeatChanged)
+    Q_PROPERTY(qint64 pointB         READ pointB         NOTIFY abRepeatChanged)
+
     // --- Queue duration ---
     Q_PROPERTY(qint64 queueTotalDuration READ queueTotalDuration NOTIFY trackChanged)
 
@@ -162,6 +167,10 @@ public:
     int         playCountThreshold() const;
     bool        stopAfterCurrent()   const;
     qint64      queueTotalDuration() const;
+
+    bool   abRepeatActive() const;
+    qint64 pointA()         const;
+    qint64 pointB()         const;
 
     // --- Playlists ---
     QVariantList allPlaylists() const;
@@ -251,6 +260,10 @@ public:
 
     Q_INVOKABLE void saveSettings();
 
+    Q_INVOKABLE void setPointA();
+    Q_INVOKABLE void setPointB();
+    Q_INVOKABLE void clearAbRepeat();
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -278,6 +291,7 @@ signals:
     void addToPlaylistRequested(const QString &path);
     void addAlbumToPlaylistRequested(const QString &albumName);
     void addToQueueRequested(QStringList paths);
+    void abRepeatChanged();
 
 private:
     QueueSession    *m_session;

@@ -349,6 +349,7 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
     // Wire queue-level signals
     connect(queue, &Queue::trackChanged, this, [this]() {
         resetPlayCountState();
+        clearAbRepeat(); // A-B repeat is per-track, clear on track change
         rebuildLyricLines();
         emit playingTrackChanged();
         emit metadataChanged();
@@ -406,13 +407,22 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
 
         if (m_isSeeking) return;
 
+        // --- A-B repeat check ---
+        if (m_abRepeatActive && m_pointA >= 0 && m_pointB >= 0) {
+            Queue *q = m_session->playingQueue();
+            if (q && q->position() >= m_pointB) {
+                q->seekTo(m_pointA);
+                return; // skip play count check on loop seek
+            }
+        }
+
+        // --- Play count check ---
         if (!m_playCountCredited && m_creditThresholdMs > 1000) {
             Queue *q = m_session->playingQueue();
             if (q && q->position() >= m_creditThresholdMs) {
                 m_playCountCredited = true;
                 QString path = q->trackAt(q->currentTrackIndex()).path;
                 qint64 now   = QDateTime::currentSecsSinceEpoch();
-
                 if (m_library) {
                     m_library->incrementPlayCount(path);
                     for (int i = 0; i < m_session->queueCount(); i++)
@@ -431,3 +441,42 @@ Playback *PlaybackManager::activePlayback() const
     Queue *q = m_session->playingQueue();
     return q ? q->currentPlayback() : nullptr;
 }
+
+void PlaybackManager::setPointA()
+{
+    Queue *q = m_session->playingQueue();
+    if (!q) return;
+
+    m_pointA        = q->position();
+    m_pointB        = -1;           // clear B when A is reset
+    m_abRepeatActive = false;
+    emit abRepeatChanged();
+}
+
+void PlaybackManager::setPointB()
+{
+    Queue *q = m_session->playingQueue();
+    if (!q || m_pointA < 0) return; // can't set B without A
+
+    qint64 currentPos = q->position();
+    if (currentPos <= m_pointA) return; // B must be after A
+
+    m_pointB         = currentPos;
+    m_abRepeatActive = true;
+
+    // Immediately seek to A and start the loop
+    q->seekTo(m_pointA);
+    emit abRepeatChanged();
+}
+
+void PlaybackManager::clearAbRepeat()
+{
+    m_pointA         = -1;
+    m_pointB         = -1;
+    m_abRepeatActive = false;
+    emit abRepeatChanged();
+}
+
+bool   PlaybackManager::abRepeatActive() const { return m_abRepeatActive; }
+qint64 PlaybackManager::pointA()         const { return m_pointA; }
+qint64 PlaybackManager::pointB()         const { return m_pointB; }

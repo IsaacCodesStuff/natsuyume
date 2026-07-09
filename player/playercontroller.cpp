@@ -172,6 +172,8 @@ void PlayerController::wireSignals()
             this, &PlayerController::addToPlaylistRequested);
     connect(m_playlistManager, &PlaylistManager::addAlbumToPlaylistRequested,
             this, &PlayerController::addAlbumToPlaylistRequested);
+    connect(m_playbackManager, &PlaybackManager::abRepeatChanged,
+            this, &PlayerController::abRepeatChanged);
 }
 
 // --- Playback getters ---
@@ -402,3 +404,10 @@ void PlayerController::requestAddAlbumToQueue(const QString &album)
         paths << v.toMap()["path"].toString();
     emit addToQueueRequested(paths);
 }
+
+bool   PlayerController::abRepeatActive() const { return m_playbackManager->abRepeatActive(); }
+qint64 PlayerController::pointA()         const { return m_playbackManager->pointA(); }
+qint64 PlayerController::pointB()         const { return m_playbackManager->pointB(); }
+void   PlayerController::setPointA()            { m_playbackManager->setPointA(); }
+void   PlayerController::setPointB()            { m_playbackManager->setPointB(); }
+void   PlayerController::clearAbRepeat()        { m_playbackManager->clearAbRepeat(); }

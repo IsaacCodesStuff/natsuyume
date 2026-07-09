@@ -77,6 +77,14 @@ public:
     // players is currently playing rather than preloading.
     Playback *activePlayback() const;
 
+    // --- A-B Repeat ---
+    Q_INVOKABLE void setPointA();
+    Q_INVOKABLE void setPointB();
+    Q_INVOKABLE void clearAbRepeat();
+    bool   abRepeatActive() const;
+    qint64 pointA()         const;
+    qint64 pointB()         const;
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -89,6 +97,7 @@ signals:
     void stopAfterCurrentChanged();
     void playingTrackChanged();
     void isFavoriteChanged();
+    void abRepeatChanged();
 
 private slots:
     void onReadyToSwap();
@@ -112,6 +121,10 @@ private:
     bool m_isSeeking = false;
 
     void connectCurrentPlaybackSignals(Queue *queue);
+
+    qint64 m_pointA         = -1;
+    qint64 m_pointB         = -1;
+    bool   m_abRepeatActive = false;
 };
 
 #endif // PLAYBACKMANAGER_H
