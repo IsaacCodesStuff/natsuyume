@@ -19,28 +19,91 @@ Window {
         close.accepted = true
     }
 
+    // ── Keyboard shortcuts ─────────────────────────────────────────
+    Shortcut {
+        sequence: "Space"
+        context: Qt.ApplicationShortcut
+        onActivated: player.isPlaying ? player.pause() : player.play()
+    }
+
+    Shortcut {
+        sequence: "Right"
+        context: Qt.ApplicationShortcut
+        onActivated: player.playNext()
+    }
+
+    Shortcut {
+        sequence: "Left"
+        context: Qt.ApplicationShortcut
+        onActivated: player.playPrevious()
+    }
+
+    Shortcut {
+        sequence: "Up"
+        context: Qt.ApplicationShortcut
+        onActivated: player.setVolume(Math.min(1.0, player.volume + 0.05))
+    }
+
+    Shortcut {
+        sequence: "Down"
+        context: Qt.ApplicationShortcut
+        onActivated: player.setVolume(Math.max(0.0, player.volume - 0.05))
+    }
+
+    Shortcut {
+        sequence: "Shift+Right"
+        context: Qt.ApplicationShortcut
+        onActivated: player.seekTo(Math.min(player.duration, player.position + 5000))
+    }
+
+    Shortcut {
+        sequence: "Shift+Left"
+        context: Qt.ApplicationShortcut
+        onActivated: player.seekTo(Math.max(0, player.position - 5000))
+    }
+
+    Shortcut {
+        sequence: "S"
+        context: Qt.ApplicationShortcut
+        onActivated: player.toggleShuffle()
+    }
+
+    Shortcut {
+        sequence: "R"
+        context: Qt.ApplicationShortcut
+        onActivated: player.cycleRepeatMode()
+    }
+
+    Shortcut {
+        sequence: "F"
+        context: Qt.ApplicationShortcut
+        onActivated: player.toggleFavorite()
+    }
+
+    Shortcut {
+        sequence: "."
+        context: Qt.ApplicationShortcut
+        onActivated: player.toggleStopAfterCurrent()
+    }
+
     Shortcut {
         sequence: "A"
-        onActivated: {
-            player.setPointA()
-            console.log("Point A set at:", player.pointA)
-        }
+        context: Qt.ApplicationShortcut
+        onActivated: player.setPointA()
     }
 
     Shortcut {
         sequence: "B"
-        onActivated: {
-            player.setPointB()
-            console.log("Point B set at:", player.pointB,
-                        "AB active:", player.abRepeatActive)
-        }
+        context: Qt.ApplicationShortcut
+        onActivated: player.setPointB()
     }
 
     Shortcut {
-        sequence: "C"
+        sequence: "Escape"
+        context: Qt.ApplicationShortcut
         onActivated: {
-            player.clearAbRepeat()
-            console.log("AB repeat cleared")
+            if (player.abRepeatActive)
+                player.clearAbRepeat()
         }
     }
 
