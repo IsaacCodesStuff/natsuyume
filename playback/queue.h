@@ -40,8 +40,6 @@ public:
 
     // --- Gapless playback ---
     Track    peekNextTrack()    const; // read-only, no mutation
-    void     preloadNextTrack();       // loads peekNextTrack() into m_preloadPlayback
-    void     swapPlayback();           // swaps current <-> preload pointers + indices
     void     advancePlayback();        // advances m_currentTrackIndex to m_preloadTrackIndex
 
     // --- State save / restore ---
@@ -79,7 +77,6 @@ public:
 
     // --- Playback accessors ---
     Playback *currentPlayback()  const; // renamed from playback()
-    Playback *preloadPlayback()  const;
     bool      hasPlayback()      const;
     void      initPlayback();
     void      destroyPlayback();
@@ -101,8 +98,6 @@ signals:
     void shuffleChanged();
     void stopAfterCurrentChanged();
     void restoreCompleted();
-    void readyToSwap(); // emitted when track ends and preload slot is ready
-    // PlaybackManager connects to this to orchestrate gapless swap
 
 private:
     QString      m_name;
@@ -110,8 +105,6 @@ private:
     int          m_currentTrackIndex;
 
     Playback *m_currentPlayback  = nullptr; // renamed from m_playback
-    Playback *m_preloadPlayback  = nullptr; // new — holds next track pre-decoded
-    int       m_preloadTrackIndex = -1;     // which track index is in the preload slot
 
     float m_volume = 0.8f;
 

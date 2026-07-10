@@ -4,6 +4,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia QuickControls2 Sql QuickDialogs2)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(TAGLIB REQUIRED taglib)
+find_library(MPV_LIBRARIES NAMES mpv REQUIRED)
+set(MPV_INCLUDE_DIRS "/usr/include")
 qt_standard_project_setup(REQUIRES 6.10)
 qt_add_executable(appnatsuyume_player
     main.cpp
@@ -70,6 +72,7 @@ target_include_directories(appnatsuyume_player PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/library
     ${CMAKE_CURRENT_SOURCE_DIR}/playback
     ${CMAKE_CURRENT_SOURCE_DIR}/player
+    ${MPV_INCLUDE_DIRS}
 )
 target_link_libraries(appnatsuyume_player PRIVATE
     Qt6::Core
@@ -81,6 +84,7 @@ target_link_libraries(appnatsuyume_player PRIVATE
     Qt6::Sql
     Qt6::QuickDialogs2
     ${TAGLIB_LIBRARIES}
+    ${MPV_LIBRARIES}
 )
 install(TARGETS appnatsuyume_player
     BUNDLE DESTINATION .

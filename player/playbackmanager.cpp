@@ -311,38 +311,8 @@ void PlaybackManager::pushCoverArt()
     emit coverArtChanged();
 }
 
-void PlaybackManager::onReadyToSwap()
-{
-    Queue *q = m_session->playingQueue();
-    if (!q) return;
-
-    q->swapPlayback();
-    q->play();
-    q->advancePlayback();
-
-    // DO NOT call connectCurrentPlaybackSignals(q) here —
-    // swapPlayback() already called Queue's connectCurrentPlaybackSignals()
-    // internally. Calling PlaybackManager's version here causes
-    // duplicate signal connections on the new Playback instance.
-
-    resetPlayCountState();
-    rebuildLyricLines();
-    emit playingTrackChanged();
-    emit metadataChanged();
-    emit isFavoriteChanged();
-    pushCoverArt();
-    emit positionChanged();
-    emit durationChanged();
-    emit isPlayingChanged();
-
-    q->preloadNextTrack();
-}
-
 void PlaybackManager::connectPlaybackSignals(Queue *queue)
 {
-    // Wire the gapless swap signal — Queue tells us when to orchestrate
-    connect(queue, &Queue::readyToSwap, this, &PlaybackManager::onReadyToSwap);
-
     // Wire the current Playback's signals
     connectCurrentPlaybackSignals(queue);
 
@@ -379,10 +349,19 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
         emit isFavoriteChanged();
         pushCoverArt();
 
-        // Start preloading the next track as soon as current is ready
-        // This is what makes gapless work — by the time the current track
-        // ends, the next one is already decoded and waiting
-        queue->preloadNextTrack();
+        if (m_pendingGaplessAdvance) {
+            // This readyToPlay is from a gapless advance —
+            // next track already appended, don't append again
+            m_pendingGaplessAdvance = false;
+            return;
+        }
+
+        // Fresh load — append next track for gapless
+        Track next = queue->peekNextTrack();
+        if (next.isValid()) {
+            if (Playback *p = queue->currentPlayback())
+                p->appendTrack(next);
+        }
     });
 
     connect(pb, &Playback::playbackStateChanged, this, [this]() {
@@ -391,7 +370,6 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
 
     connect(pb, &Playback::durationChanged, this, [this]() {
         emit durationChanged();
-        // Recalculate threshold if it was 0 at load time due to missing duration metadata
         if (m_creditThresholdMs == 0 && !m_playCountCredited) {
             Queue *q = m_session->playingQueue();
             if (q && q->currentTrackIndex() >= 0) {
@@ -404,19 +382,16 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
 
     connect(pb, &Playback::positionChanged, this, [this]() {
         emit positionChanged();
-
         if (m_isSeeking) return;
 
-        // --- A-B repeat check ---
         if (m_abRepeatActive && m_pointA >= 0 && m_pointB >= 0) {
             Queue *q = m_session->playingQueue();
             if (q && q->position() >= m_pointB) {
                 q->seekTo(m_pointA);
-                return; // skip play count check on loop seek
+                return;
             }
         }
 
-        // --- Play count check ---
         if (!m_playCountCredited && m_creditThresholdMs > 1000) {
             Queue *q = m_session->playingQueue();
             if (q && q->position() >= m_creditThresholdMs) {
@@ -433,6 +408,10 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
                 emit metadataChanged();
             }
         }
+    });
+
+    connect(pb, &Playback::trackAdvancedGapless, this, [this]() {
+        m_pendingGaplessAdvance = true;
     });
 }
 

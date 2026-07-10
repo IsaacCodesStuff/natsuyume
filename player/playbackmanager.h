@@ -99,9 +99,6 @@ signals:
     void isFavoriteChanged();
     void abRepeatChanged();
 
-private slots:
-    void onReadyToSwap();
-
 private:
     QueueSession       *m_session;
     Library            *m_library  = nullptr;
@@ -125,6 +122,8 @@ private:
     qint64 m_pointA         = -1;
     qint64 m_pointB         = -1;
     bool   m_abRepeatActive = false;
+
+    bool m_pendingGaplessAdvance = false;
 };
 
 #endif // PLAYBACKMANAGER_H
