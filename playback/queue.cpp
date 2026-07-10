@@ -38,25 +38,21 @@ Queue::~Queue() {}
 void Queue::connectCurrentPlaybackSignals()
 {
     connect(m_currentPlayback, &Playback::trackAdvancedGapless, this, [this]() {
-        // mpv advanced internally via its playlist — just update our index
-        advancePlayback();
-        // Don't call loadTrackAt — mpv already loaded the next track
-        // Just notify that the track changed for UI updates
-        emit trackChanged();
+        advancePlayback(); // this already emits trackChanged()
+        // Don't emit trackChanged() again here
     });
 
     connect(m_currentPlayback, &Playback::trackEnded, this, [this]() {
-        // Stop after this song
         if (m_stopAfterCurrent) {
             m_stopAfterCurrent = false;
             emit stopAfterCurrentChanged();
             return;
         }
 
-        // RepeatTrack — restart immediately
         if (m_repeatMode == RepeatTrack) {
-            m_currentPlayback->seekTo(0);
-            m_currentPlayback->play();
+            // Reload the track rather than seeking — mpv may be in idle
+            // state after end-file and not ready to accept seek commands
+            m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex), true);
             emit trackChanged();
             return;
         }
@@ -319,16 +315,15 @@ void Queue::restoreState()
     connect(m_currentPlayback, &Playback::readyToPlay, this, [this]() {
         QTimer::singleShot(200, this, [this]() {
             m_currentPlayback->seekTo(m_savedPosition);
-            if (m_wasPlaying)
-                m_currentPlayback->play();
-            else
-                m_currentPlayback->pause();
+            // Always restore as paused regardless of m_wasPlaying —
+            // auto-play on restore is never intended behavior
+            m_currentPlayback->pause();
             emit trackChanged();
             emit restoreCompleted();
         });
     }, Qt::SingleShotConnection);
 
-    m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex));
+    m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex), false);
 }
 
 // --- Getters ---
@@ -365,6 +360,14 @@ void Queue::cycleRepeatMode()
     case RepeatQueue: m_repeatMode = RepeatTrack; break;
     case RepeatTrack: m_repeatMode = NoRepeat;    break;
     }
+
+    // If switching to RepeatTrack, cancel any appended track
+    // so mpv doesn't auto-advance instead of repeating
+    if (m_repeatMode == RepeatTrack && m_currentPlayback) {
+        m_currentPlayback->clearAppendedTrack();
+        m_currentPlayback->setRepeatTrackPending(true);
+    }
+
     emit repeatModeChanged();
 }
 

@@ -26,6 +26,8 @@ public:
     qint64 duration()  const;
     float  volume()    const;
     void   setVolume(float volume);
+    void clearAppendedTrack(); // removes any appended track from mpv's playlist
+    void setRepeatTrackPending(bool pending) { m_repeatTrackPending = pending; }
 
 signals:
     void playbackStateChanged();
@@ -52,6 +54,8 @@ private:
     static void mpvWakeupCallback(void *ctx);
     bool m_hasAppendedTrack = false;
     bool m_gaplessAdvance = false;
+    bool m_processingEvents = false;
+    bool m_repeatTrackPending = false;
 };
 
 #endif // PLAYBACK_H

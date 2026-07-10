@@ -343,23 +343,52 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
     Playback *pb = queue->currentPlayback();
     if (!pb) return;
 
-    connect(pb, &Playback::readyToPlay, this, [this, queue]() {
+    connect(pb, &Playback::readyToPlay, this, [this]() {
         rebuildLyricLines();
         emit metadataChanged();
         emit isFavoriteChanged();
         pushCoverArt();
 
-        if (m_pendingGaplessAdvance) {
-            // This readyToPlay is from a gapless advance —
-            // next track already appended, don't append again
-            m_pendingGaplessAdvance = false;
+        Queue *playingQ = m_session->playingQueue();
+        if (!playingQ) return;
+
+        if (playingQ->repeatMode() == Queue::RepeatTrack) {
+            if (Playback *p = playingQ->currentPlayback()) {
+                p->clearAppendedTrack();
+                p->setRepeatTrackPending(true);
+            }
             return;
         }
 
-        // Fresh load — append next track for gapless
-        Track next = queue->peekNextTrack();
+        if (m_pendingGaplessAdvance) {
+            m_pendingGaplessAdvance = false;
+            // Append next track for the one after this
+            Queue *playingQ = m_session->playingQueue();
+            if (!playingQ) return;
+            if (playingQ->repeatMode() == Queue::RepeatTrack) {
+                // Clear any appended track so trackEnded fires naturally
+                if (Playback *p = playingQ->currentPlayback())
+                    p->clearAppendedTrack();
+                return;
+            }
+            Track next = playingQ->peekNextTrack();
+            if (next.isValid()) {
+                if (Playback *p = playingQ->currentPlayback())
+                    p->appendTrack(next);
+            }
+            return;
+        }
+
+        if (playingQ->repeatMode() == Queue::RepeatTrack) {
+            // Clear any previously appended track so trackEnded fires
+            if (Playback *p = playingQ->currentPlayback())
+                p->clearAppendedTrack();
+            return;
+        }
+
+        Track next = playingQ->peekNextTrack();
         if (next.isValid()) {
-            if (Playback *p = queue->currentPlayback())
+            if (Playback *p = playingQ->currentPlayback())
                 p->appendTrack(next);
         }
     });

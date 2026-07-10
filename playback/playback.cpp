@@ -87,25 +87,24 @@ void Playback::mpvWakeupCallback(void *ctx)
 
 void Playback::onMpvEvents()
 {
-    if (!m_mpv) return;
+    if (!m_mpv || m_processingEvents) return;
+    m_processingEvents = true;
 
     while (true) {
         mpv_event *event = mpv_wait_event(m_mpv, 0);
-        if (event->event_id == MPV_EVENT_NONE)
-            break;
+        if (event->event_id == MPV_EVENT_NONE) break;
         handleMpvEvent(event);
     }
+
+    m_processingEvents = false;
 }
 
 void Playback::handleMpvEvent(mpv_event *event)
 {
-    qDebug() << "mpv event:" << mpv_event_name(event->event_id);
-
     switch (event->event_id) {
 
     case MPV_EVENT_PROPERTY_CHANGE: {
         auto *prop = reinterpret_cast<mpv_event_property *>(event->data);
-        qDebug() << "mpv property change:" << prop->name << "format:" << prop->format;
 
         if (strcmp(prop->name, "time-pos") == 0) {
             if (prop->format == MPV_FORMAT_DOUBLE) {
@@ -149,15 +148,19 @@ void Playback::handleMpvEvent(mpv_event *event)
 
     case MPV_EVENT_FILE_LOADED: {
         if (m_gaplessAdvance) {
-            // Gapless auto-advance — mpv is already playing, don't pause
-            m_gaplessAdvance   = false;
-            m_pendingAutoPlay  = false;
-        } else if (!m_pendingAutoPlay) {
+            // Gapless auto-advance — mpv is already playing
+            m_gaplessAdvance  = false;
+            m_pendingAutoPlay = false;
+        } else if (m_pendingAutoPlay) {
+            // Explicit play requested — ensure mpv is playing
+            m_pendingAutoPlay = false;
+            const char *args[] = { "set", "pause", "no", nullptr };
+            mpv_command_async(m_mpv, 0, args);
+        } else {
+            // No auto-play — ensure paused
+            m_pendingAutoPlay = false;
             const char *args[] = { "set", "pause", "yes", nullptr };
             mpv_command_async(m_mpv, 0, args);
-            m_pendingAutoPlay = false;
-        } else {
-            m_pendingAutoPlay = false;
         }
         emit readyToPlay();
         break;
@@ -167,11 +170,13 @@ void Playback::handleMpvEvent(mpv_event *event)
         auto *ef = reinterpret_cast<mpv_event_end_file *>(event->data);
         if (ef->reason == MPV_END_FILE_REASON_EOF) {
             m_position = 0;
-            if (m_hasAppendedTrack) {
+            if (m_hasAppendedTrack && !m_repeatTrackPending) {
                 m_hasAppendedTrack = false;
-                m_gaplessAdvance   = true; // next FILE_LOADED is a gapless advance
+                m_gaplessAdvance   = true;
                 emit trackAdvancedGapless();
             } else {
+                m_hasAppendedTrack  = false;
+                m_repeatTrackPending = false;
                 m_isPlaying = false;
                 emit trackEnded();
             }
@@ -293,4 +298,12 @@ void Playback::setVolume(float volume)
     checkMpvError(
         mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &mpvVolume),
         "setVolume");
+}
+
+void Playback::clearAppendedTrack()
+{
+    if (!m_mpv) return;
+    m_hasAppendedTrack = false;
+    const char *args[] = { "playlist-clear", nullptr };
+    checkMpvError(mpv_command_async(m_mpv, 0, args), "playlist-clear");
 }
