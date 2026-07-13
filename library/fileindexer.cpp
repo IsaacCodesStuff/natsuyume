@@ -67,18 +67,25 @@ void FileIndexer::cancel()
 
 void FileIndexer::doScan(const QString &folderPath)
 {
-    // Count pass — lightweight, no metadata reads
+    qDebug() << "doScan started for:" << folderPath;
+    qDebug() << "m_knownPaths size:" << m_knownPaths.size();
+    for (const QString &known : m_knownPaths)
+        qDebug() << "KNOWN:" << known;
+
     int total = 0;
     {
         QDirIterator counter(folderPath, QDir::Files | QDir::NoDotAndDotDot,
                              QDirIterator::Subdirectories);
         while (counter.hasNext()) {
             counter.next();
+            qDebug() << "CHECKING:" << folderPath;
+            qDebug() << "contains?:" << m_knownPaths.contains(folderPath);
             if (s_supportedExtensions.contains(
                     QFileInfo(counter.filePath()).suffix().toLower()))
                 total++;
         }
     }
+    qDebug() << "doScan found" << total << "supported files in" << folderPath;
 
     emit scanStarted(total);
 
@@ -103,6 +110,9 @@ void FileIndexer::doScan(const QString &folderPath)
 
         if (!m_knownPaths.contains(path)) {
             Track track = Metadata::read(path, false);
+            qDebug() << "Indexer path:" << path;
+            qDebug() << "Track path:" << track.path;
+            qDebug() << "Track path empty:" << track.path.isEmpty();
             batch.append(track);
             m_knownPaths.insert(path);
 
@@ -110,6 +120,9 @@ void FileIndexer::doScan(const QString &folderPath)
                 emit tracksFound(batch);
                 batch.clear();
             }
+        } else {
+            // temporary — remove after diagnosis
+            qDebug() << "SKIPPED (known):" << path;
         }
 
         emit scanProgress(++i, total, QFileInfo(path).fileName());
@@ -119,5 +132,6 @@ void FileIndexer::doScan(const QString &folderPath)
     if (!batch.isEmpty())
         emit tracksFound(batch);
 
+    qDebug() << "doScan completed for:" << folderPath << "- emitting scanFinished";
     emit scanFinished();
 }

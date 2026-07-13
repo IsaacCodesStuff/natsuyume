@@ -764,7 +764,7 @@ void Library::addTracks(const QList<Track> &tracks)
         // Use INSERT OR IGNORE first — if track already exists, skip it entirely
         // so we never overwrite play_count or date_last_played with scan data
         q.prepare(R"(
-            INSERT OR IGNORE INTO tracks (
+            INSERT OR REPLACE INTO tracks (
                 path, title, artist, album, album_artist,
                 composer, genre, track_number, disc_number,
                 year, duration, date_added, date_last_played, play_count,

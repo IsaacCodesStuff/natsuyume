@@ -93,6 +93,7 @@ private:
 
     void registerAlbumCovers();
     void connectIndexerSignals();
+    void scanFoldersSequentially(int index);
 };
 
 #endif // LIBRARYMANAGER_H

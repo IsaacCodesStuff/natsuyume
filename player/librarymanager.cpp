@@ -143,6 +143,10 @@ QString LibraryManager::albumCoverPath(const QString &album) const
 void LibraryManager::scanFolder(const QString &folderPath)
 {
     const QStringList paths = m_library->allTrackPaths();
+    qDebug() << "allTrackPaths returned" << paths.size();
+
+    for (const auto &p : paths)
+        qDebug() << p;
     QSet<QString> known(paths.begin(), paths.end());
     m_indexer->setKnownPaths(known);
     m_indexer->scanFolder(folderPath);
@@ -168,13 +172,31 @@ void LibraryManager::rescanAllFolders()
         }
     });
 
-    connect(cleanupThread, &QThread::finished, this, [this, cleanupThread]() {
-        cleanupThread->deleteLater();
-        for (const QString &folder : std::as_const(m_scanFolders))
-            scanFolder(folder);
-    });
+    connect(cleanupThread, &QThread::finished, this,
+            [this, cleanupThread]() {
+                cleanupThread->deleteLater();
+                scanFoldersSequentially(0);
+            });
 
     cleanupThread->start();
+}
+
+void LibraryManager::scanFoldersSequentially(int index)
+{
+    if (index >= m_scanFolders.size()) return;
+
+    const QString &folder = m_scanFolders.at(index);
+
+    // Connect to scanFinished to trigger next folder
+    QMetaObject::Connection *conn = new QMetaObject::Connection;
+    *conn = connect(m_indexer, &FileIndexer::scanFinished, this,
+                    [this, index, conn]() {
+                        disconnect(*conn);
+                        delete conn;
+                        scanFoldersSequentially(index + 1);
+                    });
+
+    scanFolder(folder);
 }
 
 void LibraryManager::addScanFolder(const QString &path)
@@ -271,6 +293,7 @@ void LibraryManager::registerAlbumCovers()
 
 void LibraryManager::connectIndexerSignals()
 {
+    qDebug() << "connectIndexerSignals called" << this;
     connect(m_indexer, &FileIndexer::scanStarted, this, [this](int total) {
         m_scanProgress = 0;
         m_scanTotal    = total;
@@ -306,6 +329,7 @@ void LibraryManager::connectIndexerSignals()
     });
 
     connect(m_indexer, &FileIndexer::tracksFound, this, [this](const QList<Track> &tracks) {
+        qDebug() << "tracksFound received:" << tracks.size() << "tracks - connection count should be 1";
         m_library->addTracks(tracks);
     }, Qt::QueuedConnection);
 
