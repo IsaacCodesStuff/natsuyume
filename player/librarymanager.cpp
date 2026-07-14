@@ -2,22 +2,21 @@
 #include "metadata.h"
 #include <QFile>
 #include <QSettings>
-#include <QThread>
+#include <QMetaObject>
+#include <thread>
 
 LibraryManager::LibraryManager(QObject *parent)
     : QObject{parent}
 {
     m_library = new Library(this);
-    m_indexer = new FileIndexer(this);
-    connectIndexerSignals();
+    m_indexer = new FileIndexer();
+    connectIndexerCallbacks();
 }
 
 LibraryManager::~LibraryManager()
 {
-    // m_library and m_indexer are parented to this, Qt cleans them up
+    delete m_indexer;
 }
-
-// --- Initialization ---
 
 bool LibraryManager::open()
 {
@@ -35,26 +34,19 @@ Library *LibraryManager::library() const
     return m_library;
 }
 
-// --- Settings ---
-
 void LibraryManager::loadSettings()
 {
     QSettings s;
-
     m_scanFolders = s.value("library/scanFolders").toStringList();
-
     m_albumSort = static_cast<Library::AlbumSort>(
         s.value("sort/albumSort", 0).toInt());
     m_albumSortAscending = s.value("sort/albumSortAscending", true).toBool();
-
     m_trackSort = static_cast<Library::TrackSort>(
         s.value("sort/trackSort", 0).toInt());
     m_trackSortAscending = s.value("sort/trackSortAscending", true).toBool();
-
     m_artistSort = static_cast<Library::ArtistSort>(
         s.value("sort/artistSort", 0).toInt());
     m_artistSortAscending = s.value("sort/artistSortAscending", true).toBool();
-
     emit scanFoldersChanged();
     emit albumSortChanged();
     emit trackSortChanged();
@@ -64,16 +56,14 @@ void LibraryManager::loadSettings()
 void LibraryManager::saveSettings()
 {
     QSettings s;
-    s.setValue("library/scanFolders",        m_scanFolders);
-    s.setValue("sort/albumSort",             static_cast<int>(m_albumSort));
-    s.setValue("sort/albumSortAscending",    m_albumSortAscending);
-    s.setValue("sort/trackSort",             static_cast<int>(m_trackSort));
-    s.setValue("sort/trackSortAscending",    m_trackSortAscending);
-    s.setValue("sort/artistSort",            static_cast<int>(m_artistSort));
-    s.setValue("sort/artistSortAscending",   m_artistSortAscending);
+    s.setValue("library/scanFolders",       m_scanFolders);
+    s.setValue("sort/albumSort",            static_cast<int>(m_albumSort));
+    s.setValue("sort/albumSortAscending",   m_albumSortAscending);
+    s.setValue("sort/trackSort",            static_cast<int>(m_trackSort));
+    s.setValue("sort/trackSortAscending",   m_trackSortAscending);
+    s.setValue("sort/artistSort",           static_cast<int>(m_artistSort));
+    s.setValue("sort/artistSortAscending",  m_artistSortAscending);
 }
-
-// --- Library access ---
 
 QStringList LibraryManager::allAlbums() const
 {
@@ -138,18 +128,14 @@ QString LibraryManager::albumCoverPath(const QString &album) const
     return tracks.first().path;
 }
 
-// --- Scanning ---
-
 void LibraryManager::scanFolder(const QString &folderPath)
 {
     const QStringList paths = m_library->allTrackPaths();
-    qDebug() << "allTrackPaths returned" << paths.size();
-
-    for (const auto &p : paths)
-        qDebug() << p;
-    QSet<QString> known(paths.begin(), paths.end());
+    std::unordered_set<std::string> known;
+    for (const QString &p : paths)
+        known.insert(p.toStdString());
     m_indexer->setKnownPaths(known);
-    m_indexer->scanFolder(folderPath);
+    m_indexer->scanFolder(folderPath.toStdString());
 }
 
 void LibraryManager::cancelScan()
@@ -161,42 +147,55 @@ void LibraryManager::rescanAllFolders()
 {
     if (m_scanFolders.isEmpty()) return;
 
-    QThread *cleanupThread = QThread::create([this]() {
-        const QStringList paths = m_library->allTrackPaths();
-        for (const QString &path : paths) {
-            if (!QFile::exists(path)) {
-                QMetaObject::invokeMethod(this, [this, path]() {
-                    m_library->removeTrack(path);
-                }, Qt::QueuedConnection);
+    // Convert to std types on the main thread before handing off
+    const QStringList qtPaths = m_library->allTrackPaths();
+    std::vector<std::string> paths;
+    paths.reserve(qtPaths.size());
+    for (const QString &p : qtPaths)
+        paths.push_back(p.toStdString());
+
+    std::thread([this, paths]() {
+        try {
+            for (const std::string &path : paths) {
+                namespace fs = std::filesystem;
+                if (!fs::exists(path)) {
+                    QString qpath = QString::fromStdString(path);
+                    QMetaObject::invokeMethod(this, [this, qpath]() {
+                        m_library->removeTrack(qpath);
+                    }, Qt::QueuedConnection);
+                }
             }
-        }
-    });
-
-    connect(cleanupThread, &QThread::finished, this,
-            [this, cleanupThread]() {
-                cleanupThread->deleteLater();
+            QMetaObject::invokeMethod(this, [this]() {
                 scanFoldersSequentially(0);
-            });
-
-    cleanupThread->start();
+            }, Qt::QueuedConnection);
+        } catch (const std::exception &e) {
+            qWarning() << "rescanAllFolders thread error:" << e.what();
+        } catch (...) {
+            qWarning() << "rescanAllFolders thread: unknown error";
+        }
+    }).detach();
 }
 
 void LibraryManager::scanFoldersSequentially(int index)
 {
     if (index >= m_scanFolders.size()) return;
 
-    const QString &folder = m_scanFolders.at(index);
+    m_indexer->onScanFinished([this, index]() {
+        QMetaObject::invokeMethod(this, [this, index]() {
+            m_indexer->onScanFinished([this]() {
+                QMetaObject::invokeMethod(this, [this]() {
+                    m_scanProgress = m_scanTotal;
+                    emit scanningChanged();
+                    emit scanProgressChanged();
+                    emit libraryChanged();
+                    registerAlbumCovers();
+                }, Qt::QueuedConnection);
+            });
+            scanFoldersSequentially(index + 1);
+        }, Qt::QueuedConnection);
+    });
 
-    // Connect to scanFinished to trigger next folder
-    QMetaObject::Connection *conn = new QMetaObject::Connection;
-    *conn = connect(m_indexer, &FileIndexer::scanFinished, this,
-                    [this, index, conn]() {
-                        disconnect(*conn);
-                        delete conn;
-                        scanFoldersSequentially(index + 1);
-                    });
-
-    scanFolder(folder);
+    scanFolder(m_scanFolders.at(index));
 }
 
 void LibraryManager::addScanFolder(const QString &path)
@@ -221,8 +220,6 @@ bool        LibraryManager::isScanning()   const { return m_indexer->isScanning(
 int         LibraryManager::scanProgress() const { return m_scanProgress; }
 int         LibraryManager::scanTotal()    const { return m_scanTotal; }
 QString     LibraryManager::scanningFile() const { return m_scanningFile; }
-
-// --- Sort ---
 
 int  LibraryManager::albumSort()          const { return static_cast<int>(m_albumSort); }
 bool LibraryManager::albumSortAscending() const { return m_albumSortAscending; }
@@ -277,8 +274,6 @@ void LibraryManager::setArtistSortAscending(bool ascending)
     saveSettings();
 }
 
-// --- Private helpers ---
-
 void LibraryManager::registerAlbumCovers()
 {
     if (!m_albumCoverProvider) return;
@@ -291,47 +286,58 @@ void LibraryManager::registerAlbumCovers()
     }
 }
 
-void LibraryManager::connectIndexerSignals()
+void LibraryManager::connectIndexerCallbacks()
 {
-    qDebug() << "connectIndexerSignals called" << this;
-    connect(m_indexer, &FileIndexer::scanStarted, this, [this](int total) {
-        m_scanProgress = 0;
-        m_scanTotal    = total;
-        emit scanningChanged();
-        emit scanProgressChanged();
+    m_indexer->onScanStarted([this](int total) {
+        QMetaObject::invokeMethod(this, [this, total]() {
+            m_scanProgress = 0;
+            m_scanTotal    = total;
+            emit scanningChanged();
+            emit scanProgressChanged();
+        }, Qt::QueuedConnection);
     });
 
-    connect(m_indexer, &FileIndexer::scanProgress, this,
-            [this](int scanned, int total, const QString &currentFile) {
-                m_scanProgress = scanned;
-                m_scanTotal    = total;
-                m_scanningFile = currentFile;
-                emit scanProgressChanged();
-            });
-
-    connect(m_indexer, &FileIndexer::scanFinished, this, [this]() {
-        m_scanProgress = m_scanTotal;
-        emit scanningChanged();
-        emit scanProgressChanged();
-        emit libraryChanged();
-        registerAlbumCovers();
+    m_indexer->onScanProgress([this](int scanned, int total, const std::string &currentFile) {
+        QMetaObject::invokeMethod(this, [this, scanned, total,
+                                         file = QString::fromStdString(currentFile)]() mutable {
+            m_scanProgress = scanned;
+            m_scanTotal    = total;
+            m_scanningFile = file;
+            emit scanProgressChanged();
+        }, Qt::QueuedConnection);
     });
 
-    connect(m_indexer, &FileIndexer::scanCancelled, this, [this]() {
-        m_scanProgress = 0;
-        m_scanTotal    = 0;
-        emit scanningChanged();
-        emit scanProgressChanged();
+    m_indexer->onScanFinished([this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            m_scanProgress = m_scanTotal;
+            emit scanningChanged();
+            emit scanProgressChanged();
+            emit libraryChanged();
+            registerAlbumCovers();
+        }, Qt::QueuedConnection);
     });
 
-    connect(m_indexer, &FileIndexer::scanningChanged, this, [this]() {
-        emit scanningChanged();
+    m_indexer->onScanCancelled([this]() {
+        QMetaObject::invokeMethod(this, [this]() {
+            m_scanProgress = 0;
+            m_scanTotal    = 0;
+            emit scanningChanged();
+            emit scanProgressChanged();
+        }, Qt::QueuedConnection);
     });
 
-    connect(m_indexer, &FileIndexer::tracksFound, this, [this](const QList<Track> &tracks) {
-        qDebug() << "tracksFound received:" << tracks.size() << "tracks - connection count should be 1";
-        m_library->addTracks(tracks);
-    }, Qt::QueuedConnection);
+    m_indexer->onScanningChanged([this](bool) {
+        QMetaObject::invokeMethod(this, [this]() {
+            emit scanningChanged();
+        }, Qt::QueuedConnection);
+    });
+
+    m_indexer->onTracksFound([this](const std::vector<Track> &tracks) {
+        QMetaObject::invokeMethod(this, [this, tracks]() {
+            m_library->addTracks(QList<Track>(tracks.begin(), tracks.end()));
+            emit libraryChanged();
+        }, Qt::QueuedConnection);
+    });
 
     connect(m_library, &Library::libraryChanged, this, [this]() {
         emit libraryChanged();

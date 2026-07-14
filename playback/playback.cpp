@@ -2,6 +2,8 @@
 #include <QDebug>
 #include <QMetaObject>
 #include <clocale>  // add to includes at top of playback.cpp
+#include <execinfo.h>
+#include <QThread>
 
 // ---------------------------------------------------------------------------
 // mpv helper macros
@@ -63,6 +65,13 @@ Playback::Playback(QObject *parent)
 Playback::~Playback()
 {
     qDebug() << "Playback instance DESTROYED:" << this;
+    QList<QByteArray> bt = QThread::currentThread()->objectName().toUtf8().split('\n');
+    // simpler: just print the call stack via backtrace if on Linux
+    void *buffer[20];
+    int n = backtrace(buffer, 20);
+    char **symbols = backtrace_symbols(buffer, n);
+    for (int i = 0; i < n; i++) qDebug() << symbols[i];
+    free(symbols);
     if (m_mpv) {
         mpv_terminate_destroy(m_mpv);
         m_mpv = nullptr;
@@ -214,6 +223,13 @@ void Playback::observeProperties()
 
 void Playback::loadTrack(const Track &track, bool autoPlay)
 {
+    qDebug() << "loadTrack called for:" << track.path << "autoPlay:" << autoPlay;
+    // print call stack here too
+    void *buffer[10];
+    int n = backtrace(buffer, 10);
+    char **symbols = backtrace_symbols(buffer, n);
+    for (int i = 0; i < n; i++) qDebug() << symbols[i];
+    free(symbols);
     if (!track.isValid() || !m_mpv) return;
 
     m_pendingAutoPlay = autoPlay;

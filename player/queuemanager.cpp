@@ -56,9 +56,13 @@ void QueueManager::openFilesInNewQueue(const QStringList &paths,
 {
     if (paths.isEmpty()) return;
 
+    // Pause the currently playing queue but leave its Playback intact
     int oldPlayingIndex = m_session->playingQueueIndex();
-    if (oldPlayingIndex >= 0)
-        emit playbackDestroyRequested(oldPlayingIndex);
+    if (oldPlayingIndex >= 0) {
+        Queue *oldQueue = m_session->queueAt(oldPlayingIndex);
+        if (oldQueue) oldQueue->pause();
+    }
+    // Remove this: emit playbackDestroyRequested(oldPlayingIndex);
 
     QString queueName = name.isEmpty() ? generateQueueName() : name;
     Queue *newQueue = new Queue(queueName, this);
@@ -73,12 +77,7 @@ void QueueManager::openFilesInNewQueue(const QStringList &paths,
     m_session->setViewedQueueIndex(newIndex);
     m_session->setPlayingQueueIndex(newIndex);
 
-    // Init playback BEFORE addTracksBatch so QMediaPlayer exists
-    // when addTracksBatch tries to load the first track
     emit playbackInitNewRequested(newIndex);
-
-    // Now add tracks — initPlayback has already run so m_playback exists
-    // and addTracksBatch's internal loadTrack call will succeed first time
     newQueue->addTracksBatch(paths, true);
 }
 
@@ -121,12 +120,13 @@ void QueueManager::closeQueue(int index)
     Queue *toDelete = m_session->queueAt(index);
     toDelete->pause();
 
-    // Update indices before removal so they stay consistent
+    // Destroy this queue's Playback explicitly before removing from list
+    toDelete->destroyPlayback();
+
     int newViewedIndex  = m_session->viewedQueueIndex();
     int newPlayingIndex = m_session->playingQueueIndex();
 
     if (m_session->queueCount() == 1) {
-        // Closing the last queue
         newViewedIndex  = -1;
         newPlayingIndex = -1;
     } else {
@@ -142,14 +142,29 @@ void QueueManager::closeQueue(int index)
         }
     }
 
+    // Remove from session and reparent to defer actual deletion safely
     m_session->removeQueueAt(index);
-    toDelete->deleteLater();
+    toDelete->setParent(nullptr);  // detach from QueueManager ownership
+    toDelete->deleteLater();       // now safe — not in session list, no Playback child
 
     m_session->setViewedQueueIndex(newViewedIndex);
-    m_session->setPlayingQueueIndex(newPlayingIndex);
 
-    if (deletingPlaying && newPlayingIndex >= 0)
+    if (deletingPlaying && newPlayingIndex >= 0) {
+        m_session->setPlayingQueueIndex(newPlayingIndex);
         emit playbackInitRequested(newPlayingIndex);
+        Queue *nextQueue = m_session->queueAt(newPlayingIndex);
+        if (nextQueue) {
+            if (nextQueue->isPlaying()) {
+                // Already playing, nothing to do
+            } else if (nextQueue->position() > 0 || nextQueue->duration() > 0) {
+                // Has a track loaded and paused — just resume
+                nextQueue->play();
+            } else if (nextQueue->currentTrackIndex() >= 0) {
+                // Cold queue, needs a fresh load
+                nextQueue->loadTrackAt(nextQueue->currentTrackIndex());
+            }
+        }
+    }
 }
 
 void QueueManager::renameQueue(int index, const QString &name)

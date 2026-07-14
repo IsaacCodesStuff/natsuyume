@@ -1,47 +1,60 @@
 #ifndef FILEINDEXER_H
 #define FILEINDEXER_H
 
-#include <QObject>
-#include <QSet>
-#include <QStringList>
-#include <QThread>
+#include <atomic>
+#include <functional>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
 #include "track.h"
-#include "metadata.h"
 
-class FileIndexer : public QObject
+class FileIndexer
 {
-    Q_OBJECT
-
 public:
-    explicit FileIndexer(QObject *parent = nullptr);
+    // Callbacks replacing Qt signals
+    using TracksFoundCallback    = std::function<void(const std::vector<Track> &)>;
+    using ScanProgressCallback   = std::function<void(int scanned, int total, const std::string &currentFile)>;
+    using ScanStartedCallback    = std::function<void(int totalFiles)>;
+    using ScanFinishedCallback   = std::function<void()>;
+    using ScanCancelledCallback  = std::function<void()>;
+    using ScanningChangedCallback = std::function<void(bool scanning)>;
+
+    FileIndexer();
     ~FileIndexer();
 
-    void scanFolder(const QString &folderPath);
+    void scanFolder(const std::string &folderPath);
     void cancel();
-    void setKnownPaths(const QSet<QString> &paths);
-
+    void setKnownPaths(const std::unordered_set<std::string> &paths);
     bool isScanning() const;
 
-signals:
-    void scanStarted(int totalFiles);
-    void trackFound(const Track &track);
-    void tracksFound(const QList<Track> &tracks);
-    void scanProgress(int scanned, int total, const QString &currentFile);
-    void scanFinished();
-    void scanCancelled();
-    void scanningChanged();
+    // Callback setters
+    void onTracksFound(TracksFoundCallback cb)        { m_onTracksFound    = std::move(cb); }
+    void onScanProgress(ScanProgressCallback cb)      { m_onScanProgress   = std::move(cb); }
+    void onScanStarted(ScanStartedCallback cb)        { m_onScanStarted    = std::move(cb); }
+    void onScanFinished(ScanFinishedCallback cb)      { m_onScanFinished   = std::move(cb); }
+    void onScanCancelled(ScanCancelledCallback cb)    { m_onScanCancelled  = std::move(cb); }
+    void onScanningChanged(ScanningChangedCallback cb){ m_onScanningChanged = std::move(cb); }
+
+    static const std::vector<std::string> s_supportedExtensions;
 
 private:
-    QThread *m_thread;
-    bool m_cancelled;
-    bool m_scanning;
+    std::thread  m_thread;
+    std::atomic<bool> m_cancelled{false};
+    std::atomic<bool> m_scanning{false};
 
-    QSet<QString> m_knownPaths;
-    QSet<QString> m_knownPathsSnapshot;
+    std::unordered_set<std::string> m_knownPaths;
+    std::unordered_set<std::string> m_knownPathsSnapshot;
 
-    static const QStringList s_supportedExtensions;
+    TracksFoundCallback     m_onTracksFound;
+    ScanProgressCallback    m_onScanProgress;
+    ScanStartedCallback     m_onScanStarted;
+    ScanFinishedCallback    m_onScanFinished;
+    ScanCancelledCallback   m_onScanCancelled;
+    ScanningChangedCallback m_onScanningChanged;
 
-    void doScan(const QString &folderPath);
+    void doScan(const std::string &folderPath);
 };
 
 #endif // FILEINDEXER_H

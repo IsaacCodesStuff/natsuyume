@@ -6,7 +6,6 @@
 #include <QFileInfo>
 #include <QDateTime>
 #include <QDebug>
-#include <QThread>
 
 Library::Library(QObject *parent)
     : QObject{parent}
@@ -757,14 +756,29 @@ void Library::removeTrackIfMissing(const QString &path)
 
 void Library::addTracks(const QList<Track> &tracks)
 {
+    qDebug() << "addTracks called with" << tracks.size() << "tracks, DB currently has"
+             << allTrackPaths().size() << "tracks";
     QSqlQuery q(m_db);
     q.exec("BEGIN TRANSACTION");
 
+    QSet<QString> seen;
+
     for (const Track &track : tracks) {
-        // Use INSERT OR IGNORE first — if track already exists, skip it entirely
-        // so we never overwrite play_count or date_last_played with scan data
+        if (seen.contains(track.path)) {
+            qDebug() << "Duplicate in scan:" << track.path;
+        }
+        seen.insert(track.path);
+
+        // 1. Actually use the normalized track!
+        Track normalizedTrack = track;
+        normalizedTrack.path = track.path.normalized(QString::NormalizationForm_C);
+
+        qDebug() << "Attempting INSERT for:" << normalizedTrack.path
+                 << "| path bytes:" << normalizedTrack.path.toUtf8().toHex();
+
+        // Insert only if path doesn't exist yet
         q.prepare(R"(
-            INSERT OR REPLACE INTO tracks (
+            INSERT OR IGNORE INTO tracks (
                 path, title, artist, album, album_artist,
                 composer, genre, track_number, disc_number,
                 year, duration, date_added, date_last_played, play_count,
@@ -772,62 +786,65 @@ void Library::addTracks(const QList<Track> &tracks)
             ) VALUES (
                 :path, :title, :artist, :album, :albumArtist,
                 :composer, :genre, :trackNumber, :discNumber,
-                :year, :duration, :dateAdded, 0, 0,
-                0
+                :year, :duration, :dateAdded, 0, 0, 0
             )
         )");
 
-        q.bindValue(":path",        track.path);
-        q.bindValue(":title",       track.title);
-        q.bindValue(":artist",      track.artist);
-        q.bindValue(":album",       track.album);
-        q.bindValue(":albumArtist", track.albumArtist);
-        q.bindValue(":composer",    track.composer);
-        q.bindValue(":genre",       track.genre);
-        q.bindValue(":trackNumber", track.trackNumber);
-        q.bindValue(":discNumber",  track.discNumber);
-        q.bindValue(":year",        track.year);
-        q.bindValue(":duration",    track.duration);
+        // Use normalizedTrack for ALL bindings
+        q.bindValue(":path",        normalizedTrack.path);
+        q.bindValue(":title",       normalizedTrack.title);
+        q.bindValue(":artist",      normalizedTrack.artist);
+        q.bindValue(":album",       normalizedTrack.album);
+        q.bindValue(":albumArtist", normalizedTrack.albumArtist.isNull() ? "" : normalizedTrack.albumArtist);
+        q.bindValue(":composer",    normalizedTrack.composer.isNull() ? "" : normalizedTrack.composer);
+        q.bindValue(":genre",       normalizedTrack.genre.isNull() ? "" : normalizedTrack.genre);
+        q.bindValue(":trackNumber", normalizedTrack.trackNumber);
+        q.bindValue(":discNumber",  normalizedTrack.discNumber);
+        q.bindValue(":year",        normalizedTrack.year);
+        q.bindValue(":duration",    normalizedTrack.duration);
         q.bindValue(":dateAdded",   QDateTime::currentSecsSinceEpoch());
         q.exec();
 
-        // If track already existed (INSERT OR IGNORE skipped it),
-        // update only the metadata fields that could legitimately change
-        // (tags edited externally) but never touch play_count or date_last_played
-        q.prepare(R"(
-            UPDATE tracks SET
-                title        = :title,
-                artist       = :artist,
-                album        = :album,
-                album_artist = :albumArtist,
-                composer     = :composer,
-                genre        = :genre,
-                track_number = :trackNumber,
-                disc_number  = :discNumber,
-                year         = :year,
-                duration     = :duration
-            WHERE path = :path
-              AND (
-                title != :title OR artist != :artist OR
-                album != :album OR duration != :duration
-              )
-        )");
-
-        q.bindValue(":path",        track.path);
-        q.bindValue(":title",       track.title);
-        q.bindValue(":artist",      track.artist);
-        q.bindValue(":album",       track.album);
-        q.bindValue(":albumArtist", track.albumArtist);
-        q.bindValue(":composer",    track.composer);
-        q.bindValue(":genre",       track.genre);
-        q.bindValue(":trackNumber", track.trackNumber);
-        q.bindValue(":discNumber",  track.discNumber);
-        q.bindValue(":year",        track.year);
-        q.bindValue(":duration",    track.duration);
-        q.exec();
-
-        QWriteLocker locker(&m_cacheLock);
-        m_pathCache.insert(track.path);
+        if (q.numRowsAffected() > 0) {
+            // New track inserted
+            QWriteLocker locker(&m_cacheLock);
+            m_pathCache.insert(normalizedTrack.path);
+        } else {
+            // Track existed. Update it using a complete, null-safe condition check
+            q.prepare(R"(
+                UPDATE tracks SET
+                    title        = :title,
+                    artist       = :artist,
+                    album        = :album,
+                    album_artist = :albumArtist,
+                    composer     = :composer,
+                    genre        = :genre,
+                    track_number = :trackNumber,
+                    disc_number  = :discNumber,
+                    year         = :year,
+                    duration     = :duration
+                WHERE path = :path
+                AND (
+                    title IS NOT :title OR artist IS NOT :artist OR
+                    album IS NOT :album OR album_artist IS NOT :albumArtist OR
+                    composer IS NOT :composer OR genre IS NOT :genre OR
+                    track_number IS NOT :trackNumber OR disc_number IS NOT :discNumber OR
+                    year IS NOT :year OR duration IS NOT :duration
+                )
+            )");
+            q.bindValue(":path",        normalizedTrack.path);
+            q.bindValue(":title",       normalizedTrack.title);
+            q.bindValue(":artist",      normalizedTrack.artist);
+            q.bindValue(":album",       normalizedTrack.album);
+            q.bindValue(":albumArtist", normalizedTrack.albumArtist);
+            q.bindValue(":composer",    normalizedTrack.composer);
+            q.bindValue(":genre",       normalizedTrack.genre);
+            q.bindValue(":trackNumber", normalizedTrack.trackNumber);
+            q.bindValue(":discNumber",  normalizedTrack.discNumber);
+            q.bindValue(":year",        normalizedTrack.year);
+            q.bindValue(":duration",    normalizedTrack.duration);
+            q.exec();
+        }
     }
 
     q.exec("COMMIT");

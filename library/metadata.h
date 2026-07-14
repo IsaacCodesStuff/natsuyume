@@ -2,6 +2,7 @@
 #define METADATA_H
 
 #include "track.h"
+#include <QString>
 
 class Metadata
 {

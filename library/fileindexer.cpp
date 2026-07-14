@@ -1,137 +1,151 @@
 #include "fileindexer.h"
-#include <QDir>
-#include <QDirIterator>
-#include <QFileInfo>
+#include "metadata.h"
+#include <filesystem>
+#include <algorithm>
 #include <QDebug>
 
-const QStringList FileIndexer::s_supportedExtensions = {
+namespace fs = std::filesystem;
+
+const std::vector<std::string> FileIndexer::s_supportedExtensions = {
     "mp3", "flac", "wav", "ogg", "opus", "m4a"
 };
 
-FileIndexer::FileIndexer(QObject *parent)
-    : QObject{parent},
-    m_thread(nullptr),
-    m_cancelled(false),
-    m_scanning(false)
-{}
+static std::string toLower(std::string s)
+{
+    std::transform(s.begin(), s.end(), s.begin(),
+                   [](unsigned char c){ return std::tolower(c); });
+    return s;
+}
+
+static std::string extensionOf(const fs::path &p)
+{
+    std::string ext = p.extension().string();
+    if (!ext.empty() && ext.front() == '.')
+        ext = ext.substr(1);
+    return toLower(ext);
+}
+
+static bool isSupportedExtension(const std::string &ext)
+{
+    const auto &exts = FileIndexer::s_supportedExtensions;
+    return std::find(exts.begin(), exts.end(), ext) != exts.end();
+}
+
+FileIndexer::FileIndexer() = default;
 
 FileIndexer::~FileIndexer()
 {
     cancel();
+    if (m_thread.joinable())
+        m_thread.join();
 }
 
 bool FileIndexer::isScanning() const
 {
-    return m_scanning;
+    return m_scanning.load();
 }
 
-void FileIndexer::scanFolder(const QString &folderPath)
-{
-    if (m_scanning)
-        return;
-    m_cancelled = false;
-    m_scanning  = true;
-    m_knownPaths = m_knownPathsSnapshot; // sync to current library state before scanning
-    m_thread = QThread::create([this, folderPath]() {
-        doScan(folderPath);
-    });
-
-    connect(m_thread, &QThread::finished, this, [this]() {
-        m_scanning = false;
-        emit scanningChanged();  // we need to add this signal
-        m_thread->deleteLater();
-        m_thread = nullptr;
-    });
-
-    m_thread->start();
-}
-
-void FileIndexer::setKnownPaths(const QSet<QString> &paths)
+void FileIndexer::setKnownPaths(const std::unordered_set<std::string> &paths)
 {
     m_knownPathsSnapshot = paths;
 }
 
-void FileIndexer::cancel()
+void FileIndexer::scanFolder(const std::string &folderPath)
 {
-    if (!m_scanning) return;
-    m_cancelled = true;
+    if (m_scanning.load()) return;
 
-    if (m_thread) {
-        m_thread->wait();
-        m_thread->deleteLater();
-        m_thread = nullptr;
-    }
+    // Join previous thread if it finished but wasn't cleaned up
+    if (m_thread.joinable())
+        m_thread.join();
 
-    m_scanning = false;
+    m_cancelled.store(false);
+    m_scanning.store(true);
+    m_knownPaths = m_knownPathsSnapshot;
+
+    if (m_onScanningChanged) m_onScanningChanged(true);
+
+    m_thread = std::thread([this, folderPath]() {
+        doScan(folderPath);
+        m_scanning.store(false);
+        if (m_onScanningChanged) m_onScanningChanged(false);
+    });
 }
 
-void FileIndexer::doScan(const QString &folderPath)
+void FileIndexer::cancel()
 {
-    qDebug() << "doScan started for:" << folderPath;
-    qDebug() << "m_knownPaths size:" << m_knownPaths.size();
-    for (const QString &known : m_knownPaths)
-        qDebug() << "KNOWN:" << known;
+    if (!m_scanning.load()) return;
+    m_cancelled.store(true);
+    if (m_thread.joinable())
+        m_thread.join();
+    m_scanning.store(false);
+}
 
-    int total = 0;
-    {
-        QDirIterator counter(folderPath, QDir::Files | QDir::NoDotAndDotDot,
-                             QDirIterator::Subdirectories);
-        while (counter.hasNext()) {
-            counter.next();
-            qDebug() << "CHECKING:" << folderPath;
-            qDebug() << "contains?:" << m_knownPaths.contains(folderPath);
-            if (s_supportedExtensions.contains(
-                    QFileInfo(counter.filePath()).suffix().toLower()))
-                total++;
-        }
+void FileIndexer::doScan(const std::string &folderPath)
+{
+    try {
+    fs::path root(folderPath);
+    if (!fs::exists(root) || !fs::is_directory(root)) {
+        if (m_onScanFinished) m_onScanFinished();
+        return;
     }
-    qDebug() << "doScan found" << total << "supported files in" << folderPath;
 
-    emit scanStarted(total);
+    // Count supported files first
+    int total = 0;
+    std::error_code ec;
+    for (const auto &entry : fs::recursive_directory_iterator(root,
+                                                              fs::directory_options::skip_permission_denied, ec)) {
+        if (entry.is_regular_file() &&
+            isSupportedExtension(extensionOf(entry.path())))
+            total++;
+    }
 
-    QDirIterator it(folderPath, QDir::Files | QDir::NoDotAndDotDot,
-                    QDirIterator::Subdirectories);
-    int i = 0;
-    QList<Track> batch;
+    if (m_onScanStarted) m_onScanStarted(total);
+
+    int scanned = 0;
+    std::vector<Track> batch;
+    batch.reserve(10);
     const int batchSize = 10;
 
-    while (it.hasNext()) {
-        if (m_cancelled) {
-            if (!batch.isEmpty())
-                emit tracksFound(batch);
-            emit scanCancelled();
+    for (const auto &entry : fs::recursive_directory_iterator(root,
+                                                              fs::directory_options::skip_permission_denied, ec)) {
+        if (m_cancelled.load()) {
+            if (!batch.empty() && m_onTracksFound)
+                m_onTracksFound(batch);
+            if (m_onScanCancelled) m_onScanCancelled();
             return;
         }
 
-        QString path = it.next();
-        if (!s_supportedExtensions.contains(
-                QFileInfo(path).suffix().toLower()))
-            continue;
+        if (!entry.is_regular_file()) continue;
+        if (!isSupportedExtension(extensionOf(entry.path()))) continue;
 
-        if (!m_knownPaths.contains(path)) {
-            Track track = Metadata::read(path, false);
-            qDebug() << "Indexer path:" << path;
-            qDebug() << "Track path:" << track.path;
-            qDebug() << "Track path empty:" << track.path.isEmpty();
-            batch.append(track);
-            m_knownPaths.insert(path);
+        const std::string path = entry.path().string();
 
-            if (batch.size() >= batchSize) {
-                emit tracksFound(batch);
+        if (m_knownPaths.find(path) == m_knownPaths.end()) {
+            QString qpath = QString::fromStdString(path).normalized(QString::NormalizationForm_C);
+            Track track = Metadata::read(qpath, false);
+            m_knownPaths.insert(qpath.toStdString());
+
+            batch.push_back(track);
+
+            if ((int)batch.size() >= batchSize) {
+                if (m_onTracksFound) m_onTracksFound(batch);
                 batch.clear();
             }
-        } else {
-            // temporary — remove after diagnosis
-            qDebug() << "SKIPPED (known):" << path;
         }
 
-        emit scanProgress(++i, total, QFileInfo(path).fileName());
+        if (m_onScanProgress)
+            m_onScanProgress(++scanned, total, entry.path().filename().string());
     }
 
-    // Emit any remaining tracks
-    if (!batch.isEmpty())
-        emit tracksFound(batch);
+    if (!batch.empty() && m_onTracksFound)
+        m_onTracksFound(batch);
 
-    qDebug() << "doScan completed for:" << folderPath << "- emitting scanFinished";
-    emit scanFinished();
+    if (m_onScanFinished) m_onScanFinished();
+
+    } catch (const std::exception &e) {
+        // Log if you have a non-Qt logger, otherwise just swallow
+        if (m_onScanFinished) m_onScanFinished();
+    } catch (...) {
+        if (m_onScanFinished) m_onScanFinished();
+    }
 }

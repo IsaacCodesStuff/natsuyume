@@ -8,6 +8,7 @@
 #include "library.h"
 #include "fileindexer.h"
 #include "albumcoverprovider.h"
+#include <unordered_set>
 
 class LibraryManager : public QObject
 {
@@ -76,7 +77,7 @@ signals:
 
 private:
     Library            *m_library      = nullptr;
-    FileIndexer        *m_indexer      = nullptr;
+    FileIndexer        *m_indexer      = nullptr;  // stays a pointer, just heap-allocated manually now
     AlbumCoverProvider *m_albumCoverProvider = nullptr;
 
     QStringList m_scanFolders;
@@ -92,7 +93,7 @@ private:
     bool                m_artistSortAscending = true;
 
     void registerAlbumCovers();
-    void connectIndexerSignals();
+    void connectIndexerCallbacks();    // renamed from connectIndexerSignals
     void scanFoldersSequentially(int index);
 };
 

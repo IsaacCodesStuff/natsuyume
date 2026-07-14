@@ -26,11 +26,11 @@
 // Helper to read a Xiph comment field (Ogg/FLAC)
 static QString xiphField(TagLib::Ogg::XiphComment *xiph, const char *key)
 {
-    if (!xiph) return QString();
+    if (!xiph) return QString(""); // Changed to ""
     const auto &map = xiph->fieldListMap();
     auto it = map.find(key);
     if (it == map.end() || it->second.isEmpty())
-        return QString();
+        return QString(""); // Changed to ""
     return QString::fromStdString(it->second.front().to8Bit(true));
 }
 
@@ -205,9 +205,9 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
 
             auto getStr = [&](const char *key) -> QString {
                 auto it = items.find(key);
-                if (it == items.end()) return QString();
+                if (it == items.end()) return QString(""); // Changed to ""
                 auto list = it->second.toStringList();
-                if (list.isEmpty()) return QString();
+                if (list.isEmpty()) return QString(""); // Changed to ""
                 return QString::fromStdString(list.front().to8Bit(true));
             };
 
