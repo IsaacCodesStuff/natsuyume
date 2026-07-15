@@ -2,7 +2,6 @@
 #include "metadata.h"
 #include <filesystem>
 #include <algorithm>
-#include <QDebug>
 
 namespace fs = std::filesystem;
 
@@ -45,7 +44,7 @@ bool FileIndexer::isScanning() const
     return m_scanning.load();
 }
 
-void FileIndexer::setKnownPaths(const std::unordered_set<std::string> &paths)
+void FileIndexer::setKnownPaths(const std::unordered_map<std::string, qint64> &paths)
 {
     m_knownPathsSnapshot = paths;
 }
@@ -119,11 +118,25 @@ void FileIndexer::doScan(const std::string &folderPath)
         if (!isSupportedExtension(extensionOf(entry.path()))) continue;
 
         const std::string path = entry.path().string();
+        QString qpath = QString::fromStdString(path).normalized(QString::NormalizationForm_C);
 
-        if (m_knownPaths.find(path) == m_knownPaths.end()) {
-            QString qpath = QString::fromStdString(path).normalized(QString::NormalizationForm_C);
+        // Get disk modification time
+        qint64 diskMtime = 0;
+        std::error_code mec;
+        auto ftime = fs::last_write_time(entry.path(), mec);
+        if (!mec) {
+            diskMtime = std::chrono::duration_cast<std::chrono::seconds>(
+                            ftime.time_since_epoch()).count();
+        }
+
+        auto it = m_knownPaths.find(path);
+        bool isNew      = (it == m_knownPaths.end());
+        bool isModified = !isNew && (it->second < diskMtime);
+
+        if (isNew || isModified) {
             Track track = Metadata::read(qpath, false);
-            m_knownPaths.insert(qpath.toStdString());
+            track.lastModified = diskMtime;
+            m_knownPaths[path] = diskMtime;
 
             batch.push_back(track);
 

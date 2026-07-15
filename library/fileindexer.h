@@ -26,7 +26,7 @@ public:
 
     void scanFolder(const std::string &folderPath);
     void cancel();
-    void setKnownPaths(const std::unordered_set<std::string> &paths);
+    void setKnownPaths(const std::unordered_map<std::string, qint64> &paths);
     bool isScanning() const;
 
     // Callback setters
@@ -44,8 +44,8 @@ private:
     std::atomic<bool> m_cancelled{false};
     std::atomic<bool> m_scanning{false};
 
-    std::unordered_set<std::string> m_knownPaths;
-    std::unordered_set<std::string> m_knownPathsSnapshot;
+    std::unordered_map<std::string, qint64> m_knownPaths;
+    std::unordered_map<std::string, qint64> m_knownPathsSnapshot;
 
     TracksFoundCallback     m_onTracksFound;
     ScanProgressCallback    m_onScanProgress;

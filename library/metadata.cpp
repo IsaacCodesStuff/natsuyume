@@ -257,6 +257,32 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
         return track; // sidecar takes priority, skip embedded
     }
 
+    // Sanitize all string fields — normalize null QStrings to empty,
+    // apply NFC normalization, and fill in fallback display values
+    auto sanitizeStr = [](QString &s) {
+        if (s.isNull()) s = QString("");
+        s = s.normalized(QString::NormalizationForm_C).trimmed();
+    };
+
+    sanitizeStr(track.title);
+    sanitizeStr(track.artist);
+    sanitizeStr(track.album);
+    sanitizeStr(track.albumArtist);
+    sanitizeStr(track.composer);
+    sanitizeStr(track.genre);
+    sanitizeStr(track.lyrics);
+
+    // Fallback display values for missing required fields
+    if (track.title.isEmpty())  track.title  = "Unknown Title";
+    if (track.artist.isEmpty()) track.artist = "Unknown Artist";
+    if (track.album.isEmpty())  track.album  = "Unknown Album";
+
+    // Numeric sanity
+    if (track.trackNumber < 0) track.trackNumber = 0;
+    if (track.discNumber  < 1) track.discNumber  = 1;
+    if (track.year        < 0) track.year        = 0;
+    if (track.duration    < 0) track.duration    = 0;
+
     // 2. Embedded lyrics — already read per-format above, stored in track.lyrics
     //    (populated in the format blocks below; nothing to do here)
 

@@ -70,6 +70,11 @@ void Library::createSchema()
         // Column already exists — not an error, just skip
     }
 
+    QSqlQuery migrateMod(m_db);
+    if (!migrateMod.exec("ALTER TABLE tracks ADD COLUMN last_modified INTEGER NOT NULL DEFAULT 0")) {
+        // Column already exists — skip
+    }
+
     // Separate table for favorited paths that aren't in the library
     // (tracks that were moved/deleted but should stay favorited)
     q.exec(R"(
@@ -125,10 +130,10 @@ void Library::createSchema()
 void Library::populateCache()
 {
     QSqlQuery q(m_db);
-    q.exec("SELECT path FROM tracks");
+    q.exec("SELECT path, last_modified FROM tracks");
     QWriteLocker locker(&m_cacheLock);
     while (q.next())
-        m_pathCache.insert(q.value(0).toString());
+        m_pathCache.insert(q.value(0).toString(), q.value(1).toLongLong());
 }
 
 void Library::addTrack(const Track &track)
@@ -170,7 +175,7 @@ void Library::addTrack(const Track &track)
     } else {
         {
             QWriteLocker locker(&m_cacheLock);
-            m_pathCache.insert(track.path);
+            m_pathCache.insert(track.path, track.lastModified);
         }
         emit libraryChanged();
     }
@@ -424,6 +429,12 @@ bool Library::containsPath(const QString &path) const
     return m_pathCache.contains(path);
 }
 
+qint64 Library::lastModifiedFor(const QString &path) const
+{
+    QReadLocker locker(&m_cacheLock);
+    return m_pathCache.value(path, 0);
+}
+
 // ── Playlist writing ───────────────────────────────────────────────────────
 
 int Library::createPlaylist(const QString &name)
@@ -663,6 +674,19 @@ void Library::sortPlaylist(int playlistId, TrackSort sort, bool ascending)
 
 void Library::incrementPlayCount(const QString &path)
 {
+    QSqlQuery q(m_db);
+    q.prepare(R"(
+        UPDATE tracks
+        SET play_count       = play_count + 1,
+            date_last_played = :now
+        WHERE path = :path
+    )");
+    q.bindValue(":now",  QDateTime::currentSecsSinceEpoch());
+    q.bindValue(":path", path);
+    q.exec();
+
+    if (q.lastError().isValid())
+        qWarning() << "Library: incrementPlayCount error:" << q.lastError().text();
 }
 
 void Library::saveQueues(const QList<QueueSnapshot> &queues)
@@ -756,61 +780,50 @@ void Library::removeTrackIfMissing(const QString &path)
 
 void Library::addTracks(const QList<Track> &tracks)
 {
-    qDebug() << "addTracks called with" << tracks.size() << "tracks, DB currently has"
-             << allTrackPaths().size() << "tracks";
     QSqlQuery q(m_db);
     q.exec("BEGIN TRANSACTION");
 
     QSet<QString> seen;
 
     for (const Track &track : tracks) {
-        if (seen.contains(track.path)) {
-            qDebug() << "Duplicate in scan:" << track.path;
-        }
+        if (seen.contains(track.path)) continue;
         seen.insert(track.path);
 
-        // 1. Actually use the normalized track!
         Track normalizedTrack = track;
         normalizedTrack.path = track.path.normalized(QString::NormalizationForm_C);
 
-        qDebug() << "Attempting INSERT for:" << normalizedTrack.path
-                 << "| path bytes:" << normalizedTrack.path.toUtf8().toHex();
-
-        // Insert only if path doesn't exist yet
         q.prepare(R"(
             INSERT OR IGNORE INTO tracks (
                 path, title, artist, album, album_artist,
                 composer, genre, track_number, disc_number,
                 year, duration, date_added, date_last_played, play_count,
-                is_favorite
+                is_favorite, last_modified
             ) VALUES (
                 :path, :title, :artist, :album, :albumArtist,
                 :composer, :genre, :trackNumber, :discNumber,
-                :year, :duration, :dateAdded, 0, 0, 0
+                :year, :duration, :dateAdded, :last_modified, 0, 0, 0
             )
         )");
 
-        // Use normalizedTrack for ALL bindings
         q.bindValue(":path",        normalizedTrack.path);
         q.bindValue(":title",       normalizedTrack.title);
         q.bindValue(":artist",      normalizedTrack.artist);
         q.bindValue(":album",       normalizedTrack.album);
-        q.bindValue(":albumArtist", normalizedTrack.albumArtist.isNull() ? "" : normalizedTrack.albumArtist);
-        q.bindValue(":composer",    normalizedTrack.composer.isNull() ? "" : normalizedTrack.composer);
-        q.bindValue(":genre",       normalizedTrack.genre.isNull() ? "" : normalizedTrack.genre);
+        q.bindValue(":albumArtist", normalizedTrack.albumArtist);
+        q.bindValue(":composer",    normalizedTrack.composer);
+        q.bindValue(":genre",       normalizedTrack.genre);
         q.bindValue(":trackNumber", normalizedTrack.trackNumber);
         q.bindValue(":discNumber",  normalizedTrack.discNumber);
         q.bindValue(":year",        normalizedTrack.year);
         q.bindValue(":duration",    normalizedTrack.duration);
         q.bindValue(":dateAdded",   QDateTime::currentSecsSinceEpoch());
+        q.bindValue(":lastModified", normalizedTrack.lastModified);
         q.exec();
 
         if (q.numRowsAffected() > 0) {
-            // New track inserted
             QWriteLocker locker(&m_cacheLock);
-            m_pathCache.insert(normalizedTrack.path);
+            m_pathCache.insert(normalizedTrack.path, normalizedTrack.lastModified);
         } else {
-            // Track existed. Update it using a complete, null-safe condition check
             q.prepare(R"(
                 UPDATE tracks SET
                     title        = :title,

@@ -131,9 +131,9 @@ QString LibraryManager::albumCoverPath(const QString &album) const
 void LibraryManager::scanFolder(const QString &folderPath)
 {
     const QStringList paths = m_library->allTrackPaths();
-    std::unordered_set<std::string> known;
+    std::unordered_map<std::string, qint64> known;
     for (const QString &p : paths)
-        known.insert(p.toStdString());
+        known[p.toStdString()] = m_library->lastModifiedFor(p);
     m_indexer->setKnownPaths(known);
     m_indexer->scanFolder(folderPath.toStdString());
 }
@@ -212,7 +212,8 @@ void LibraryManager::removeScanFolder(const QString &path)
     m_scanFolders.removeAll(path);
     emit scanFoldersChanged();
     saveSettings();
-    m_library->removeTracksFromFolder(path);
+    // Don't remove tracks — they'll be cleaned up naturally
+    // on the next rescan when the cleanup thread finds missing files
 }
 
 QStringList LibraryManager::scanFolders()  const { return m_scanFolders; }

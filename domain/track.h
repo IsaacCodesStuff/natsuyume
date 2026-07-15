@@ -38,6 +38,7 @@ public:
 
     bool isValid()      const { return !path.isEmpty(); }
     bool hasCoverArt()  const { return !coverArt.isNull(); }
+    qint64 lastModified = 0;
 };
 
 #endif // TRACK_H

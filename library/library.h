@@ -67,6 +67,7 @@ public:
     QStringList  allArtists(ArtistSort sort, bool ascending) const;
     bool         containsPath(const QString &path) const;
     QStringList  albumsForArtist(const QString &artist) const;
+    qint64 lastModifiedFor(const QString &path) const;
 
     // --- Playlist writing ---
     int  createPlaylist(const QString &name);           // returns new id, -1 on error
@@ -103,7 +104,7 @@ signals:
 
 private:
     QSqlDatabase   m_db;
-    QSet<QString>  m_pathCache;
+    QHash<QString, qint64> m_pathCache; // path → last_modified
     mutable QReadWriteLock m_cacheLock;
 
     void createSchema();
