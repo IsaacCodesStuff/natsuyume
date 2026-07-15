@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(natsuyume_player VERSION 0.1 LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia QuickControls2 Sql QuickDialogs2)
 find_package(PkgConfig REQUIRED)
@@ -42,6 +43,8 @@ qt_add_qml_module(appnatsuyume_player
         ui/QueuePicker.qml
         ui/sidebar/queues/QueueSortMenu.qml
     SOURCES
+        core/coretypes.h
+        core/natsuyumecore.h core/natsuyumecore.cpp
         core/trackcoverprovider.h core/trackcoverprovider.cpp
         core/albumcoverprovider.h core/albumcoverprovider.cpp
         core/coverimageprovider.h core/coverimageprovider.cpp

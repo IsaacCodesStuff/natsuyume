@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
+#include "natsuyumecore.h"
 #include "playercontroller.h"
 #include "coverimageprovider.h"
 #include "albumcoverprovider.h"
@@ -15,10 +16,8 @@ int main(int argc, char *argv[])
 
     CoverImageProvider *coverProvider = new CoverImageProvider();
     engine.addImageProvider("covers", coverProvider);
-
     AlbumCoverProvider *albumCoverProvider = new AlbumCoverProvider();
     engine.addImageProvider("albumcovers", albumCoverProvider);
-
     TrackCoverProvider *trackCoverProvider = new TrackCoverProvider();
     engine.addImageProvider("trackcovers", trackCoverProvider);
 
@@ -29,17 +28,27 @@ int main(int argc, char *argv[])
         []() { QCoreApplication::exit(-1); },
         Qt::QueuedConnection);
 
-    QPixmapCache::setCacheLimit(10 * 1024); // 10 MB instead of Qt's default 100 MB
+    QPixmapCache::setCacheLimit(10 * 1024);
+
+    // Create and initialise the core before loading QML
+    Natsuyume::NatsuyumeCore *core = new Natsuyume::NatsuyumeCore();
+    core->init();
+
+    // Create the Qt adapter, injecting the core
+    PlayerController *player = new PlayerController(core, nullptr);
+    player->setCoverImageProvider(coverProvider);
+    player->setAlbumCoverProvider(albumCoverProvider);
+
+    // Expose to QML
+    engine.setInitialProperties({{"player", QVariant::fromValue(player)}});
 
     engine.loadFromModule("natsuyume_player", "Main");
 
-    const auto rootObjects = engine.rootObjects();
-    QObject *root = rootObjects.first();
-    PlayerController *player = root->findChild<PlayerController*>();
-    if (player) {
-        player->setCoverImageProvider(coverProvider);
-        player->setAlbumCoverProvider(albumCoverProvider);
-    }
+    int result = QGuiApplication::exec();
 
-    return QGuiApplication::exec();
+    core->shutdown();
+    delete player;
+    delete core;
+
+    return result;
 }

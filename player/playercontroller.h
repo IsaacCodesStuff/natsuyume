@@ -5,11 +5,7 @@
 #include <QVariantList>
 #include <QStringList>
 #include <QtQml/qqml.h>
-#include "queuesession.h"
-#include "queuemanager.h"
-#include "playbackmanager.h"
-#include "playlistmanager.h"
-#include "librarymanager.h"
+#include "natsuyumecore.h"
 #include "coverimageprovider.h"
 #include "albumcoverprovider.h"
 
@@ -17,6 +13,7 @@ class PlayerController : public QObject
 {
     Q_OBJECT
     QML_ELEMENT
+    QML_UNCREATABLE("PlayerController is created in C++ and injected via setInitialProperties.")
 
     // --- Playback ---
     Q_PROPERTY(bool   isPlaying READ isPlaying NOTIFY isPlayingChanged)
@@ -32,8 +29,8 @@ class PlayerController : public QObject
     Q_PROPERTY(bool    hasCoverArt READ hasCoverArt NOTIFY metadataChanged)
 
     // --- Lyrics ---
-    Q_PROPERTY(QString      rawLyrics      READ rawLyrics      NOTIFY metadataChanged)
-    Q_PROPERTY(QVariantList lyricLines     READ lyricLines     NOTIFY metadataChanged)
+    Q_PROPERTY(QString      rawLyrics       READ rawLyrics       NOTIFY metadataChanged)
+    Q_PROPERTY(QVariantList lyricLines      READ lyricLines      NOTIFY metadataChanged)
     Q_PROPERTY(bool         lyricsAreSynced READ lyricsAreSynced NOTIFY metadataChanged)
 
     // --- Playing-queue track navigation ---
@@ -63,12 +60,12 @@ class PlayerController : public QObject
     Q_PROPERTY(QVariantList trackList READ trackList NOTIFY trackChanged)
 
     // --- Library ---
-    Q_PROPERTY(QStringList allAlbums     READ allAlbums     NOTIFY libraryChanged)
-    Q_PROPERTY(QStringList allArtists    READ allArtists    NOTIFY libraryChanged)
-    Q_PROPERTY(bool        isScanning    READ isScanning    NOTIFY scanningChanged)
-    Q_PROPERTY(int         scanProgress  READ scanProgress  NOTIFY scanProgressChanged)
-    Q_PROPERTY(int         scanTotal     READ scanTotal     NOTIFY scanProgressChanged)
-    Q_PROPERTY(QString     scanningFile  READ scanningFile  NOTIFY scanProgressChanged)
+    Q_PROPERTY(QStringList allAlbums    READ allAlbums    NOTIFY libraryChanged)
+    Q_PROPERTY(QStringList allArtists   READ allArtists   NOTIFY libraryChanged)
+    Q_PROPERTY(bool        isScanning   READ isScanning   NOTIFY scanningChanged)
+    Q_PROPERTY(int         scanProgress READ scanProgress NOTIFY scanProgressChanged)
+    Q_PROPERTY(int         scanTotal    READ scanTotal    NOTIFY scanProgressChanged)
+    Q_PROPERTY(QString     scanningFile READ scanningFile NOTIFY scanProgressChanged)
 
     // --- Sort ---
     Q_PROPERTY(int  albumSort          READ albumSort          WRITE setAlbumSort          NOTIFY albumSortChanged)
@@ -96,9 +93,8 @@ class PlayerController : public QObject
     Q_PROPERTY(QVariantList allPlaylists READ allPlaylists NOTIFY playlistsChanged)
 
 public:
-    explicit PlayerController(QObject *parent = nullptr);
+    explicit PlayerController(Natsuyume::NatsuyumeCore *core, QObject *parent = nullptr);
 
-    // --- Setup ---
     void setCoverImageProvider(CoverImageProvider *provider);
     void setAlbumCoverProvider(AlbumCoverProvider *provider);
 
@@ -109,24 +105,22 @@ public:
     float  volume()    const;
 
     // --- Metadata ---
-    QString trackTitle()  const;
-    QString trackArtist() const;
-    QString trackAlbum()  const;
-    QString trackPath()   const;
-    bool    hasCoverArt() const;
+    QString trackTitle()       const;
+    QString trackArtist()      const;
+    QString trackAlbum()       const;
+    QString trackPath()        const;
+    bool    hasCoverArt()      const;
+    QString rawLyrics()        const;
+    QVariantList lyricLines()  const;
+    bool lyricsAreSynced()     const;
 
-    // --- Lyrics ---
-    QString      rawLyrics()      const;
-    QVariantList lyricLines()     const;
-    bool         lyricsAreSynced() const;
-
-    // --- Playing-queue track navigation ---
+    // --- Playing-queue navigation ---
     int  playingTrackIndex() const;
     int  playingTrackCount() const;
     bool hasPrevious()       const;
     bool hasNext()           const;
 
-    // --- Viewed-queue track navigation ---
+    // --- Viewed-queue navigation ---
     int viewedTrackIndex() const;
     int viewedTrackCount() const;
 
@@ -155,12 +149,12 @@ public:
     QString     scanningFile() const;
 
     // --- Sort ---
-    int  albumSort()              const;
-    bool albumSortAscending()     const;
-    int  trackSort()              const;
-    bool trackSortAscending()     const;
-    int  playlistSort()           const;
-    bool playlistSortAscending()  const;
+    int  albumSort()             const;
+    bool albumSortAscending()    const;
+    int  trackSort()             const;
+    bool trackSortAscending()    const;
+    int  playlistSort()          const;
+    bool playlistSortAscending() const;
 
     // --- Settings ---
     QStringList scanFolders()        const;
@@ -168,6 +162,7 @@ public:
     bool        stopAfterCurrent()   const;
     qint64      queueTotalDuration() const;
 
+    // --- A-B repeat ---
     bool   abRepeatActive() const;
     qint64 pointA()         const;
     qint64 pointB()         const;
@@ -197,8 +192,8 @@ public:
     Q_INVOKABLE void renameQueue(int index, const QString &name);
     Q_INVOKABLE void moveQueue(int from, int to);
     Q_INVOKABLE void viewQueue(int index);
-    Q_INVOKABLE void switchToQueue(int index); // deprecated alias for viewQueue
-    Q_INVOKABLE void addTrackToActiveQueue(const QString &filePath);
+    Q_INVOKABLE void switchToQueue(int index) { viewQueue(index); }
+    Q_INVOKABLE void addTrackToActiveQueue(const QString &filePath) { addTrackToQueue(filePath); }
     Q_INVOKABLE void addTrackToQueue(const QString &path);
     Q_INVOKABLE void addAlbumToQueue(const QString &album);
     Q_INVOKABLE void removeTrackAt(int index);
@@ -254,12 +249,11 @@ public:
     Q_INVOKABLE void requestAddToQueue(const QString &path);
     Q_INVOKABLE void requestAddAlbumToQueue(const QString &album);
 
-    // --- Constants exposed to QML ---
-    Q_INVOKABLE int allSongsPlaylistId()  const { return PlaylistManager::kAllSongsPlaylistId; }
-    Q_INVOKABLE int favoritesPlaylistId() const { return PlaylistManager::kFavoritesPlaylistId; }
+    // --- Constants ---
+    Q_INVOKABLE int allSongsPlaylistId()  const { return Natsuyume::NatsuyumeCore::allSongsPlaylistId(); }
+    Q_INVOKABLE int favoritesPlaylistId() const { return Natsuyume::NatsuyumeCore::favoritesPlaylistId(); }
 
     Q_INVOKABLE void saveSettings();
-
     Q_INVOKABLE void setPointA();
     Q_INVOKABLE void setPointB();
     Q_INVOKABLE void clearAbRepeat();
@@ -294,14 +288,14 @@ signals:
     void abRepeatChanged();
 
 private:
-    QueueSession    *m_session;
-    QueueManager    *m_queueManager;
-    PlaybackManager *m_playbackManager;
-    PlaylistManager *m_playlistManager;
-    LibraryManager  *m_libraryManager;
+    Natsuyume::NatsuyumeCore *m_core;
+    CoverImageProvider       *m_coverImageProvider = nullptr;
+    AlbumCoverProvider       *m_albumCoverProvider = nullptr;
 
-    void wireSignals();
-    void loadSettings();
+    // Cached current track — updated via onTrackChanged callback
+    Natsuyume::CoreTrack      m_currentTrack;
+
+    void wireCallbacks();
 };
 
 #endif // PLAYERCONTROLLER_H

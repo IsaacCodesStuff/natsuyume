@@ -12,6 +12,7 @@ Window {
     minimumHeight: 520
     visible: true
     title: "Natsuyume"
+    required property PlayerController player
     onClosing: function(close) {
         root.visible = false
         player.saveQueues()
@@ -105,11 +106,6 @@ Window {
             if (player.abRepeatActive)
                 player.clearAbRepeat()
         }
-    }
-
-    // ── Player instance ────────────────────────────────────────
-    PlayerController {
-        id: player
     }
 
     // ── Shared dialogs ─────────────────────────────────────────

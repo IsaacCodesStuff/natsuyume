@@ -1,413 +1,477 @@
 #include "playercontroller.h"
-#include <QTimer>
+#include <QString>
+#include <QStringList>
+#include <QVariantList>
+#include <QVariantMap>
+#include <QImage>
 
-PlayerController::PlayerController(QObject *parent)
-    : QObject{parent}
+using namespace Natsuyume;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+static QStringList toQStringList(const std::vector<std::string> &v)
 {
-    m_session         = new QueueSession(this);
-    m_queueManager    = new QueueManager(m_session, this);
-    m_libraryManager  = new LibraryManager(this);
-    m_playbackManager = new PlaybackManager(m_session, this);
-    m_playlistManager = new PlaylistManager(m_session, this);
-
-    // Wire library pointer into managers that need it
-    m_queueManager->setLibrary(m_libraryManager->library());
-    m_playbackManager->setLibrary(m_libraryManager->library());
-    m_playlistManager->setLibrary(m_libraryManager->library());
-
-    if (m_libraryManager->open()) {
-        loadSettings();
-        m_playlistManager->initialize(); // ← load favorites now that db is open
-        loadQueues();
-        QTimer::singleShot(2000, this, [this]() {
-            m_libraryManager->rescanAllFolders();
-        });
-    } else {
-        qWarning() << "PlayerController: failed to open library";
-    }
-
-    wireSignals();
+    QStringList r;
+    r.reserve(static_cast<int>(v.size()));
+    for (const auto &s : v) r.append(QString::fromStdString(s));
+    return r;
 }
 
-// --- Setup ---
+static std::vector<std::string> toStdVec(const QStringList &list)
+{
+    std::vector<std::string> r;
+    r.reserve(list.size());
+    for (const QString &s : list) r.push_back(s.toStdString());
+    return r;
+}
+
+static QVariantMap coreTrackToVariantMap(const CoreTrack &t)
+{
+    QVariantMap m;
+    m["path"]        = QString::fromStdString(t.path);
+    m["title"]       = QString::fromStdString(t.title);
+    m["artist"]      = QString::fromStdString(t.artist);
+    m["album"]       = QString::fromStdString(t.album);
+    m["albumArtist"] = QString::fromStdString(t.albumArtist);
+    m["composer"]    = QString::fromStdString(t.composer);
+    m["genre"]       = QString::fromStdString(t.genre);
+    m["trackNumber"] = t.trackNumber;
+    m["discNumber"]  = t.discNumber;
+    m["year"]        = t.year;
+    m["duration"]    = static_cast<qlonglong>(t.duration);
+    m["playCount"]   = t.playCount;
+    m["isFavorite"]  = t.isFavorite;
+    return m;
+}
+
+// ---------------------------------------------------------------------------
+// Constructor
+// ---------------------------------------------------------------------------
+
+PlayerController::PlayerController(NatsuyumeCore *core, QObject *parent)
+    : QObject(parent)
+    , m_core(core)
+{
+    wireCallbacks();
+}
+
+void PlayerController::wireCallbacks()
+{
+    auto &cb = m_core->callbacks;
+
+    cb.onPlaybackStateChanged = [this](bool) {
+        emit isPlayingChanged();
+    };
+    cb.onPositionChanged = [this](int64_t) {
+        emit positionChanged();
+    };
+    cb.onDurationChanged = [this](int64_t) {
+        emit durationChanged();
+    };
+    cb.onVolumeChanged = [this](float) {
+        emit volumeChanged();
+    };
+    cb.onTrackChanged = [this](const CoreTrack &track) {
+        m_currentTrack = track;
+        emit metadataChanged();
+        emit playingTrackChanged();
+        emit trackChanged();
+        emit isFavoriteChanged();
+
+        // Push cover art to image provider
+        if (m_coverImageProvider) {
+            if (!track.coverArtData.empty()) {
+                QImage img;
+                img.loadFromData(
+                    reinterpret_cast<const uchar *>(track.coverArtData.data()),
+                    static_cast<int>(track.coverArtData.size()));
+                m_coverImageProvider->updateCover(img);
+            } else {
+                m_coverImageProvider->updateCover(QImage{});
+            }
+            emit coverArtChanged();
+        }
+    };
+    cb.onMetadataChanged = [this]() {
+        emit metadataChanged();
+    };
+    cb.onQueueChanged = [this]() {
+        emit trackChanged();
+    };
+    cb.onQueuesChanged = [this]() {
+        emit queuesChanged();
+    };
+    cb.onRepeatModeChanged = [this]() {
+        emit repeatModeChanged();
+    };
+    cb.onShuffleChanged = [this]() {
+        emit shuffleChanged();
+    };
+    cb.onStopAfterCurrentChanged = [this]() {
+        emit stopAfterCurrentChanged();
+    };
+    cb.onLibraryChanged = [this]() {
+        emit libraryChanged();
+
+        // Refresh album covers when library updates
+        if (m_albumCoverProvider) {
+            const auto albums = m_core->allAlbums();
+            for (const auto &album : albums) {
+                QString qAlbum = QString::fromStdString(album);
+                if (m_albumCoverProvider->hasAlbum(qAlbum)) continue;
+                std::string coverPath = m_core->albumCoverPath(album);
+                if (!coverPath.empty())
+                    m_albumCoverProvider->registerAlbum(
+                        qAlbum, QString::fromStdString(coverPath));
+            }
+        }
+    };
+    cb.onScanningChanged = [this](bool) {
+        emit scanningChanged();
+    };
+    cb.onScanProgressChanged = [this](int, int, const std::string &) {
+        emit scanProgressChanged();
+    };
+    cb.onPlaylistsChanged = [this]() {
+        emit playlistsChanged();
+    };
+    cb.onFavoriteChanged = [this](bool) {
+        emit isFavoriteChanged();
+    };
+    cb.onAbRepeatChanged = [this]() {
+        emit abRepeatChanged();
+    };
+    cb.onAlbumSortChanged = [this]() {
+        emit albumSortChanged();
+        emit libraryChanged();
+    };
+    cb.onTrackSortChanged = [this]() {
+        emit trackSortChanged();
+    };
+    cb.onPlaylistSortChanged = [this]() {
+        emit playlistSortChanged();
+    };
+    cb.onScanFoldersChanged = [this]() {
+        emit scanFoldersChanged();
+    };
+    cb.onPlayCountThresholdChanged = [this]() {
+        emit playCountThresholdChanged();
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Setup
+// ---------------------------------------------------------------------------
 
 void PlayerController::setCoverImageProvider(CoverImageProvider *provider)
 {
-    m_playbackManager->setCoverImageProvider(provider);
+    m_coverImageProvider = provider;
 }
 
 void PlayerController::setAlbumCoverProvider(AlbumCoverProvider *provider)
 {
-    m_libraryManager->setAlbumCoverProvider(provider);
+    m_albumCoverProvider = provider;
+
+    // Register any albums already in the library
+    for (const auto &album : m_core->allAlbums()) {
+        QString qAlbum = QString::fromStdString(album);
+        if (m_albumCoverProvider->hasAlbum(qAlbum)) continue;
+        std::string coverPath = m_core->albumCoverPath(album);
+        if (!coverPath.empty())
+            m_albumCoverProvider->registerAlbum(
+                qAlbum, QString::fromStdString(coverPath));
+    }
 }
 
-// --- Settings ---
+// ---------------------------------------------------------------------------
+// Playback
+// ---------------------------------------------------------------------------
 
-void PlayerController::loadSettings()
+bool   PlayerController::isPlaying() const { return m_core->isPlaying(); }
+qint64 PlayerController::position()  const { return m_core->position(); }
+qint64 PlayerController::duration()  const { return m_core->duration(); }
+float  PlayerController::volume()    const { return m_core->volume(); }
+
+void PlayerController::play()                   { m_core->play(); }
+void PlayerController::pause()                  { m_core->pause(); }
+void PlayerController::seekTo(qint64 ms)        { m_core->seekTo(ms); }
+void PlayerController::playNext()               { m_core->playNext(); }
+void PlayerController::playPrevious()           { m_core->playPrevious(); }
+void PlayerController::cycleRepeatMode()        { m_core->cycleRepeatMode(); }
+void PlayerController::toggleShuffle()          { m_core->toggleShuffle(); }
+void PlayerController::toggleStopAfterCurrent() { m_core->toggleStopAfterCurrent(); }
+void PlayerController::setVolume(float v)       { m_core->setVolume(v); }
+
+// ---------------------------------------------------------------------------
+// Metadata — served from m_currentTrack cache
+// ---------------------------------------------------------------------------
+
+QString PlayerController::trackTitle()  const { return QString::fromStdString(m_currentTrack.title); }
+QString PlayerController::trackArtist() const { return QString::fromStdString(m_currentTrack.artist); }
+QString PlayerController::trackAlbum()  const { return QString::fromStdString(m_currentTrack.album); }
+QString PlayerController::trackPath()   const { return QString::fromStdString(m_currentTrack.path); }
+bool    PlayerController::hasCoverArt() const { return m_currentTrack.hasCoverArt(); }
+
+// Lyrics still live in PlaybackManager for now — accessed via core's Impl
+// These delegate through the core's internal playback manager
+QString      PlayerController::rawLyrics()      const { return QString::fromStdString(m_currentTrack.lyrics); }
+QVariantList PlayerController::lyricLines()     const { return {}; } // TODO: expose via CoreTrack in 0.6.1
+bool         PlayerController::lyricsAreSynced() const { return false; } // TODO: expose via CoreTrack in 0.6.1
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+
+int  PlayerController::playingTrackIndex() const { return m_core->playingTrackIndex(); }
+int  PlayerController::playingTrackCount() const { return m_core->playingTrackCount(); }
+bool PlayerController::hasPrevious()       const { return m_core->hasPrevious(); }
+bool PlayerController::hasNext()           const { return m_core->hasNext(); }
+int  PlayerController::viewedTrackIndex()  const { return m_core->viewedTrackIndex(); }
+int  PlayerController::viewedTrackCount()  const { return m_core->viewedTrackCount(); }
+
+// ---------------------------------------------------------------------------
+// Multi-queue
+// ---------------------------------------------------------------------------
+
+int         PlayerController::queueCount()        const { return m_core->queueCount(); }
+int         PlayerController::activeQueueIndex()   const { return m_core->activeQueueIndex(); }
+int         PlayerController::playingQueueIndex()  const { return m_core->playingQueueIndex(); }
+QStringList PlayerController::queueNames()         const { return toQStringList(m_core->queueNames()); }
+
+// ---------------------------------------------------------------------------
+// Repeat / shuffle
+// ---------------------------------------------------------------------------
+
+int  PlayerController::repeatMode() const { return m_core->repeatMode(); }
+bool PlayerController::isShuffled() const { return m_core->isShuffled(); }
+
+// ---------------------------------------------------------------------------
+// Favorites
+// ---------------------------------------------------------------------------
+
+bool PlayerController::isFavorite() const { return m_core->isFavorite(); }
+void PlayerController::toggleFavorite()   { m_core->toggleFavorite(); }
+
+// ---------------------------------------------------------------------------
+// Track list
+// ---------------------------------------------------------------------------
+
+QVariantList PlayerController::trackList() const
 {
-    m_libraryManager->loadSettings();
-    m_playbackManager->loadSettings();
-    m_playlistManager->loadSettings();
+    QVariantList result;
+    for (const CoreTrack &t : m_core->trackList())
+        result.append(coreTrackToVariantMap(t));
+    return result;
 }
 
-void PlayerController::saveSettings()
+// ---------------------------------------------------------------------------
+// Library
+// ---------------------------------------------------------------------------
+
+QStringList PlayerController::allAlbums()    const { return toQStringList(m_core->allAlbums()); }
+QStringList PlayerController::allArtists()   const { return toQStringList(m_core->allArtists()); }
+bool        PlayerController::isScanning()   const { return m_core->isScanning(); }
+int         PlayerController::scanProgress() const { return m_core->scanProgress(); }
+int         PlayerController::scanTotal()    const { return m_core->scanTotal(); }
+QString     PlayerController::scanningFile() const { return QString::fromStdString(m_core->scanningFile()); }
+
+void PlayerController::scanFolder(const QString &path)     { m_core->scanFolder(path.toStdString()); }
+void PlayerController::cancelScan()                        { m_core->cancelScan(); }
+void PlayerController::addScanFolder(const QString &path)  { m_core->addScanFolder(path.toStdString()); }
+void PlayerController::removeScanFolder(const QString &path) { m_core->removeScanFolder(path.toStdString()); }
+void PlayerController::rescanAllFolders()                  { m_core->rescanAllFolders(); }
+
+QVariantList PlayerController::tracksForAlbum(const QString &album) const
 {
-    m_libraryManager->saveSettings();
-    m_playbackManager->saveSettings();
-    m_playlistManager->saveSettings();
+    QVariantList result;
+    for (const CoreTrack &t : m_core->tracksForAlbum(album.toStdString()))
+        result.append(coreTrackToVariantMap(t));
+    return result;
 }
 
-// --- Signal wiring ---
-
-void PlayerController::wireSignals()
+QVariantList PlayerController::tracksForArtist(const QString &artist) const
 {
-    // --- QueueManager → PlaybackManager (cross-manager, via PlayerController) ---
-    connect(m_queueManager, &QueueManager::playbackInitNewRequested,
-            this, [this](int index) {
-                m_playbackManager->initPlayback(index);
-                emit positionChanged();
-                emit durationChanged();
-            });
-
-    connect(m_queueManager, &QueueManager::playbackInitRequested,
-            this, [this](int index) {
-                m_playbackManager->initPlayback(index);
-                // Do NOT call restorePlaybackState here — jumpToTrack handles
-                // loading the specific track itself via loadTrackAt.
-                // restorePlaybackState is only for app startup queue restoration.
-            });
-
-    connect(m_queueManager, &QueueManager::playbackRestoreRequested,
-            this, [this](int index) {
-                m_playbackManager->initPlayback(index);
-                m_playbackManager->restorePlaybackState(index);
-                // resetPlayCountState() removed — Queue::restoreCompleted handles it
-            });
-
-    connect(m_queueManager, &QueueManager::playbackDestroyRequested,
-            this, [this](int index) {
-                m_playbackManager->destroyPlayback(index);
-                // Reset position and duration immediately so QML doesn't show stale values
-                emit positionChanged();
-                emit durationChanged();
-            });
-
-    // --- PlaylistManager → QueueManager ---
-    connect(m_playlistManager, &PlaylistManager::openInNewQueueRequested,
-            this, [this](const QStringList &paths, const QString &name) {
-                m_queueManager->openFilesInNewQueue(paths, name);
-            });
-
-    // --- QueueSession → PlayerController signals ---
-    connect(m_session, &QueueSession::queuesChanged, this, [this]() {
-        emit queuesChanged();
-        emit trackChanged();
-    });
-
-    connect(m_session, &QueueSession::viewedQueueChanged, this, [this]() {
-        emit trackChanged();
-    });
-
-    connect(m_session, &QueueSession::playingQueueChanged, this, [this]() {
-        emit queuesChanged();
-        emit isPlayingChanged();
-        emit positionChanged();
-        emit durationChanged();
-    });
-
-    // --- PlaybackManager → PlayerController signals ---
-    connect(m_playbackManager, &PlaybackManager::isPlayingChanged,
-            this, &PlayerController::isPlayingChanged);
-    connect(m_playbackManager, &PlaybackManager::positionChanged,
-            this, &PlayerController::positionChanged);
-    connect(m_playbackManager, &PlaybackManager::durationChanged,
-            this, &PlayerController::durationChanged);
-    connect(m_playbackManager, &PlaybackManager::volumeChanged,
-            this, &PlayerController::volumeChanged);
-    connect(m_playbackManager, &PlaybackManager::metadataChanged,
-            this, &PlayerController::metadataChanged);
-    connect(m_playbackManager, &PlaybackManager::coverArtChanged,
-            this, &PlayerController::coverArtChanged);
-    connect(m_playbackManager, &PlaybackManager::repeatModeChanged,
-            this, &PlayerController::repeatModeChanged);
-    connect(m_playbackManager, &PlaybackManager::shuffleChanged,
-            this, &PlayerController::shuffleChanged);
-    connect(m_playbackManager, &PlaybackManager::stopAfterCurrentChanged,
-            this, &PlayerController::stopAfterCurrentChanged);
-    connect(m_playbackManager, &PlaybackManager::playingTrackChanged,
-            this, [this]() {
-                emit playingTrackChanged();
-                // Only emit trackChanged if viewed and playing queues are the same —
-                // otherwise the viewed queue counter updates incorrectly from playing queue state
-                if (m_session->viewedQueueIndex() == m_session->playingQueueIndex())
-                    emit trackChanged();
-            });
-    connect(m_playbackManager, &PlaybackManager::isFavoriteChanged,
-            this, &PlayerController::isFavoriteChanged);
-
-    // --- LibraryManager → PlayerController signals ---
-    connect(m_libraryManager, &LibraryManager::libraryChanged,
-            this, &PlayerController::libraryChanged);
-    connect(m_libraryManager, &LibraryManager::scanningChanged,
-            this, &PlayerController::scanningChanged);
-    connect(m_libraryManager, &LibraryManager::scanProgressChanged,
-            this, &PlayerController::scanProgressChanged);
-    connect(m_libraryManager, &LibraryManager::albumSortChanged,
-            this, &PlayerController::albumSortChanged);
-    connect(m_libraryManager, &LibraryManager::trackSortChanged,
-            this, &PlayerController::trackSortChanged);
-    connect(m_libraryManager, &LibraryManager::artistSortChanged,
-            this, &PlayerController::artistSortChanged);
-    connect(m_libraryManager, &LibraryManager::scanFoldersChanged,
-            this, &PlayerController::scanFoldersChanged);
-
-    // --- PlaylistManager → PlayerController signals ---
-    connect(m_playlistManager, &PlaylistManager::playlistsChanged,
-            this, &PlayerController::playlistsChanged);
-    connect(m_playlistManager, &PlaylistManager::playlistSortChanged,
-            this, &PlayerController::playlistSortChanged);
-    connect(m_playlistManager, &PlaylistManager::isFavoriteChanged,
-            this, &PlayerController::isFavoriteChanged);
-    connect(m_playlistManager, &PlaylistManager::addToPlaylistRequested,
-            this, &PlayerController::addToPlaylistRequested);
-    connect(m_playlistManager, &PlaylistManager::addAlbumToPlaylistRequested,
-            this, &PlayerController::addAlbumToPlaylistRequested);
-    connect(m_playbackManager, &PlaybackManager::abRepeatChanged,
-            this, &PlayerController::abRepeatChanged);
+    QVariantList result;
+    for (const CoreTrack &t : m_core->tracksForArtist(artist.toStdString()))
+        result.append(coreTrackToVariantMap(t));
+    return result;
 }
 
-// --- Playback getters ---
-
-bool   PlayerController::isPlaying() const { return m_playbackManager->isPlaying(); }
-qint64 PlayerController::position()  const { return m_playbackManager->position(); }
-qint64 PlayerController::duration()  const { return m_playbackManager->duration(); }
-float  PlayerController::volume()    const { return m_playbackManager->volume(); }
-
-// --- Metadata getters ---
-
-QString PlayerController::trackTitle()  const { return m_playbackManager->trackTitle(); }
-QString PlayerController::trackArtist() const { return m_playbackManager->trackArtist(); }
-QString PlayerController::trackAlbum()  const { return m_playbackManager->trackAlbum(); }
-QString PlayerController::trackPath()   const { return m_playbackManager->trackPath(); }
-bool    PlayerController::hasCoverArt() const { return m_playbackManager->hasCoverArt(); }
-
-// --- Lyrics getters ---
-
-QString      PlayerController::rawLyrics()       const { return m_playbackManager->rawLyrics(); }
-QVariantList PlayerController::lyricLines()      const { return m_playbackManager->lyricLines(); }
-bool         PlayerController::lyricsAreSynced() const { return m_playbackManager->lyricsAreSynced(); }
-
-// --- Playing-queue track navigation ---
-
-int  PlayerController::playingTrackIndex() const { return m_playbackManager->playingTrackIndex(); }
-int  PlayerController::playingTrackCount() const { return m_playbackManager->playingTrackCount(); }
-bool PlayerController::hasPrevious()       const { return m_playbackManager->hasPrevious(); }
-bool PlayerController::hasNext()           const { return m_playbackManager->hasNext(); }
-
-// --- Viewed-queue track navigation ---
-
-int PlayerController::viewedTrackIndex() const { return m_session->viewedQueue() ? m_session->viewedQueue()->currentTrackIndex() : -1; }
-int PlayerController::viewedTrackCount() const { return m_session->viewedQueue() ? m_session->viewedQueue()->trackCount() : 0; }
-
-// --- Multi-queue getters ---
-
-int         PlayerController::queueCount()        const { return m_session->queueCount(); }
-int         PlayerController::activeQueueIndex()  const { return m_session->viewedQueueIndex(); }
-int         PlayerController::playingQueueIndex() const { return m_session->playingQueueIndex(); }
-QStringList PlayerController::queueNames()        const { return m_queueManager->queueNames(); }
-
-// --- Repeat / shuffle ---
-
-int  PlayerController::repeatMode() const { return m_playbackManager->repeatMode(); }
-bool PlayerController::isShuffled() const { return m_playbackManager->isShuffled(); }
-
-// --- Favorites ---
-
-bool PlayerController::isFavorite() const
+QStringList PlayerController::albumsForArtist(const QString &artist) const
 {
-    return m_playlistManager->isFavorite(m_playbackManager->trackPath());
+    return toQStringList(m_core->albumsForArtist(artist.toStdString()));
 }
 
-// --- Track list ---
+QStringList PlayerController::allArtistsSorted() const
+{
+    return toQStringList(m_core->allArtistsSorted());
+}
 
-QVariantList PlayerController::trackList() const { return m_queueManager->trackList(); }
+QString PlayerController::albumCoverPath(const QString &album) const
+{
+    return QString::fromStdString(m_core->albumCoverPath(album.toStdString()));
+}
 
-// --- Library getters ---
+// ---------------------------------------------------------------------------
+// Sort
+// ---------------------------------------------------------------------------
 
-QStringList PlayerController::allAlbums()    const { return m_libraryManager->allAlbums(); }
-QStringList PlayerController::allArtists()   const { return m_libraryManager->allArtists(); }
-bool        PlayerController::isScanning()   const { return m_libraryManager->isScanning(); }
-int         PlayerController::scanProgress() const { return m_libraryManager->scanProgress(); }
-int         PlayerController::scanTotal()    const { return m_libraryManager->scanTotal(); }
-QString     PlayerController::scanningFile() const { return m_libraryManager->scanningFile(); }
+int  PlayerController::albumSort()             const { return m_core->albumSort(); }
+bool PlayerController::albumSortAscending()    const { return m_core->albumSortAscending(); }
+int  PlayerController::trackSort()             const { return m_core->trackSort(); }
+bool PlayerController::trackSortAscending()    const { return m_core->trackSortAscending(); }
+int  PlayerController::artistSort()            const { return m_core->artistSort(); }
+bool PlayerController::artistSortAscending()   const { return m_core->artistSortAscending(); }
+int  PlayerController::playlistSort()          const { return m_core->playlistSort(); }
+bool PlayerController::playlistSortAscending() const { return m_core->playlistSortAscending(); }
 
-// --- Sort getters ---
+void PlayerController::setAlbumSort(int s)              { m_core->setAlbumSort(s); }
+void PlayerController::setAlbumSortAscending(bool a)    { m_core->setAlbumSortAscending(a); }
+void PlayerController::setTrackSort(int s)              { m_core->setTrackSort(s); }
+void PlayerController::setTrackSortAscending(bool a)    { m_core->setTrackSortAscending(a); }
+void PlayerController::setArtistSort(int s)             { m_core->setArtistSort(s); }
+void PlayerController::setArtistSortAscending(bool a)   { m_core->setArtistSortAscending(a); }
+void PlayerController::setPlaylistSort(int s)           { m_core->setPlaylistSort(s); }
+void PlayerController::setPlaylistSortAscending(bool a) { m_core->setPlaylistSortAscending(a); }
 
-int  PlayerController::albumSort()          const { return m_libraryManager->albumSort(); }
-bool PlayerController::albumSortAscending() const { return m_libraryManager->albumSortAscending(); }
-int  PlayerController::trackSort()          const { return m_libraryManager->trackSort(); }
-bool PlayerController::trackSortAscending() const { return m_libraryManager->trackSortAscending(); }
-int  PlayerController::playlistSort()          const { return m_playlistManager->playlistSort(); }
-bool PlayerController::playlistSortAscending() const { return m_playlistManager->playlistSortAscending(); }
-
-// --- Settings getters ---
-
-QStringList PlayerController::scanFolders()        const { return m_libraryManager->scanFolders(); }
-int         PlayerController::playCountThreshold() const { return m_playbackManager->playCountThreshold(); }
-bool        PlayerController::stopAfterCurrent()   const { return m_playbackManager->stopAfterCurrent(); }
-qint64      PlayerController::queueTotalDuration() const { return m_queueManager->queueTotalDuration(); }
-
-// --- Playlists getter ---
-
-QVariantList PlayerController::allPlaylists() const { return m_playlistManager->allPlaylists(); }
-
-// --- Invokables: Playback ---
-
-void PlayerController::play()                      { m_playbackManager->play(); }
-void PlayerController::pause()                     { m_playbackManager->pause(); }
-void PlayerController::seekTo(qint64 positionMs)   { m_playbackManager->seekTo(positionMs); }
-void PlayerController::playNext()                  { m_playbackManager->playNext(); }
-void PlayerController::playPrevious()              { m_playbackManager->playPrevious(); }
-void PlayerController::cycleRepeatMode()           { m_playbackManager->cycleRepeatMode(); }
-void PlayerController::toggleShuffle()             { m_playbackManager->toggleShuffle(); }
-void PlayerController::toggleStopAfterCurrent()    { m_playbackManager->toggleStopAfterCurrent(); }
-void PlayerController::setVolume(float volume)     { m_playbackManager->setVolume(volume); }
-
-// --- Invokables: Queue ---
+// ---------------------------------------------------------------------------
+// Queue operations
+// ---------------------------------------------------------------------------
 
 void PlayerController::openFilesInNewQueue(const QStringList &paths,
                                            const QString &name, bool shuffle)
 {
-    m_queueManager->openFilesInNewQueue(paths, name, shuffle);
+    m_core->openFilesInNewQueue(toStdVec(paths), name.toStdString(), shuffle);
 }
-
 void PlayerController::addPathsToNewQueue(const QStringList &paths, const QString &name)
 {
-    m_queueManager->addPathsToNewQueue(paths, name);
+    m_core->addPathsToNewQueue(toStdVec(paths), name.toStdString());
 }
-
-void PlayerController::addPathsToQueue(int queueIndex, const QStringList &paths)
+void PlayerController::addPathsToQueue(int index, const QStringList &paths)
 {
-    m_queueManager->addPathsToQueue(queueIndex, paths);
+    m_core->addPathsToQueue(index, toStdVec(paths));
 }
-
-void PlayerController::closeQueue(int index)              { m_queueManager->closeQueue(index); }
-void PlayerController::renameQueue(int index, const QString &name) { m_queueManager->renameQueue(index, name); }
-void PlayerController::moveQueue(int from, int to)        { m_queueManager->moveQueue(from, to); }
-void PlayerController::viewQueue(int index)               { m_queueManager->viewQueue(index); }
-void PlayerController::switchToQueue(int index)           { m_queueManager->viewQueue(index); } // deprecated alias
-void PlayerController::addTrackToActiveQueue(const QString &path) { m_queueManager->addTrackToQueue(path); }
-void PlayerController::addTrackToQueue(const QString &path)       { m_queueManager->addTrackToQueue(path); }
-
-void PlayerController::addAlbumToQueue(const QString &album)
-{
-    m_queueManager->addAlbumToQueue(
-        album,
-        static_cast<Library::TrackSort>(m_libraryManager->trackSort()),
-        m_libraryManager->trackSortAscending()
-        );
-}
-
-void PlayerController::removeTrackAt(int index)           { m_queueManager->removeTrackAt(index); }
-void PlayerController::moveTrack(int from, int to)        { m_queueManager->moveTrack(from, to); }
-void PlayerController::sortActiveQueue(int sort, bool ascending) { m_queueManager->sortQueue(sort, ascending); }
-void PlayerController::reverseActiveQueue()               { m_queueManager->reverseQueue(); }
-void PlayerController::jumpToTrack(int index)             { m_queueManager->jumpToTrack(index); }
-void PlayerController::jumpToTrackByPath(const QString &path) { m_queueManager->jumpToTrackByPath(path); }
-
-void PlayerController::saveQueues()
-{
-    m_queueManager->saveQueues(m_session->viewedQueueIndex());
-}
-
-void PlayerController::loadQueues()
-{
-    m_queueManager->loadQueues(m_playbackManager->volume());
-}
+void PlayerController::closeQueue(int i)                { m_core->closeQueue(i); }
+void PlayerController::renameQueue(int i, const QString &n) { m_core->renameQueue(i, n.toStdString()); }
+void PlayerController::moveQueue(int f, int t)          { m_core->moveQueue(f, t); }
+void PlayerController::viewQueue(int i)                 { m_core->viewQueue(i); }
+void PlayerController::addTrackToQueue(const QString &p) { m_core->addTrackToQueue(p.toStdString()); }
+void PlayerController::addAlbumToQueue(const QString &a) { m_core->addAlbumToQueue(a.toStdString()); }
+void PlayerController::removeTrackAt(int i)             { m_core->removeTrackAt(i); }
+void PlayerController::moveTrack(int f, int t)          { m_core->moveTrack(f, t); }
+void PlayerController::sortActiveQueue(int s, bool a)   { m_core->sortActiveQueue(s, a); }
+void PlayerController::reverseActiveQueue()             { m_core->reverseActiveQueue(); }
+void PlayerController::jumpToTrack(int i)               { m_core->jumpToTrack(i); }
+void PlayerController::jumpToTrackByPath(const QString &p) { m_core->jumpToTrackByPath(p.toStdString()); }
+void PlayerController::saveQueues()                     { m_core->saveQueues(); }
+void PlayerController::loadQueues()                     { m_core->loadQueues(); }
 
 bool PlayerController::isAlbumActiveQueue(const QString &album) const
 {
-    return m_queueManager->isAlbumActiveQueue(
-        album,
-        static_cast<Library::TrackSort>(m_libraryManager->trackSort()),
-        m_libraryManager->trackSortAscending()
-        );
+    return m_core->isAlbumActiveQueue(album.toStdString());
 }
 
 QVariantMap PlayerController::trackInfoByPath(const QString &path) const
 {
-    return m_queueManager->trackInfoByPath(path);
+    return coreTrackToVariantMap(m_core->trackInfoByPath(path.toStdString()));
 }
 
-// --- Invokables: Library ---
+qint64 PlayerController::queueTotalDuration() const { return m_core->queueTotalDuration(); }
 
-void         PlayerController::scanFolder(const QString &path)    { m_libraryManager->scanFolder(path); }
-void         PlayerController::cancelScan()                       { m_libraryManager->cancelScan(); }
-void         PlayerController::addScanFolder(const QString &path) { m_libraryManager->addScanFolder(path); }
-void         PlayerController::removeScanFolder(const QString &path) { m_libraryManager->removeScanFolder(path); }
-void         PlayerController::rescanAllFolders()                 { m_libraryManager->rescanAllFolders(); }
-QVariantList PlayerController::tracksForAlbum(const QString &album)   const { return m_libraryManager->tracksForAlbum(album); }
-QVariantList PlayerController::tracksForArtist(const QString &artist) const { return m_libraryManager->tracksForArtist(artist); }
-QStringList  PlayerController::albumsForArtist(const QString &artist) const { return m_libraryManager->albumsForArtist(artist); }
-QStringList  PlayerController::allArtistsSorted()                     const { return m_libraryManager->allArtistsSorted(); }
-QString      PlayerController::albumCoverPath(const QString &album)   const { return m_libraryManager->albumCoverPath(album); }
-void         PlayerController::setAlbumSort(int sort)                 { m_libraryManager->setAlbumSort(sort); }
-void         PlayerController::setAlbumSortAscending(bool ascending)  { m_libraryManager->setAlbumSortAscending(ascending); }
-void         PlayerController::setTrackSort(int sort)                 { m_libraryManager->setTrackSort(sort); }
-void         PlayerController::setTrackSortAscending(bool ascending)  { m_libraryManager->setTrackSortAscending(ascending); }
-void         PlayerController::setArtistSort(int sort)                { m_libraryManager->setArtistSort(sort); }
-void         PlayerController::setArtistSortAscending(bool ascending) { m_libraryManager->setArtistSortAscending(ascending); }
-int          PlayerController::artistSort()          const            { return m_libraryManager->artistSort(); }
-bool         PlayerController::artistSortAscending() const            { return m_libraryManager->artistSortAscending(); }
+// ---------------------------------------------------------------------------
+// Playlists
+// ---------------------------------------------------------------------------
 
-// --- Invokables: Playlists ---
-
-int  PlayerController::createPlaylist(const QString &name)  { return m_playlistManager->createPlaylist(name); }
-void PlayerController::deletePlaylist(int id)               { m_playlistManager->deletePlaylist(id); }
-void PlayerController::renamePlaylist(int id, const QString &name) { m_playlistManager->renamePlaylist(id, name); }
-void PlayerController::addTrackToPlaylist(int id, const QString &path)    { m_playlistManager->addTrackToPlaylist(id, path); }
-void PlayerController::removeTrackFromPlaylist(int id, const QString &path) { m_playlistManager->removeTrackFromPlaylist(id, path); }
-void PlayerController::moveTrackInPlaylist(int id, int from, int to)      { m_playlistManager->moveTrackInPlaylist(id, from, to); }
-void PlayerController::sortPlaylist(int id)                 { m_playlistManager->sortPlaylist(id); }
-int  PlayerController::saveQueueAsPlaylist(const QString &name) { return m_playlistManager->saveQueueAsPlaylist(name); }
-QVariantList PlayerController::tracksForPlaylist(int id) const  { return m_playlistManager->tracksForPlaylist(id); }
-void PlayerController::openPlaylistInNewQueue(int id, const QString &name) { m_playlistManager->openPlaylistInNewQueue(id, name); }
-void PlayerController::requestAddToPlaylist(const QString &path)      { m_playlistManager->requestAddToPlaylist(path); }
-void PlayerController::requestAddAlbumToPlaylist(const QString &name) { m_playlistManager->requestAddAlbumToPlaylist(name); }
-void PlayerController::setPlaylistSort(int sort)               { m_playlistManager->setPlaylistSort(sort); }
-void PlayerController::setPlaylistSortAscending(bool ascending){ m_playlistManager->setPlaylistSortAscending(ascending); }
-
-void PlayerController::toggleFavorite()
+QVariantList PlayerController::allPlaylists() const
 {
-    m_playlistManager->toggleFavorite(m_playbackManager->trackPath());
-    emit isFavoriteChanged();
+    QVariantList result;
+    for (const CorePlaylistInfo &p : m_core->allPlaylists()) {
+        QVariantMap m;
+        m["id"]   = p.id;
+        m["name"] = QString::fromStdString(p.name);
+        result.append(m);
+    }
+    return result;
 }
 
-void PlayerController::setPlayCountThreshold(int percent)
+int  PlayerController::createPlaylist(const QString &name)
 {
-    m_playbackManager->setPlayCountThreshold(percent);
-    emit playCountThresholdChanged();
+    return m_core->createPlaylist(name.toStdString());
 }
-
-// --- Invokables: Queue requests ---
-
+void PlayerController::deletePlaylist(int id)           { m_core->deletePlaylist(id); }
+void PlayerController::renamePlaylist(int id, const QString &name)
+{
+    m_core->renamePlaylist(id, name.toStdString());
+}
+void PlayerController::addTrackToPlaylist(int id, const QString &path)
+{
+    m_core->addTrackToPlaylist(id, path.toStdString());
+}
+void PlayerController::removeTrackFromPlaylist(int id, const QString &path)
+{
+    m_core->removeTrackFromPlaylist(id, path.toStdString());
+}
+void PlayerController::moveTrackInPlaylist(int id, int f, int t)
+{
+    m_core->moveTrackInPlaylist(id, f, t);
+}
+void PlayerController::sortPlaylist(int id)             { m_core->sortPlaylist(id); }
+int  PlayerController::saveQueueAsPlaylist(const QString &name)
+{
+    return m_core->saveQueueAsPlaylist(name.toStdString());
+}
+QVariantList PlayerController::tracksForPlaylist(int id) const
+{
+    QVariantList result;
+    for (const CoreTrack &t : m_core->tracksForPlaylist(id))
+        result.append(coreTrackToVariantMap(t));
+    return result;
+}
+void PlayerController::openPlaylistInNewQueue(int id, const QString &name)
+{
+    m_core->openPlaylistInNewQueue(id, name.toStdString());
+}
+void PlayerController::requestAddToPlaylist(const QString &path)
+{
+    emit addToPlaylistRequested(path);
+}
+void PlayerController::requestAddAlbumToPlaylist(const QString &album)
+{
+    emit addAlbumToPlaylistRequested(album);
+}
 void PlayerController::requestAddToQueue(const QString &path)
 {
     emit addToQueueRequested(QStringList{path});
 }
-
 void PlayerController::requestAddAlbumToQueue(const QString &album)
 {
-    QVariantList tracks = m_libraryManager->tracksForAlbum(album);
+    // Resolve album tracks and emit paths
     QStringList paths;
-    for (const QVariant &v : std::as_const(tracks))
-        paths << v.toMap()["path"].toString();
+    for (const CoreTrack &t : m_core->tracksForAlbum(album.toStdString()))
+        paths.append(QString::fromStdString(t.path));
     emit addToQueueRequested(paths);
 }
 
-bool   PlayerController::abRepeatActive() const { return m_playbackManager->abRepeatActive(); }
-qint64 PlayerController::pointA()         const { return m_playbackManager->pointA(); }
-qint64 PlayerController::pointB()         const { return m_playbackManager->pointB(); }
-void   PlayerController::setPointA()            { m_playbackManager->setPointA(); }
-void   PlayerController::setPointB()            { m_playbackManager->setPointB(); }
-void   PlayerController::clearAbRepeat()        { m_playbackManager->clearAbRepeat(); }
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+QStringList PlayerController::scanFolders()        const { return toQStringList(m_core->scanFolders()); }
+int         PlayerController::playCountThreshold() const { return m_core->playCountThreshold(); }
+bool        PlayerController::stopAfterCurrent()   const { return m_core->stopAfterCurrent(); }
+
+void PlayerController::setPlayCountThreshold(int p) { m_core->setPlayCountThreshold(p); }
+void PlayerController::saveSettings()               { m_core->saveSettings(); }
+
+// ---------------------------------------------------------------------------
+// A-B repeat
+// ---------------------------------------------------------------------------
+
+bool   PlayerController::abRepeatActive() const { return m_core->abRepeatActive(); }
+qint64 PlayerController::pointA()         const { return m_core->pointA(); }
+qint64 PlayerController::pointB()         const { return m_core->pointB(); }
+void   PlayerController::setPointA()            { m_core->setPointA(); }
+void   PlayerController::setPointB()            { m_core->setPointB(); }
+void   PlayerController::clearAbRepeat()        { m_core->clearAbRepeat(); }
