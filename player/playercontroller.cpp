@@ -475,3 +475,18 @@ qint64 PlayerController::pointB()         const { return m_core->pointB(); }
 void   PlayerController::setPointA()            { m_core->setPointA(); }
 void   PlayerController::setPointB()            { m_core->setPointB(); }
 void   PlayerController::clearAbRepeat()        { m_core->clearAbRepeat(); }
+
+void PlayerController::setPlaylistImage(int id, const QString &path)
+{
+    m_core->setPlaylistImage(id, path.toStdString());
+}
+void PlayerController::setArtistImage(const QString &artist, const QString &path)
+{
+    m_core->setArtistImage(artist.toStdString(), path.toStdString());
+}
+QString PlayerController::artistImage(const QString &artist) const
+{
+    return QString::fromStdString(m_core->artistImage(artist.toStdString()));
+}
+void PlayerController::clearUserData() { m_core->clearUserData(); }
+void PlayerController::clearLibrary()  { m_core->clearLibrary(); }

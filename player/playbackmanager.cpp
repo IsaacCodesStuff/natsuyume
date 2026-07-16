@@ -403,8 +403,10 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
                 m_playCountCredited = true;
                 QString path = q->trackAt(q->currentTrackIndex()).path;
                 qint64 now   = QDateTime::currentSecsSinceEpoch();
-                if (m_library) {
-                    m_library->incrementPlayCount(path);
+                if (m_userDataManager) {
+                    m_userDataManager->incrementPlayCount(path);
+                    // Update track stats in queue as before
+                    qint64 now = QDateTime::currentSecsSinceEpoch();
                     for (int i = 0; i < m_session->queueCount(); i++)
                         m_session->queueAt(i)->updateTrackStats(
                             path, now,
@@ -459,6 +461,11 @@ void PlaybackManager::clearAbRepeat()
     m_pointB         = -1;
     m_abRepeatActive = false;
     emit abRepeatChanged();
+}
+
+void PlaybackManager::setUserDataManager(UserDataManager *mgr)
+{
+    m_userDataManager = mgr;
 }
 
 bool   PlaybackManager::abRepeatActive() const { return m_abRepeatActive; }

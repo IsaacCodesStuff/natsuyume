@@ -6,6 +6,7 @@
 #include "queuesession.h"
 #include "lrcparser.h"
 #include "library.h"
+#include <userdatamanager.h>
 
 class PlaybackManager : public QObject
 {
@@ -83,6 +84,8 @@ public:
     qint64 pointA()         const;
     qint64 pointB()         const;
 
+    void setUserDataManager(UserDataManager *userDataManager);
+
 signals:
     void isPlayingChanged();
     void positionChanged();
@@ -120,6 +123,8 @@ private:
     bool   m_abRepeatActive = false;
 
     bool m_pendingGaplessAdvance = false;
+
+    UserDataManager *m_userDataManager = nullptr;
 };
 
 #endif // PLAYBACKMANAGER_H

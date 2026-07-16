@@ -258,6 +258,12 @@ public:
     Q_INVOKABLE void setPointB();
     Q_INVOKABLE void clearAbRepeat();
 
+    Q_INVOKABLE void setPlaylistImage(int playlistId, const QString &imagePath);
+    Q_INVOKABLE void setArtistImage(const QString &artist, const QString &imagePath);
+    Q_INVOKABLE QString artistImage(const QString &artist) const;
+    Q_INVOKABLE void clearUserData();
+    Q_INVOKABLE void clearLibrary();
+
 signals:
     void isPlayingChanged();
     void positionChanged();

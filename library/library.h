@@ -3,15 +3,9 @@
 #include <QObject>
 #include <QList>
 #include <QString>
-#include <QSet>
 #include <QReadWriteLock>
 #include <QSqlDatabase>
 #include "track.h"
-
-struct PlaylistInfo {
-    int     id;
-    QString name;
-};
 
 struct QueueSnapshot {
     QString     name;
@@ -69,22 +63,6 @@ public:
     QStringList  albumsForArtist(const QString &artist) const;
     qint64 lastModifiedFor(const QString &path) const;
 
-    // --- Playlist writing ---
-    int  createPlaylist(const QString &name);           // returns new id, -1 on error
-    void deletePlaylist(int playlistId);
-    void renamePlaylist(int playlistId, const QString &name);
-    void addTrackToPlaylist(int playlistId, const QString &path);
-    void removeTrackFromPlaylist(int playlistId, const QString &path);
-    void moveTrackInPlaylist(int playlistId, int from, int to);
-    int  saveQueueAsPlaylist(const QString &name, const QStringList &paths); // returns id
-    void sortPlaylist(int playlistId, TrackSort sort, bool ascending);
-
-    // --- Playlist reading ---
-    QList<PlaylistInfo> allPlaylists() const;
-    QList<Track>        tracksForPlaylist(int playlistId) const;
-
-    void incrementPlayCount(const QString &path);
-
     // --- Queue persistence ---
     void saveQueues(const QList<QueueSnapshot> &queues);
     QList<QueueSnapshot> loadQueues() const;
@@ -93,14 +71,8 @@ public:
     void removeTrackIfMissing(const QString &path);
     void addTracks(const QList<Track> &tracks);
 
-    // --- Favorites ---
-    void         setFavorite(const QString &path, bool favorite);
-    bool         isFavoriteInDb(const QString &path) const;
-    QSet<QString> allFavoritePaths() const;
-
 signals:
     void libraryChanged();
-    void playlistsChanged();
 
 private:
     QSqlDatabase   m_db;

@@ -27,8 +27,9 @@ qt_add_library(natsuyume_core STATIC
     player/queuesession.h player/queuesession.cpp
     player/queuemanager.h player/queuemanager.cpp
     player/playbackmanager.h player/playbackmanager.cpp
-    player/playlistmanager.h player/playlistmanager.cpp
     player/librarymanager.h player/librarymanager.cpp
+    library/userdata.h library/userdata.cpp
+    player/userdatamanager.h player/userdatamanager.cpp
 )
 
 target_include_directories(natsuyume_core PUBLIC
@@ -101,7 +102,6 @@ target_link_libraries(appnatsuyume_player PRIVATE
     Qt6::Multimedia
     Qt6::QuickControls2
     Qt6::QuickDialogs2
-    Qt6::Quick
 )
 
 set_target_properties(appnatsuyume_player PROPERTIES

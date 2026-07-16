@@ -215,6 +215,18 @@ public:
     void    setPointB();
     void    clearAbRepeat();
 
+    // --- Artist images ---
+    void        setArtistImage(const std::string &artist,
+                        const std::string &imagePath);
+    std::string artistImage(const std::string &artist) const;
+
+    // --- Playlist image ---
+    void setPlaylistImage(int playlistId, const std::string &imagePath);
+
+    // --- Clear operations ---
+    void clearUserData();
+    void clearLibrary();
+
 private:
     struct Impl;
     Impl *m_impl = nullptr;   // pImpl — keeps Qt internals out of this header

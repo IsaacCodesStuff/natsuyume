@@ -44,59 +44,19 @@ void Library::createSchema()
 
     q.exec(R"(
         CREATE TABLE IF NOT EXISTS tracks (
-            path             TEXT PRIMARY KEY,
-            title            TEXT NOT NULL,
-            artist           TEXT NOT NULL,
-            album            TEXT NOT NULL,
-            album_artist     TEXT NOT NULL DEFAULT '',
-            composer         TEXT NOT NULL DEFAULT '',
-            genre            TEXT NOT NULL DEFAULT '',
-            track_number     INTEGER NOT NULL DEFAULT 0,
-            disc_number      INTEGER NOT NULL DEFAULT 1,
-            year             INTEGER NOT NULL DEFAULT 0,
-            duration         INTEGER NOT NULL DEFAULT 0,
-            date_added       INTEGER NOT NULL DEFAULT 0,
-            date_last_played INTEGER NOT NULL DEFAULT 0,
-            play_count       INTEGER NOT NULL DEFAULT 0,
-            is_favorite      INTEGER NOT NULL DEFAULT 0
-        )
-    )");
-
-    // Migrate existing databases that don't have is_favorite yet
-    // This is safe to run every launch — ALTER TABLE fails silently if
-    // the column already exists, which we catch and ignore
-    QSqlQuery migrate(m_db);
-    if (!migrate.exec("ALTER TABLE tracks ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0")) {
-        // Column already exists — not an error, just skip
-    }
-
-    QSqlQuery migrateMod(m_db);
-    if (!migrateMod.exec("ALTER TABLE tracks ADD COLUMN last_modified INTEGER NOT NULL DEFAULT 0")) {
-        // Column already exists — skip
-    }
-
-    // Separate table for favorited paths that aren't in the library
-    // (tracks that were moved/deleted but should stay favorited)
-    q.exec(R"(
-        CREATE TABLE IF NOT EXISTS favorite_paths (
-            path TEXT PRIMARY KEY
-        )
-    )");
-
-    q.exec(R"(
-        CREATE TABLE IF NOT EXISTS playlists (
-            id    INTEGER PRIMARY KEY AUTOINCREMENT,
-            name  TEXT NOT NULL UNIQUE
-        )
-    )");
-
-    q.exec(R"(
-        CREATE TABLE IF NOT EXISTS playlist_tracks (
-            playlist_id  INTEGER NOT NULL,
-            path         TEXT NOT NULL,
-            position     INTEGER NOT NULL,
-            PRIMARY KEY (playlist_id, path),
-            FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
+            path         TEXT PRIMARY KEY,
+            title        TEXT NOT NULL,
+            artist       TEXT NOT NULL,
+            album        TEXT NOT NULL,
+            album_artist TEXT NOT NULL DEFAULT '',
+            composer     TEXT NOT NULL DEFAULT '',
+            genre        TEXT NOT NULL DEFAULT '',
+            track_number INTEGER NOT NULL DEFAULT 0,
+            disc_number  INTEGER NOT NULL DEFAULT 1,
+            year         INTEGER NOT NULL DEFAULT 0,
+            duration     INTEGER NOT NULL DEFAULT 0,
+            date_added   INTEGER NOT NULL DEFAULT 0,
+            last_modified INTEGER NOT NULL DEFAULT 0
         )
     )");
 
@@ -143,40 +103,33 @@ void Library::addTrack(const Track &track)
         INSERT OR REPLACE INTO tracks (
             path, title, artist, album, album_artist,
             composer, genre, track_number, disc_number,
-            year, duration, date_added, date_last_played, play_count,
-            is_favorite
+            year, duration, date_added, last_modified
         ) VALUES (
             :path, :title, :artist, :album, :albumArtist,
             :composer, :genre, :trackNumber, :discNumber,
-            :year, :duration, :dateAdded, :dateLastPlayed, :playCount,
-            :isFavorite
+            :year, :duration, :dateAdded, :lastModified
         )
     )");
-
-    q.bindValue(":path",          track.path);
-    q.bindValue(":title",         track.title);
-    q.bindValue(":artist",        track.artist);
-    q.bindValue(":album",         track.album);
-    q.bindValue(":albumArtist",   track.albumArtist);
-    q.bindValue(":composer",      track.composer);
-    q.bindValue(":genre",         track.genre);
-    q.bindValue(":trackNumber",   track.trackNumber);
-    q.bindValue(":discNumber",    track.discNumber);
-    q.bindValue(":year",          track.year);
-    q.bindValue(":duration",      track.duration);
-    q.bindValue(":dateAdded",     QDateTime::currentSecsSinceEpoch());
-    q.bindValue(":dateLastPlayed", track.dateLastPlayed);
-    q.bindValue(":playCount",     track.playCount);
-    q.bindValue(":isFavorite", track.isFavorite ? 1 : 0);
+    q.bindValue(":path",         track.path);
+    q.bindValue(":title",        track.title);
+    q.bindValue(":artist",       track.artist);
+    q.bindValue(":album",        track.album);
+    q.bindValue(":albumArtist",  track.albumArtist);
+    q.bindValue(":composer",     track.composer);
+    q.bindValue(":genre",        track.genre);
+    q.bindValue(":trackNumber",  track.trackNumber);
+    q.bindValue(":discNumber",   track.discNumber);
+    q.bindValue(":year",         track.year);
+    q.bindValue(":duration",     track.duration);
+    q.bindValue(":dateAdded",    QDateTime::currentSecsSinceEpoch());
+    q.bindValue(":lastModified", track.lastModified);
     q.exec();
 
     if (q.lastError().isValid()) {
         qWarning() << "Library: addTrack error:" << q.lastError().text();
     } else {
-        {
-            QWriteLocker locker(&m_cacheLock);
-            m_pathCache.insert(track.path, track.lastModified);
-        }
+        QWriteLocker locker(&m_cacheLock);
+        m_pathCache.insert(track.path, track.lastModified);
         emit libraryChanged();
     }
 }
@@ -235,8 +188,6 @@ QString Library::trackSortColumn(TrackSort sort)
     case TrackSort::Composer:       return "composer";
     case TrackSort::Filename:       return "path";
     case TrackSort::DateAdded:      return "date_added";
-    case TrackSort::DateLastPlayed: return "date_last_played";
-    case TrackSort::PlayCount:      return "play_count";
     }
     return "disc_number, track_number";
 }
@@ -246,20 +197,19 @@ QString Library::trackSortColumn(TrackSort sort)
 static Track trackFromQuery(QSqlQuery &q)
 {
     Track t(q.value(0).toString());
-    t.title          = q.value(1).toString();
-    t.artist         = q.value(2).toString();
-    t.album          = q.value(3).toString();
-    t.albumArtist    = q.value(4).toString();
-    t.composer       = q.value(5).toString();
-    t.genre          = q.value(6).toString();
-    t.trackNumber    = q.value(7).toInt();
-    t.discNumber     = q.value(8).toInt();
-    t.year           = q.value(9).toInt();
-    t.duration       = q.value(10).toLongLong();
-    t.dateAdded      = q.value(11).toLongLong();
-    t.dateLastPlayed = q.value(12).toLongLong();
-    t.playCount      = q.value(13).toInt();
-    t.isFavorite     = q.value(14).toInt() == 1;
+    t.title       = q.value(1).toString();
+    t.artist      = q.value(2).toString();
+    t.album       = q.value(3).toString();
+    t.albumArtist = q.value(4).toString();
+    t.composer    = q.value(5).toString();
+    t.genre       = q.value(6).toString();
+    t.trackNumber = q.value(7).toInt();
+    t.discNumber  = q.value(8).toInt();
+    t.year        = q.value(9).toInt();
+    t.duration    = q.value(10).toLongLong();
+    t.dateAdded   = q.value(11).toLongLong();
+    // playCount, dateLastPlayed, isFavorite come from userdata.db
+    // Call UserData::applyUserData() after fetching from Library
     return t;
 }
 
@@ -270,8 +220,7 @@ QList<Track> Library::allTracks() const
     q.exec(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count,
-               is_favorite
+               year, duration, date_added
         FROM tracks ORDER BY title
     )");
     while (q.next())
@@ -295,8 +244,7 @@ Track Library::trackByPath(const QString &path) const
     q.prepare(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count,
-               is_favorite
+               year, duration, date_added
         FROM tracks WHERE path = :path
     )");
     q.bindValue(":path", path);
@@ -319,8 +267,7 @@ QList<Track> Library::tracksByAlbum(const QString &album,
     q.prepare(QString(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count,
-               is_favorite
+               year, duration, date_added
         FROM tracks
         WHERE album = :album
         ORDER BY %1 %2
@@ -341,8 +288,7 @@ QList<Track> Library::tracksByArtist(const QString &artist) const
     q.prepare(R"(
         SELECT path, title, artist, album, album_artist,
                composer, genre, track_number, disc_number,
-               year, duration, date_added, date_last_played, play_count,
-               is_favorite
+               year, duration, date_added
         FROM tracks
         WHERE artist = :artist
         ORDER BY disc_number, track_number
@@ -435,192 +381,6 @@ qint64 Library::lastModifiedFor(const QString &path) const
     return m_pathCache.value(path, 0);
 }
 
-// ── Playlist writing ───────────────────────────────────────────────────────
-
-int Library::createPlaylist(const QString &name)
-{
-    QSqlQuery q(m_db);
-    q.prepare("INSERT INTO playlists (name) VALUES (:name)");
-    q.bindValue(":name", name);
-    if (!q.exec()) {
-        qWarning() << "Library: createPlaylist error:" << q.lastError().text();
-        return -1;
-    }
-    emit playlistsChanged();
-    return q.lastInsertId().toInt();
-}
-
-void Library::deletePlaylist(int playlistId)
-{
-    QSqlQuery q(m_db);
-    q.prepare("DELETE FROM playlists WHERE id = :id");
-    q.bindValue(":id", playlistId);
-    q.exec();
-    emit playlistsChanged();
-}
-
-void Library::renamePlaylist(int playlistId, const QString &name)
-{
-    QSqlQuery q(m_db);
-    q.prepare("UPDATE playlists SET name = :name WHERE id = :id");
-    q.bindValue(":name", name);
-    q.bindValue(":id",   playlistId);
-    q.exec();
-    emit playlistsChanged();
-}
-
-void Library::addTrackToPlaylist(int playlistId, const QString &path)
-{
-    QSqlQuery q(m_db);
-    // Get current max position
-    q.prepare("SELECT COALESCE(MAX(position), -1) FROM playlist_tracks WHERE playlist_id = :id");
-    q.bindValue(":id", playlistId);
-    q.exec();
-    int nextPos = q.next() ? q.value(0).toInt() + 1 : 0;
-
-    // INSERT OR IGNORE respects the PRIMARY KEY (playlist_id, path) — no duplicates
-    q.prepare(R"(
-        INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
-        VALUES (:id, :path, :pos)
-    )");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":path", path);
-    q.bindValue(":pos",  nextPos);
-    q.exec();
-    emit playlistsChanged();
-}
-
-void Library::removeTrackFromPlaylist(int playlistId, const QString &path)
-{
-    QSqlQuery q(m_db);
-    // Get position of the track being removed
-    q.prepare("SELECT position FROM playlist_tracks WHERE playlist_id = :id AND path = :path");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":path", path);
-    q.exec();
-    if (!q.next()) return;
-    int removedPos = q.value(0).toInt();
-
-    // Delete it
-    q.prepare("DELETE FROM playlist_tracks WHERE playlist_id = :id AND path = :path");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":path", path);
-    q.exec();
-
-    // Shift positions of tracks that came after it
-    q.prepare(R"(
-        UPDATE playlist_tracks
-        SET position = position - 1
-        WHERE playlist_id = :id AND position > :pos
-    )");
-    q.bindValue(":id",  playlistId);
-    q.bindValue(":pos", removedPos);
-    q.exec();
-    emit playlistsChanged();
-}
-
-void Library::moveTrackInPlaylist(int playlistId, int from, int to)
-{
-    if (from == to) return;
-
-    QSqlQuery q(m_db);
-
-    // Use a temp position (-1) to avoid UNIQUE constraint conflicts during swap
-    q.prepare(R"(
-        UPDATE playlist_tracks SET position = -1
-        WHERE playlist_id = :id AND position = :from
-    )");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":from", from);
-    q.exec();
-
-    if (from < to) {
-        // Shift everything between from+1 and to down by 1
-        q.prepare(R"(
-            UPDATE playlist_tracks SET position = position - 1
-            WHERE playlist_id = :id AND position > :from AND position <= :to
-        )");
-    } else {
-        // Shift everything between to and from-1 up by 1
-        q.prepare(R"(
-            UPDATE playlist_tracks SET position = position + 1
-            WHERE playlist_id = :id AND position >= :to AND position < :from
-        )");
-    }
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":from", from);
-    q.bindValue(":to",   to);
-    q.exec();
-
-    // Place the moved track at its destination
-    q.prepare(R"(
-        UPDATE playlist_tracks SET position = :to
-        WHERE playlist_id = :id AND position = -1
-    )");
-    q.bindValue(":id", playlistId);
-    q.bindValue(":to", to);
-    q.exec();
-
-    emit playlistsChanged();
-}
-
-int Library::saveQueueAsPlaylist(const QString &name, const QStringList &paths)
-{
-    int id = createPlaylist(name);
-    if (id < 0) return -1;
-
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
-        VALUES (:id, :path, :pos)
-    )");
-    for (int i = 0; i < paths.size(); ++i) {
-        q.bindValue(":id",   id);
-        q.bindValue(":path", paths[i]);
-        q.bindValue(":pos",  i);
-        q.exec();
-    }
-    emit playlistsChanged();
-    return id;
-}
-
-// ── Playlist reading ───────────────────────────────────────────────────────
-
-QList<PlaylistInfo> Library::allPlaylists() const
-{
-    QList<PlaylistInfo> result;
-    QSqlQuery q(m_db);
-    q.exec("SELECT id, name FROM playlists ORDER BY name ASC");
-    while (q.next()) {
-        PlaylistInfo info;
-        info.id   = q.value(0).toInt();
-        info.name = q.value(1).toString();
-        result.append(info);
-    }
-    return result;
-}
-
-QList<Track> Library::tracksForPlaylist(int playlistId) const
-{
-    QList<Track> result;
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        SELECT t.path, t.title, t.artist, t.album, t.album_artist,
-               t.composer, t.genre, t.track_number, t.disc_number,
-               t.year, t.duration, t.date_added, t.date_last_played, t.play_count,
-               t.is_favorite
-        FROM playlist_tracks pt
-        JOIN tracks t ON t.path = pt.path
-        WHERE pt.playlist_id = :id
-        ORDER BY pt.position ASC
-    )");
-    q.bindValue(":id", playlistId);
-    q.exec();
-    while (q.next())
-        result.append(trackFromQuery(q));
-    return result;
-}
-
 QStringList Library::albumsForArtist(const QString &artist) const
 {
     QStringList result;
@@ -635,58 +395,6 @@ QStringList Library::albumsForArtist(const QString &artist) const
     while (q.next())
         result.append(q.value(0).toString());
     return result;
-}
-
-void Library::sortPlaylist(int playlistId, TrackSort sort, bool ascending)
-{
-    // Fetch current tracks in requested sort order
-    QString sortCol = trackSortColumn(sort);
-    QString dir     = ascending ? "ASC" : "DESC";
-
-    QSqlQuery q(m_db);
-    q.prepare(QString(R"(
-        SELECT pt.path FROM playlist_tracks pt
-        JOIN tracks t ON t.path = pt.path
-        WHERE pt.playlist_id = :id
-        ORDER BY %1 %2
-    )").arg(sortCol, dir));
-    q.bindValue(":id", playlistId);
-    q.exec();
-
-    QStringList ordered;
-    while (q.next())
-        ordered << q.value(0).toString();
-
-    // Rewrite positions
-    QSqlQuery upd(m_db);
-    upd.prepare(R"(
-        UPDATE playlist_tracks SET position = :pos
-        WHERE playlist_id = :id AND path = :path
-    )");
-    for (int i = 0; i < ordered.size(); ++i) {
-        upd.bindValue(":pos",  i);
-        upd.bindValue(":id",   playlistId);
-        upd.bindValue(":path", ordered[i]);
-        upd.exec();
-    }
-    emit playlistsChanged();
-}
-
-void Library::incrementPlayCount(const QString &path)
-{
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        UPDATE tracks
-        SET play_count       = play_count + 1,
-            date_last_played = :now
-        WHERE path = :path
-    )");
-    q.bindValue(":now",  QDateTime::currentSecsSinceEpoch());
-    q.bindValue(":path", path);
-    q.exec();
-
-    if (q.lastError().isValid())
-        qWarning() << "Library: incrementPlayCount error:" << q.lastError().text();
 }
 
 void Library::saveQueues(const QList<QueueSnapshot> &queues)
@@ -796,12 +504,11 @@ void Library::addTracks(const QList<Track> &tracks)
             INSERT OR IGNORE INTO tracks (
                 path, title, artist, album, album_artist,
                 composer, genre, track_number, disc_number,
-                year, duration, date_added, date_last_played, play_count,
-                is_favorite, last_modified
+                year, duration, date_added, last_modified
             ) VALUES (
                 :path, :title, :artist, :album, :albumArtist,
                 :composer, :genre, :trackNumber, :discNumber,
-                :year, :duration, :dateAdded, :last_modified, 0, 0, 0
+                :year, :duration, :dateAdded, :lastModified
             )
         )");
 
@@ -861,67 +568,4 @@ void Library::addTracks(const QList<Track> &tracks)
     }
 
     q.exec("COMMIT");
-}
-
-void Library::setFavorite(const QString &path, bool favorite)
-{
-    // Check if path exists in tracks table
-    QSqlQuery check(m_db);
-    check.prepare("SELECT 1 FROM tracks WHERE path = :path");
-    check.bindValue(":path", path);
-    check.exec();
-
-    if (check.next()) {
-        // Track is in library — update is_favorite column
-        QSqlQuery q(m_db);
-        q.prepare("UPDATE tracks SET is_favorite = :fav WHERE path = :path");
-        q.bindValue(":fav",  favorite ? 1 : 0);
-        q.bindValue(":path", path);
-        q.exec();
-    } else {
-        // Track not in library (missing/moved) — use favorite_paths table
-        QSqlQuery q(m_db);
-        if (favorite) {
-            q.prepare("INSERT OR IGNORE INTO favorite_paths (path) VALUES (:path)");
-        } else {
-            q.prepare("DELETE FROM favorite_paths WHERE path = :path");
-        }
-        q.bindValue(":path", path);
-        q.exec();
-    }
-}
-
-bool Library::isFavoriteInDb(const QString &path) const
-{
-    // Check tracks table first
-    QSqlQuery q(m_db);
-    q.prepare("SELECT is_favorite FROM tracks WHERE path = :path");
-    q.bindValue(":path", path);
-    q.exec();
-    if (q.next())
-        return q.value(0).toInt() == 1;
-
-    // Fall back to favorite_paths for non-library tracks
-    q.prepare("SELECT 1 FROM favorite_paths WHERE path = :path");
-    q.bindValue(":path", path);
-    q.exec();
-    return q.next();
-}
-
-QSet<QString> Library::allFavoritePaths() const
-{
-    QSet<QString> result;
-
-    // Favorited library tracks
-    QSqlQuery q(m_db);
-    q.exec("SELECT path FROM tracks WHERE is_favorite = 1");
-    while (q.next())
-        result.insert(q.value(0).toString());
-
-    // Favorited non-library tracks
-    q.exec("SELECT path FROM favorite_paths");
-    while (q.next())
-        result.insert(q.value(0).toString());
-
-    return result;
 }

@@ -4,7 +4,7 @@
 #include "queuesession.h"
 #include "queuemanager.h"
 #include "playbackmanager.h"
-#include "playlistmanager.h"
+#include "userdatamanager.h"
 #include "librarymanager.h"
 #include "library.h"
 
@@ -98,7 +98,7 @@ public:
     QueueSession    *session         = nullptr;
     QueueManager    *queueManager    = nullptr;
     PlaybackManager *playbackManager = nullptr;
-    PlaylistManager *playlistManager = nullptr;
+    UserDataManager *userDataManager = nullptr;
     LibraryManager  *libraryManager  = nullptr;
 
     explicit Impl(QObject *parent = nullptr) : QObject(parent) {}
@@ -110,7 +110,7 @@ public:
         session         = new QueueSession(this);
         queueManager    = new QueueManager(session, this);
         playbackManager = new PlaybackManager(session, this);
-        playlistManager = new PlaylistManager(session, this);
+        userDataManager = new UserDataManager(this);
         libraryManager  = new LibraryManager(this);
 
         libraryManager->open();
@@ -118,14 +118,15 @@ public:
         Library *lib = libraryManager->library();
         queueManager->setLibrary(lib);
         playbackManager->setLibrary(lib);
-        playlistManager->setLibrary(lib);
-        playlistManager->initialize();
+        userDataManager->open();
+        userDataManager->setLibrary(lib);
+        playbackManager->setUserDataManager(userDataManager);
 
         wireSignals();
 
         playbackManager->loadSettings();
         libraryManager->loadSettings();
-        playlistManager->loadSettings();
+        userDataManager->loadSettings();
 
         queueManager->loadQueues(playbackManager->volume());
     }
@@ -134,7 +135,7 @@ public:
     {
         playbackManager->saveSettings();
         libraryManager->saveSettings();
-        playlistManager->saveSettings();
+        userDataManager->saveSettings();
         queueManager->saveQueues(session->viewedQueueIndex());
     }
 
@@ -198,7 +199,6 @@ public:
                 Queue *q = session->playingQueue();
                 if (q && q->currentTrackIndex() >= 0) {
                     QString path = q->trackAt(q->currentTrackIndex()).path;
-                    callbacks->onFavoriteChanged(playlistManager->isFavorite(path));
                 }
             }
         });
@@ -244,24 +244,28 @@ public:
                     playbackManager->restorePlaybackState(queueIndex);
                 });
 
-        // --- PlaylistManager ---
-        connect(playlistManager, &PlaylistManager::playlistsChanged, this, [this]() {
+        // --- UserDataManager ---
+        connect(userDataManager, &UserDataManager::playlistsChanged, this, [this]() {
             if (callbacks->onPlaylistsChanged)
                 callbacks->onPlaylistsChanged();
         });
-        connect(playlistManager, &PlaylistManager::playlistSortChanged, this, [this]() {
+        connect(userDataManager, &UserDataManager::playlistSortChanged, this, [this]() {
             if (callbacks->onPlaylistSortChanged)
                 callbacks->onPlaylistSortChanged();
         });
-        connect(playlistManager, &PlaylistManager::isFavoriteChanged, this, [this]() {
+        connect(userDataManager, &UserDataManager::isFavoriteChanged, this, [this]() {
             if (callbacks->onFavoriteChanged) {
                 Queue *q = session->playingQueue();
                 bool fav = false;
                 if (q && q->currentTrackIndex() >= 0)
-                    fav = playlistManager->isFavorite(
+                    fav = userDataManager->isFavorite(
                         q->trackAt(q->currentTrackIndex()).path);
                 callbacks->onFavoriteChanged(fav);
             }
+        });
+        connect(userDataManager, &UserDataManager::openInNewQueueRequested,
+                this, [this](const QStringList &paths, const QString &name) {
+            queueManager->openFilesInNewQueue(paths, name, false);
         });
 
         // --- LibraryManager ---
@@ -346,14 +350,6 @@ CoreTrack NatsuyumeCore::currentTrack() const
     Queue *q = m_impl->session->playingQueue();
     if (!q || q->currentTrackIndex() < 0) return {};
     return toCoreTrack(q->trackAt(q->currentTrackIndex()));
-}
-
-bool NatsuyumeCore::isFavorite() const
-{
-    Queue *q = m_impl->session->playingQueue();
-    if (!q || q->currentTrackIndex() < 0) return false;
-    return m_impl->playlistManager->isFavorite(
-        q->trackAt(q->currentTrackIndex()).path);
 }
 
 // --- Playing-queue navigation ---
@@ -549,8 +545,14 @@ int  NatsuyumeCore::trackSort()           const { return m_impl->libraryManager-
 bool NatsuyumeCore::trackSortAscending()  const { return m_impl->libraryManager->trackSortAscending(); }
 int  NatsuyumeCore::artistSort()          const { return m_impl->libraryManager->artistSort(); }
 bool NatsuyumeCore::artistSortAscending() const { return m_impl->libraryManager->artistSortAscending(); }
-int  NatsuyumeCore::playlistSort()        const { return m_impl->playlistManager->playlistSort(); }
-bool NatsuyumeCore::playlistSortAscending() const { return m_impl->playlistManager->playlistSortAscending(); }
+int  NatsuyumeCore::playlistSort()        const
+{
+    return m_impl->userDataManager->playlistSort();
+}
+bool NatsuyumeCore::playlistSortAscending() const
+{
+    return m_impl->userDataManager->playlistSortAscending();
+}
 
 void NatsuyumeCore::setAlbumSort(int s)              { m_impl->libraryManager->setAlbumSort(s); }
 void NatsuyumeCore::setAlbumSortAscending(bool a)    { m_impl->libraryManager->setAlbumSortAscending(a); }
@@ -558,67 +560,95 @@ void NatsuyumeCore::setTrackSort(int s)              { m_impl->libraryManager->s
 void NatsuyumeCore::setTrackSortAscending(bool a)    { m_impl->libraryManager->setTrackSortAscending(a); }
 void NatsuyumeCore::setArtistSort(int s)             { m_impl->libraryManager->setArtistSort(s); }
 void NatsuyumeCore::setArtistSortAscending(bool a)   { m_impl->libraryManager->setArtistSortAscending(a); }
-void NatsuyumeCore::setPlaylistSort(int s)           { m_impl->playlistManager->setPlaylistSort(s); }
-void NatsuyumeCore::setPlaylistSortAscending(bool a) { m_impl->playlistManager->setPlaylistSortAscending(a); }
+void NatsuyumeCore::setPlaylistSort(int s)
+{
+    m_impl->userDataManager->setPlaylistSort(s);
+}
+void NatsuyumeCore::setPlaylistSortAscending(bool a)
+{
+    m_impl->userDataManager->setPlaylistSortAscending(a);
+}
 
 // --- Playlists ---
 
 int  NatsuyumeCore::createPlaylist(const std::string &name)
 {
-    return m_impl->playlistManager->createPlaylist(QString::fromStdString(name));
+    return m_impl->userDataManager->createPlaylist(
+        QString::fromStdString(name));
 }
-void NatsuyumeCore::deletePlaylist(int id)       { m_impl->playlistManager->deletePlaylist(id); }
+void NatsuyumeCore::deletePlaylist(int id)
+{
+    m_impl->userDataManager->deletePlaylist(id);
+}
 void NatsuyumeCore::renamePlaylist(int id, const std::string &name)
 {
-    m_impl->playlistManager->renamePlaylist(id, QString::fromStdString(name));
+    m_impl->userDataManager->renamePlaylist(id, QString::fromStdString(name));
 }
 void NatsuyumeCore::addTrackToPlaylist(int id, const std::string &path)
 {
-    m_impl->playlistManager->addTrackToPlaylist(id, QString::fromStdString(path));
+    m_impl->userDataManager->addTrackToPlaylist(id, QString::fromStdString(path));
 }
 void NatsuyumeCore::removeTrackFromPlaylist(int id, const std::string &path)
 {
-    m_impl->playlistManager->removeTrackFromPlaylist(id, QString::fromStdString(path));
+    m_impl->userDataManager->removeTrackFromPlaylist(
+        id, QString::fromStdString(path));
 }
 void NatsuyumeCore::moveTrackInPlaylist(int id, int from, int to)
 {
-    m_impl->playlistManager->moveTrackInPlaylist(id, from, to);
+    m_impl->userDataManager->moveTrackInPlaylist(id, from, to);
 }
-void NatsuyumeCore::sortPlaylist(int id)         { m_impl->playlistManager->sortPlaylist(id); }
+void NatsuyumeCore::sortPlaylist(int id)
+{
+    m_impl->userDataManager->sortPlaylist(id);
+}
 int  NatsuyumeCore::saveQueueAsPlaylist(const std::string &name)
 {
-    return m_impl->playlistManager->saveQueueAsPlaylist(QString::fromStdString(name));
+    Queue *q = m_impl->session->viewedQueue();
+    if (!q) return -1;
+    QStringList paths;
+    for (const Track &t : q->tracks())
+        paths.append(t.path);
+    return m_impl->userDataManager->saveQueueAsPlaylist(
+        QString::fromStdString(name), paths);
 }
 void NatsuyumeCore::openPlaylistInNewQueue(int id, const std::string &name)
 {
-    m_impl->playlistManager->openPlaylistInNewQueue(id, QString::fromStdString(name));
+    m_impl->userDataManager->openPlaylistInNewQueue(
+        id, QString::fromStdString(name));
 }
 
 std::vector<CorePlaylistInfo> NatsuyumeCore::allPlaylists() const
 {
     std::vector<CorePlaylistInfo> result;
-    Library *lib = m_impl->libraryManager->library();
-    for (const PlaylistInfo &p : lib->allPlaylists())
+    for (const PlaylistInfo &p : m_impl->userDataManager->rawPlaylists())
         result.push_back({p.id, p.name.toStdString()});
     return result;
 }
 
 std::vector<CoreTrack> NatsuyumeCore::tracksForPlaylist(int id) const
 {
-    Library *lib = m_impl->libraryManager->library();
-    return toCoreTrackList(lib->tracksForPlaylist(id));
+    QList<Track> tracks = m_impl->userDataManager->tracksForPlaylist(id);
+    return toCoreTrackList(tracks);
 }
 
-int NatsuyumeCore::allSongsPlaylistId()  { return PlaylistManager::kAllSongsPlaylistId; }
-int NatsuyumeCore::favoritesPlaylistId() { return PlaylistManager::kFavoritesPlaylistId; }
+int NatsuyumeCore::allSongsPlaylistId()  { return UserDataManager::kAllSongsPlaylistId; }
+int NatsuyumeCore::favoritesPlaylistId() { return UserDataManager::kFavoritesPlaylistId; }
 
 // --- Favorites ---
+
+bool NatsuyumeCore::isFavorite() const
+{
+    Queue *q = m_impl->session->playingQueue();
+    if (!q || q->currentTrackIndex() < 0) return false;
+    return m_impl->userDataManager->isFavorite(
+        q->trackAt(q->currentTrackIndex()).path);
+}
 
 void NatsuyumeCore::toggleFavorite()
 {
     Queue *q = m_impl->session->playingQueue();
     if (!q || q->currentTrackIndex() < 0) return;
-    m_impl->playlistManager->toggleFavorite(
+    m_impl->userDataManager->toggleFavorite(
         q->trackAt(q->currentTrackIndex()).path);
 }
 
@@ -640,8 +670,32 @@ void NatsuyumeCore::saveSettings()
 {
     m_impl->playbackManager->saveSettings();
     m_impl->libraryManager->saveSettings();
-    m_impl->playlistManager->saveSettings();
+    m_impl->userDataManager->saveSettings();
 }
+
+void NatsuyumeCore::setArtistImage(const std::string &artist,
+                                   const std::string &imagePath)
+{
+    m_impl->userDataManager->setArtistImage(
+        QString::fromStdString(artist),
+        QString::fromStdString(imagePath));
+}
+
+std::string NatsuyumeCore::artistImage(const std::string &artist) const
+{
+    return m_impl->userDataManager->artistImage(
+                                      QString::fromStdString(artist)).toStdString();
+}
+
+void NatsuyumeCore::setPlaylistImage(int playlistId,
+                                     const std::string &imagePath)
+{
+    m_impl->userDataManager->setPlaylistImage(
+        playlistId, QString::fromStdString(imagePath));
+}
+
+void NatsuyumeCore::clearUserData() { m_impl->userDataManager->clearUserData(); }
+void NatsuyumeCore::clearLibrary()  { m_impl->userDataManager->clearLibrary(); }
 
 // --- A-B repeat ---
 
