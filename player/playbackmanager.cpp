@@ -21,11 +21,6 @@ void PlaybackManager::setLibrary(Library *library)
     m_library = library;
 }
 
-void PlaybackManager::setCoverImageProvider(CoverImageProvider *provider)
-{
-    m_coverImageProvider = provider;
-}
-
 // --- Settings ---
 
 void PlaybackManager::loadSettings()
@@ -294,23 +289,6 @@ void PlaybackManager::rebuildLyricLines()
         m_lyricLines = LrcParser::parse(fresh.lyrics);
 }
 
-void PlaybackManager::pushCoverArt()
-{
-    if (!m_coverImageProvider) return;
-
-    Queue *q = m_session->playingQueue();
-    if (!q || q->currentTrackIndex() < 0) {
-        m_coverImageProvider->updateCover(QImage());
-        emit coverArtChanged();
-        return;
-    }
-
-    const QString path = q->trackAt(q->currentTrackIndex()).path;
-    Track t = Metadata::read(path, true);
-    m_coverImageProvider->updateCover(t.coverArt);
-    emit coverArtChanged();
-}
-
 void PlaybackManager::connectPlaybackSignals(Queue *queue)
 {
     // Wire the current Playback's signals
@@ -324,7 +302,6 @@ void PlaybackManager::connectPlaybackSignals(Queue *queue)
         emit playingTrackChanged();
         emit metadataChanged();
         emit isFavoriteChanged();
-        pushCoverArt();
         emit positionChanged();
         emit durationChanged();
     });
@@ -347,7 +324,6 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
         rebuildLyricLines();
         emit metadataChanged();
         emit isFavoriteChanged();
-        pushCoverArt();
 
         Queue *playingQ = m_session->playingQueue();
         if (!playingQ) return;

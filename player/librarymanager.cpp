@@ -23,12 +23,6 @@ bool LibraryManager::open()
     return m_library->open();
 }
 
-void LibraryManager::setAlbumCoverProvider(AlbumCoverProvider *provider)
-{
-    m_albumCoverProvider = provider;
-    registerAlbumCovers();
-}
-
 Library *LibraryManager::library() const
 {
     return m_library;
@@ -188,7 +182,6 @@ void LibraryManager::scanFoldersSequentially(int index)
                     emit scanningChanged();
                     emit scanProgressChanged();
                     emit libraryChanged();
-                    registerAlbumCovers();
                 }, Qt::QueuedConnection);
             });
             scanFoldersSequentially(index + 1);
@@ -275,18 +268,6 @@ void LibraryManager::setArtistSortAscending(bool ascending)
     saveSettings();
 }
 
-void LibraryManager::registerAlbumCovers()
-{
-    if (!m_albumCoverProvider) return;
-    QStringList albums = m_library->allAlbums();
-    for (const QString &album : std::as_const(albums)) {
-        if (m_albumCoverProvider->hasAlbum(album)) continue;
-        QList<Track> tracks = m_library->tracksByAlbum(album);
-        if (!tracks.isEmpty())
-            m_albumCoverProvider->registerAlbum(album, tracks.first().path);
-    }
-}
-
 void LibraryManager::connectIndexerCallbacks()
 {
     m_indexer->onScanStarted([this](int total) {
@@ -314,7 +295,6 @@ void LibraryManager::connectIndexerCallbacks()
             emit scanningChanged();
             emit scanProgressChanged();
             emit libraryChanged();
-            registerAlbumCovers();
         }, Qt::QueuedConnection);
     });
 

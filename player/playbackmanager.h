@@ -4,7 +4,6 @@
 #include <QObject>
 #include <QVariantList>
 #include "queuesession.h"
-#include "coverimageprovider.h"
 #include "lrcparser.h"
 #include "library.h"
 
@@ -16,7 +15,6 @@ public:
     explicit PlaybackManager(QueueSession *session, QObject *parent = nullptr);
 
     void setLibrary(Library *library);
-    void setCoverImageProvider(CoverImageProvider *provider);
 
     // --- Transport ---
     void play();
@@ -102,7 +100,6 @@ signals:
 private:
     QueueSession       *m_session;
     Library            *m_library  = nullptr;
-    CoverImageProvider *m_coverImageProvider = nullptr;
 
     float  m_volume             = 0.8f;
     int    m_playCountThreshold = 10;
@@ -114,7 +111,6 @@ private:
 
     void connectPlaybackSignals(Queue *queue);
     void rebuildLyricLines();
-    void pushCoverArt();
     bool m_isSeeking = false;
 
     void connectCurrentPlaybackSignals(Queue *queue);
