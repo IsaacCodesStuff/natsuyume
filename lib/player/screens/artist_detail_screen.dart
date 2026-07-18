@@ -5,6 +5,8 @@ import '../../widgets/artist_album_list.dart';
 import 'artists_screen.dart';
 import 'album_detail_screen.dart';
 import '../../widgets/album_grid_item.dart';
+import 'artist_editor_screen.dart';
+import 'artist_info_overlay.dart';
 
 final _placeholderArtistAlbums = [
   ArtistAlbumEntry(title: 'Summer Challenger', year: 2026, songCount: 3),
@@ -124,7 +126,17 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                     icon: Icons.edit_outlined,
                     colors: colors,
                     onTap: () {
-                      // Edit artist info — deferred to 0.9.x
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => FractionallySizedBox(
+                          heightFactor: 1.0,
+                          child: ArtistEditorScreen(
+                            initialName: widget.artist.name,
+                          ),
+                        ),
+                      );
                     },
                   ),
                 ],
@@ -161,22 +173,41 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: widget.artist.photo != null
-                ? Image(image: widget.artist.photo!, fit: BoxFit.cover)
-                : Container(
-                    color: colors.surfaceVariant,
-                    child: Icon(
-                      Icons.person,
-                      size: 80,
-                      color: colors.onSurfaceVariant,
+      child: GestureDetector(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => FractionallySizedBox(
+              heightFactor: 1.0,
+              child: ArtistInfoOverlay(
+                artist: widget.artist,
+                totalAlbums: widget.artist.albumCount,
+                totalTracks: 128,
+                totalDuration: '8:32:14',
+                description: 'No description yet.',
+              ),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: widget.artist.photo != null
+                  ? Image(image: widget.artist.photo!, fit: BoxFit.cover)
+                  : Container(
+                      color: colors.surfaceVariant,
+                      child: Icon(
+                        Icons.person,
+                        size: 80,
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),

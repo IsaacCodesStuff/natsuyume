@@ -3,6 +3,8 @@ import '../../theme/natsuyume_theme.dart';
 import '../../widgets/collection_detail_bar.dart';
 import '../../widgets/playlist_track_list.dart';
 import 'playlists_screen.dart';
+import 'playlist_editor_screen.dart';
+import 'playlist_info_overlay.dart';
 
 final _placeholderPlaylistTracks = [
   PlaylistTrack(
@@ -137,7 +139,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     icon: Icons.edit_outlined,
                     colors: colors,
                     onTap: () {
-                      // Edit playlist — deferred to 0.9.x
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => FractionallySizedBox(
+                          heightFactor: 1.0,
+                          child: PlaylistEditorScreen(
+                            initialName: widget.playlist.name,
+                          ),
+                        ),
+                      );
                     },
                   ),
                 ],
@@ -174,22 +186,39 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: widget.playlist.coverArt != null
-                ? Image(image: widget.playlist.coverArt!, fit: BoxFit.cover)
-                : Container(
-                    color: colors.surfaceVariant,
-                    child: Icon(
-                      Icons.playlist_play,
-                      size: 80,
-                      color: colors.onSurfaceVariant,
+      child: GestureDetector(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => FractionallySizedBox(
+              heightFactor: 1.0,
+              child: PlaylistInfoOverlay(
+                playlist: widget.playlist,
+                totalDuration: _totalDuration,
+                description: 'No description yet.',
+              ),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: widget.playlist.coverArt != null
+                  ? Image(image: widget.playlist.coverArt!, fit: BoxFit.cover)
+                  : Container(
+                      color: colors.surfaceVariant,
+                      child: Icon(
+                        Icons.playlist_play,
+                        size: 80,
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),

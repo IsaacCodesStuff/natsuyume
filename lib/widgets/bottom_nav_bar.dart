@@ -95,7 +95,7 @@ class NatsuyumeBottomNavBar extends StatelessWidget {
       case PlayerTab.playlists:
         return 'Playlists';
       case PlayerTab.settings:
-        return 'Settings';
+        return 'More';
     }
   }
 }

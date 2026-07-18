@@ -3,6 +3,7 @@ import '../../theme/natsuyume_theme.dart';
 import '../../widgets/album_grid_item.dart';
 import '../../widgets/album_track_list.dart';
 import '../../widgets/collection_detail_bar.dart';
+import 'album_info_overlay.dart';
 
 // Placeholder tracks for the album detail
 final _placeholderTracks = [
@@ -132,22 +133,40 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           ),
         );
       },
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: widget.album.coverArt != null
-                ? Image(image: widget.album.coverArt!, fit: BoxFit.cover)
-                : Container(
-                    color: colors.surfaceVariant,
-                    child: Icon(
-                      Icons.album,
-                      size: 80,
-                      color: colors.onSurfaceVariant,
+      child: GestureDetector(
+        onTap: () {
+          showModalBottomSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => FractionallySizedBox(
+              heightFactor: 1.0,
+              child: AlbumInfoOverlay(
+                album: widget.album,
+                artistName: widget.album.artist,
+                albumArtist: widget.album.artist,
+                duration: _totalDuration,
+              ),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: widget.album.coverArt != null
+                  ? Image(image: widget.album.coverArt!, fit: BoxFit.cover)
+                  : Container(
+                      color: colors.surfaceVariant,
+                      child: Icon(
+                        Icons.album,
+                        size: 80,
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),

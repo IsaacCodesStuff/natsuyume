@@ -7,6 +7,7 @@ import 'screens/albums_screen.dart';
 import 'screens/artists_screen.dart';
 import 'screens/playlists_screen.dart';
 import 'screens/now_playing_screen.dart';
+import 'screens/more_screen.dart';
 
 class PlayerShell extends StatefulWidget {
   const PlayerShell({super.key});
@@ -41,7 +42,7 @@ class _PlayerShellState extends State<PlayerShell> {
       case PlayerTab.playlists:
         return const PlaylistsScreen();
       case PlayerTab.settings:
-        return _PlaceholderScreen(label: 'Settings');
+        return const MoreScreen();
     }
   }
 

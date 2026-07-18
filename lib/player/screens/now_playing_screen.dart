@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/natsuyume_theme.dart';
 import '../../widgets/now_playing_bar.dart';
 import '../../widgets/squiggly_slider.dart';
+import 'lyrics_editor_screen.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
@@ -100,26 +101,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 
   Widget _buildBackground(NatsuyumeColorScheme colors) {
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 400),
-      child: _showLyrics
-          ? SizedBox.expand(
-              key: const ValueKey('blurred'),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  // Placeholder colored background — replaced with
-                  // blurred album art in 0.8.x
-                  Container(color: colors.accent.withOpacity(0.6)),
-                  // Overlay to darken slightly
-                  Container(color: colors.background.withOpacity(0.3)),
-                ],
+    return IgnorePointer(
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 400),
+        child: _showLyrics
+            ? SizedBox.expand(
+                key: const ValueKey('blurred'),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Container(color: colors.accent.withValues(alpha: 0.6)),
+                    Container(color: colors.background.withValues(alpha: 0.3)),
+                  ],
+                ),
+              )
+            : SizedBox.expand(
+                key: const ValueKey('normal'),
+                child: Container(color: colors.background),
               ),
-            )
-          : SizedBox.expand(
-              key: const ValueKey('normal'),
-              child: Container(color: colors.background),
-            ),
+      ),
     );
   }
 
@@ -164,7 +164,17 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             _TopBarButton(
               icon: Icons.edit_outlined,
               colors: colors,
-              onTap: () {},
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const FractionallySizedBox(
+                    heightFactor: 1.0,
+                    child: LyricsEditorScreen(),
+                  ),
+                );
+              },
             ),
             const SizedBox(width: 8),
           ],
