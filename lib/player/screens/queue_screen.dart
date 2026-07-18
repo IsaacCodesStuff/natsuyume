@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/natsuyume_theme.dart';
 import '../../widgets/queue_fab.dart';
+import '../../widgets/sort_dialog.dart';
 
 class QueueTrack {
   final String title;
@@ -102,7 +103,21 @@ class _QueueScreenState extends State<QueueScreen> {
                         QueueFabAction(
                           icon: Icons.sort,
                           label: 'Sort',
-                          onTap: () {},
+                          onTap: () => showDialog(
+                            context: context,
+                            builder: (_) => TrackSortDialog(
+                              selectedField: TrackSortField.title,
+                              direction: SortDirection.ascending,
+                              specialOptions: [
+                                SpecialTrackSort.randomize,
+                                SpecialTrackSort.reverse,
+                                SpecialTrackSort.mostPlayedFirst,
+                                SpecialTrackSort.leastPlayedFirst,
+                              ],
+                              onNormalChanged: (field, direction) {},
+                              onSpecialChanged: (special) {},
+                            ),
+                          ),
                         ),
                         QueueFabAction(
                           icon: Icons.add,

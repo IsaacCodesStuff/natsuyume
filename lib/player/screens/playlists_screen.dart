@@ -4,6 +4,7 @@ import '../../widgets/library_top_bar.dart';
 import '../../widgets/album_grid_item.dart';
 import '../../widgets/album_list_item.dart';
 import 'playlist_detail_screen.dart';
+import '../../widgets/sort_dialog.dart';
 
 class PlaylistData {
   final String name;
@@ -75,7 +76,17 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
           ListTile(
             leading: Icon(Icons.sort, color: colors.onSurface),
             title: Text('Sort', style: TextStyle(color: colors.onSurface)),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context);
+              showDialog(
+                context: context,
+                builder: (_) => AlbumSortDialog(
+                  selectedField: AlbumSortField.name,
+                  direction: SortDirection.ascending,
+                  onChanged: (field, direction) {},
+                ),
+              );
+            },
           ),
           ListTile(
             leading: Icon(Icons.add, color: colors.onSurface),
