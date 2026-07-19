@@ -35,7 +35,7 @@ class SettingsTile extends StatelessWidget {
                 size: 22,
                 color: enabled
                     ? colors.onSurfaceVariant
-                    : colors.onSurfaceVariant.withOpacity(0.4),
+                    : colors.onSurfaceVariant.withValues(alpha: 0.4),
               ),
               const SizedBox(width: 16),
             ],
@@ -51,7 +51,7 @@ class SettingsTile extends StatelessWidget {
                       fontWeight: FontWeight.w400,
                       color: enabled
                           ? colors.onSurface
-                          : colors.onSurface.withOpacity(0.4),
+                          : colors.onSurface.withValues(alpha: 0.4),
                     ),
                   ),
                   if (subtitle != null) ...[
@@ -62,7 +62,7 @@ class SettingsTile extends StatelessWidget {
                         fontSize: 13,
                         color: enabled
                             ? colors.onSurfaceVariant
-                            : colors.onSurfaceVariant.withOpacity(0.4),
+                            : colors.onSurfaceVariant.withValues(alpha: 0.4),
                       ),
                     ),
                   ],
@@ -108,7 +108,7 @@ class SettingsToggleTile extends StatelessWidget {
       trailing: Switch(
         value: value,
         onChanged: enabled ? onChanged : null,
-        activeColor: colors.accent,
+        activeThumbColor: colors.accent,
       ),
     );
   }

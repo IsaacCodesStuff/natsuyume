@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../widgets/context_menu.dart';
 import '../../../widgets/album_grid_item.dart';
-import '../album_detail_screen.dart';
 import '../metadata_editor_screen.dart';
 
 class AlbumTabContextMenu {

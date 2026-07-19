@@ -233,7 +233,7 @@ class _ColorTile extends StatelessWidget {
     return SettingsTile(
       title: label,
       subtitle:
-          '#${color.value.toRadixString(16).toUpperCase().padLeft(8, '0').substring(2)}',
+          '#${color.toARGB32().toRadixString(16).toUpperCase().padLeft(8, '0').substring(2)}',
       onTap: onTap,
       trailing: GestureDetector(
         onTap: onTap,

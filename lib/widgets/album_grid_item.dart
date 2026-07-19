@@ -43,10 +43,15 @@ class AlbumGridItem extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(
-          color: isPlaying ? colors.accent.withOpacity(0.15) : colors.surface,
+          color: isPlaying
+              ? colors.accent.withValues(alpha: 0.15)
+              : colors.surface,
           borderRadius: BorderRadius.circular(14),
           border: isPlaying
-              ? Border.all(color: colors.accent.withOpacity(0.3), width: 1)
+              ? Border.all(
+                  color: colors.accent.withValues(alpha: 0.3),
+                  width: 1,
+                )
               : null,
         ),
         child: Column(

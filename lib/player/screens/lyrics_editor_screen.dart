@@ -40,8 +40,12 @@ class _LyricsEditorScreenState extends State<LyricsEditorScreen> {
   @override
   void dispose() {
     _normalController.dispose();
-    for (final c in _lineControllers) c.dispose();
-    for (final c in _timestampControllers) c.dispose();
+    for (final c in _lineControllers) {
+      c.dispose();
+    }
+    for (final c in _timestampControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -56,8 +60,12 @@ class _LyricsEditorScreenState extends State<LyricsEditorScreen> {
   }
 
   void _parseLinesFromNormal() {
-    for (final c in _lineControllers) c.dispose();
-    for (final c in _timestampControllers) c.dispose();
+    for (final c in _lineControllers) {
+      c.dispose();
+    }
+    for (final c in _timestampControllers) {
+      c.dispose();
+    }
     _lineControllers.clear();
     _timestampControllers.clear();
 

@@ -196,7 +196,7 @@ class _QueueDialogState extends State<QueueDialog> {
                 child: ReorderableListView.builder(
                   shrinkWrap: true,
                   itemCount: _queues.length,
-                  onReorder: (oldIndex, newIndex) {
+                  onReorderItem: (oldIndex, newIndex) {
                     setState(() {
                       if (newIndex > oldIndex) newIndex--;
                       final item = _queues.removeAt(oldIndex);

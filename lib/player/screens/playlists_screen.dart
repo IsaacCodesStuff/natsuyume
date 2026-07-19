@@ -42,7 +42,7 @@ class PlaylistsScreen extends StatefulWidget {
 class _PlaylistsScreenState extends State<PlaylistsScreen> {
   LibraryLayout _layout = LibraryLayout.grid;
   String _searchQuery = '';
-  int _playingPlaylistIndex = 1;
+  final int _playingPlaylistIndex = 1;
 
   List<PlaylistData> get _filteredPlaylists {
     if (_searchQuery.isEmpty) return _placeholderPlaylists;

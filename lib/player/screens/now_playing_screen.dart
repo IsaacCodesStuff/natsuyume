@@ -266,8 +266,8 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         final Color textColor = line.isCurrent
             ? colors.onBackground
             : line.isPast
-            ? colors.onSurfaceVariant.withOpacity(0.5)
-            : colors.onSurfaceVariant.withOpacity(0.75);
+            ? colors.onSurfaceVariant.withValues(alpha: 0.5)
+            : colors.onSurfaceVariant.withValues(alpha: 0.75);
 
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),

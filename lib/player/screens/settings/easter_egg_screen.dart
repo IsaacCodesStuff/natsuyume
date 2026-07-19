@@ -14,24 +14,6 @@ class EasterEggScreen extends StatefulWidget {
 }
 
 class _EasterEggScreenState extends State<EasterEggScreen> {
-  // Valid secret codes — expandable in 0.9.x
-  static const Map<String, String> _validCodes = {
-    'NATSUYUME': 'Natsuyume',
-    'REMREM': 'Rem',
-    'MISAKI': 'Misaki',
-    'HESTIA': 'Hestia',
-    'AKANE': 'Akane',
-    'SYALIS': 'Syalis',
-    'LISCIA': 'Liscia',
-    'ITSUKI': 'Itsuki',
-    'MISUMI': 'Misumi',
-    'BERRYBLOSSOM': 'Berry Blossom',
-    'JEANNE': 'Jeanne',
-    'YOSHINO': 'Yoshino',
-    'ERNA': 'Erna',
-    'BETA': 'Beta',
-  };
-
   void _showSecretCodeDialog() {
     final colors = NatsuyumeTheme.of(context).colors;
     final controller = TextEditingController();

@@ -48,7 +48,7 @@ class _PlaybackSettingsScreenState extends State<PlaybackSettingsScreen> {
                   activeTrackColor: colors.accent,
                   inactiveTrackColor: colors.surfaceVariant,
                   thumbColor: colors.accent,
-                  overlayColor: colors.accent.withOpacity(0.1),
+                  overlayColor: colors.accent.withValues(alpha: 0.1),
                   trackHeight: 3,
                   thumbShape: const RoundSliderThumbShape(
                     enabledThumbRadius: 8,

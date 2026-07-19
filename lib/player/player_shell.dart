@@ -95,22 +95,3 @@ class _PlayerShellState extends State<PlayerShell> {
     );
   }
 }
-
-class _PlaceholderScreen extends StatelessWidget {
-  final String label;
-
-  const _PlaceholderScreen({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = NatsuyumeTheme.of(context).colors;
-
-    return Center(
-      child: Text(
-        '$label\n(coming soon)',
-        textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 20, color: colors.onSurfaceVariant),
-      ),
-    );
-  }
-}

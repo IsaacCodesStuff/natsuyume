@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
-import 'album_grid_item.dart';
 
 class ArtistAlbumEntry {
   final String title;
@@ -64,12 +63,12 @@ class ArtistAlbumList extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: isPlaying
-                    ? colors.accent.withOpacity(0.15)
+                    ? colors.accent.withValues(alpha: 0.15)
                     : colors.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: isPlaying
                     ? Border.all(
-                        color: colors.accent.withOpacity(0.3),
+                        color: colors.accent.withValues(alpha: 0.3),
                         width: 1,
                       )
                     : null,

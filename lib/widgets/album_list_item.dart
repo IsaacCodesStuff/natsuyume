@@ -30,10 +30,15 @@ class AlbumListItem extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: isPlaying ? colors.accent.withOpacity(0.15) : colors.surface,
+          color: isPlaying
+              ? colors.accent.withValues(alpha: 0.15)
+              : colors.surface,
           borderRadius: BorderRadius.circular(12),
           border: isPlaying
-              ? Border.all(color: colors.accent.withOpacity(0.3), width: 1)
+              ? Border.all(
+                  color: colors.accent.withValues(alpha: 0.3),
+                  width: 1,
+                )
               : null,
         ),
         child: Row(

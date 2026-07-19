@@ -37,7 +37,7 @@ class ArtistsScreen extends StatefulWidget {
 class _ArtistsScreenState extends State<ArtistsScreen> {
   LibraryLayout _layout = LibraryLayout.grid;
   String _searchQuery = '';
-  int _playingArtistIndex = 0;
+  final int _playingArtistIndex = 0;
 
   List<ArtistData> get _filteredArtists {
     if (_searchQuery.isEmpty) return _placeholderArtists;

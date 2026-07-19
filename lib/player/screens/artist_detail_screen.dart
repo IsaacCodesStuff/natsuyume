@@ -39,7 +39,7 @@ class ArtistDetailScreen extends StatefulWidget {
 class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showTitleInBar = false;
-  int? _currentAlbumIndex = 0;
+  final int _currentAlbumIndex = 0;
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
 
@@ -63,13 +63,6 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
-  }
-
-  void _enterSelectMode(int index) {
-    setState(() {
-      _isSelecting = true;
-      _selectedIndices.add(index);
-    });
   }
 
   void _toggleSelection(int index) {

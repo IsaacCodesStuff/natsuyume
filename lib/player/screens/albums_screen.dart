@@ -34,7 +34,7 @@ class AlbumsScreen extends StatefulWidget {
 class _AlbumsScreenState extends State<AlbumsScreen> {
   LibraryLayout _layout = LibraryLayout.grid;
   String _searchQuery = '';
-  int _playingAlbumIndex = 0;
+  final int _playingAlbumIndex = 0;
 
   List<AlbumData> get _filteredAlbums {
     if (_searchQuery.isEmpty) return _placeholderAlbums;

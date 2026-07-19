@@ -221,13 +221,8 @@ class _FieldLabel extends StatelessWidget {
 class _UnderlineField extends StatelessWidget {
   final TextEditingController controller;
   final NatsuyumeColorScheme colors;
-  final String? hint;
 
-  const _UnderlineField({
-    required this.controller,
-    required this.colors,
-    this.hint,
-  });
+  const _UnderlineField({required this.controller, required this.colors});
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +230,6 @@ class _UnderlineField extends StatelessWidget {
       controller: controller,
       style: TextStyle(fontSize: 16, color: colors.onSurface),
       decoration: InputDecoration(
-        hintText: hint,
         hintStyle: TextStyle(fontSize: 16, color: colors.onSurfaceVariant),
         enabledBorder: UnderlineInputBorder(
           borderSide: BorderSide(color: colors.divider, width: 1),

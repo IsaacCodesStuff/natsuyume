@@ -63,7 +63,7 @@ class _FolderScreenState extends State<FolderScreen> {
                       )
                     : ListView.separated(
                         itemCount: _folders.length,
-                        separatorBuilder: (_, __) =>
+                        separatorBuilder: (_, _) =>
                             const Divider(color: Color(0xFF3A3850), height: 1),
                         itemBuilder: (context, index) {
                           return ListTile(

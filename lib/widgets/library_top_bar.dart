@@ -113,10 +113,12 @@ class _ToggleButton extends StatelessWidget {
         width: 40,
         height: 44,
         decoration: BoxDecoration(
-          color: selected ? colors.accent.withOpacity(0.2) : colors.surface,
+          color: selected
+              ? colors.accent.withValues(alpha: 0.2)
+              : colors.surface,
           borderRadius: BorderRadius.circular(12),
           border: selected
-              ? Border.all(color: colors.accent.withOpacity(0.4))
+              ? Border.all(color: colors.accent.withValues(alpha: 0.4))
               : null,
         ),
         child: Icon(
