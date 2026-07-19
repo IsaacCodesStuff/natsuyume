@@ -3,6 +3,7 @@ import '../../theme/natsuyume_theme.dart';
 import '../../widgets/now_playing_bar.dart';
 import '../../widgets/squiggly_slider.dart';
 import 'lyrics_editor_screen.dart';
+import 'dart:ui';
 
 class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
@@ -101,25 +102,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 
   Widget _buildBackground(NatsuyumeColorScheme colors) {
-    return IgnorePointer(
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 400),
-        child: _showLyrics
-            ? SizedBox.expand(
-                key: const ValueKey('blurred'),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Container(color: colors.accent.withValues(alpha: 0.6)),
-                    Container(color: colors.background.withValues(alpha: 0.3)),
-                  ],
-                ),
-              )
-            : SizedBox.expand(
-                key: const ValueKey('normal'),
-                child: Container(color: colors.background),
-              ),
-      ),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 400),
+      child: _showLyrics
+          ? _BlurredBackground(key: const ValueKey('blurred'), colors: colors)
+          : SizedBox.expand(
+              key: const ValueKey('normal'),
+              child: Container(color: colors.background),
+            ),
     );
   }
 
@@ -128,7 +118,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(
         children: [
-          // Dismiss chevron
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Icon(
@@ -137,7 +126,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               color: colors.onSurface,
             ),
           ),
-          // Title + subtitle
           Expanded(
             child: Column(
               children: [
@@ -159,31 +147,55 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               ],
             ),
           ),
-          // Edit button (lyrics mode only)
           if (_showLyrics) ...[
-            _TopBarButton(
-              icon: Icons.edit_outlined,
-              colors: colors,
+            GestureDetector(
               onTap: () {
                 showModalBottomSheet(
                   context: context,
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
-                  builder: (_) => const FractionallySizedBox(
+                  builder: (_) => FractionallySizedBox(
                     heightFactor: 1.0,
                     child: LyricsEditorScreen(),
                   ),
                 );
               },
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: colors.surface,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.edit_outlined,
+                  size: 20,
+                  color: colors.onSurface,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
           ],
-          // Typography / lyrics toggle
-          _TopBarButton(
-            icon: Icons.text_fields,
-            colors: colors,
-            selected: _showLyrics,
+          GestureDetector(
             onTap: () => setState(() => _showLyrics = !_showLyrics),
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: _showLyrics
+                    ? colors.accent.withValues(alpha: 0.2)
+                    : colors.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: _showLyrics
+                    ? Border.all(color: colors.accent.withValues(alpha: 0.4))
+                    : null,
+              ),
+              child: Icon(
+                Icons.text_fields,
+                size: 20,
+                color: _showLyrics ? colors.accent : colors.onSurface,
+              ),
+            ),
           ),
         ],
       ),
@@ -465,6 +477,39 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 }
 
+class _BlurredBackground extends StatelessWidget {
+  final NatsuyumeColorScheme colors;
+
+  const _BlurredBackground({super.key, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.expand(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  colors.accent.withValues(alpha: 0.8),
+                  colors.background,
+                ],
+              ),
+            ),
+          ),
+          BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+            child: Container(color: colors.background.withValues(alpha: 0.55)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _LyricLine {
   final String text;
   final bool isCurrent;
@@ -475,43 +520,6 @@ class _LyricLine {
     required this.isCurrent,
     required this.isPast,
   });
-}
-
-class _TopBarButton extends StatelessWidget {
-  final IconData icon;
-  final NatsuyumeColorScheme colors;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _TopBarButton({
-    required this.icon,
-    required this.colors,
-    this.selected = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: selected ? colors.accent.withOpacity(0.2) : colors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: selected
-              ? Border.all(color: colors.accent.withOpacity(0.4))
-              : null,
-        ),
-        child: Icon(
-          icon,
-          size: 20,
-          color: selected ? colors.accent : colors.onSurface,
-        ),
-      ),
-    );
-  }
 }
 
 class _ControlIcon extends StatelessWidget {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
+import 'dart:ui';
 
 class InfoRow {
   final String label;
@@ -40,7 +41,12 @@ class CollectionInfoOverlay extends StatelessWidget {
           // Blurred scrim background
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
-            child: Container(color: colors.background.withValues(alpha: 0.85)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+              child: Container(
+                color: colors.background.withValues(alpha: 0.75),
+              ),
+            ),
           ),
           // Content
           SafeArea(
