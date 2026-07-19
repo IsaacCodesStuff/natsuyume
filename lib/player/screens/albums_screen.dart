@@ -5,6 +5,7 @@ import '../../widgets/album_grid_item.dart';
 import '../../widgets/album_list_item.dart';
 import 'album_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
+import 'context_menus/album_tab_context_menu.dart';
 
 // Placeholder albums — will be wired to LibraryManager in 0.8.x
 final _placeholderAlbums = [
@@ -136,6 +137,15 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
           isPlaying:
               _placeholderAlbums.indexOf(albums[index]) == _playingAlbumIndex,
           onTap: () => _openAlbum(albums[index]),
+          onLongPress: () => AlbumTabContextMenu.show(
+            context,
+            album: albums[index],
+            onPlayAfterCurrent: () {},
+            onAddToCurrentQueue: () {},
+            onAddToQueue: () {},
+            onAddToPlaylists: () {},
+            onSelectAllSongs: () {},
+          ),
         );
       },
     );
@@ -152,6 +162,15 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
               _placeholderAlbums.indexOf(albums[index]) == _playingAlbumIndex,
           onTap: () => _openAlbum(albums[index]),
           onMoreTap: () {},
+          onLongPress: () => AlbumTabContextMenu.show(
+            context,
+            album: albums[index],
+            onPlayAfterCurrent: () {},
+            onAddToCurrentQueue: () {},
+            onAddToQueue: () {},
+            onAddToPlaylists: () {},
+            onSelectAllSongs: () {},
+          ),
         );
       },
     );

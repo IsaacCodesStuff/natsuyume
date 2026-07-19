@@ -3,8 +3,13 @@ import '../../theme/natsuyume_theme.dart';
 import '../../widgets/collection_detail_bar.dart';
 import '../../widgets/playlist_track_list.dart';
 import 'playlists_screen.dart';
-import 'playlist_editor_screen.dart';
 import 'playlist_info_overlay.dart';
+import 'playlist_editor_screen.dart';
+import 'playlist_organizer_screen.dart';
+import 'context_menus/playlist_detail_context_menu.dart';
+import 'context_menus/playlist_track_context_menu.dart';
+import 'context_menus/playlist_track_multiselect_menu.dart';
+import 'metadata_editor_screen.dart';
 
 final _placeholderPlaylistTracks = [
   PlaylistTrack(
@@ -75,6 +80,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showTitleInBar = false;
   int _currentTrackIndex = 1;
+  bool _isSelecting = false;
+  final Set<int> _selectedIndices = {};
 
   static const double _coverThreshold = 260.0;
 
@@ -98,6 +105,66 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     super.dispose();
   }
 
+  void _enterSelectMode(int index) {
+    setState(() {
+      _isSelecting = true;
+      _selectedIndices.add(index);
+    });
+  }
+
+  void _toggleSelection(int index) {
+    setState(() {
+      if (_selectedIndices.contains(index)) {
+        _selectedIndices.remove(index);
+        if (_selectedIndices.isEmpty) _isSelecting = false;
+      } else {
+        _selectedIndices.add(index);
+      }
+    });
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _isSelecting = false;
+      _selectedIndices.clear();
+    });
+  }
+
+  void _showMultiSelectMenu() {
+    final selected = _selectedIndices
+        .map(
+          (i) => TrackMetadata(
+            title: _placeholderPlaylistTracks[i].title,
+            artist: _placeholderPlaylistTracks[i].artist,
+            album: _placeholderPlaylistTracks[i].album,
+          ),
+        )
+        .toList();
+
+    PlaylistTrackMultiselectMenu.show(
+      context,
+      count: _selectedIndices.length,
+      tracks: selected,
+      onRemoveFromPlaylist: () {
+        setState(() {
+          final sorted = _selectedIndices.toList()
+            ..sort((a, b) => b.compareTo(a));
+          for (final i in sorted) {
+            _placeholderPlaylistTracks.removeAt(i);
+          }
+          _exitSelectMode();
+        });
+      },
+      onPlayAfterCurrent: () => _exitSelectMode(),
+      onAddToCurrentQueue: () => _exitSelectMode(),
+      onAddToQueue: () => _exitSelectMode(),
+      onAddToPlaylists: () => _exitSelectMode(),
+      onAddToFavorites: () => _exitSelectMode(),
+      onRemoveFromFavorites: () => _exitSelectMode(),
+      onClearPlaybackHistory: () => _exitSelectMode(),
+    );
+  }
+
   String get _totalDuration => '1:29:43';
 
   @override
@@ -115,12 +182,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 56)),
                 SliverToBoxAdapter(child: _buildCoverHero(colors)),
                 SliverToBoxAdapter(child: _buildPlaylistInfo(colors)),
-                PlaylistTrackList(
-                  tracks: _placeholderPlaylistTracks,
-                  currentTrackIndex: _currentTrackIndex,
-                  onTrackTap: (i) => setState(() => _currentTrackIndex = i),
-                  onMoreTap: (i) => _showTrackMenu(context, i, colors),
-                ),
+                _buildTrackList(colors),
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
@@ -155,12 +217,20 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 ],
               ),
             ),
-            // Pinned shuffle + play when scrolled
-            if (_showTitleInBar)
+            // Pinned shuffle + play
+            if (_showTitleInBar && !_isSelecting)
               Positioned(
                 right: 16,
                 bottom: 16,
                 child: _buildActionButtons(colors),
+              ),
+            // Multi-select bar
+            if (_isSelecting)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildMultiSelectBar(colors),
               ),
           ],
         ),
@@ -269,39 +339,227 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
   }
 
-  void _showPlaylistMenu(BuildContext context, NatsuyumeColorScheme colors) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: colors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
+  SliverList _buildTrackList(NatsuyumeColorScheme colors) {
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, index) {
+        final track = _placeholderPlaylistTracks[index];
+        final isPlaying = index == _currentTrackIndex;
+        final isSelected = _selectedIndices.contains(index);
+
+        return GestureDetector(
+          onTap: () {
+            if (_isSelecting) {
+              _toggleSelection(index);
+            } else {
+              setState(() => _currentTrackIndex = index);
+            }
+          },
+          onLongPress: () => _enterSelectMode(index),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? colors.accent.withValues(alpha: 0.2)
+                  : isPlaying
+                  ? colors.accent.withValues(alpha: 0.15)
+                  : colors.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: isSelected
+                  ? Border.all(color: colors.accent, width: 1.5)
+                  : isPlaying
+                  ? Border.all(
+                      color: colors.accent.withValues(alpha: 0.3),
+                      width: 1,
+                    )
+                  : null,
+            ),
+            child: Row(
+              children: [
+                // Checkbox or index
+                if (_isSelecting)
+                  SizedBox(
+                    width: 32,
+                    child: Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => _toggleSelection(index),
+                      activeColor: colors.accent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    ),
+                  )
+                else
+                  SizedBox(
+                    width: 24,
+                    child: isPlaying
+                        ? _EqualizerIcon(color: colors.accent)
+                        : Text(
+                            '${index + 1}',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: colors.onSurfaceVariant,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                  ),
+                const SizedBox(width: 10),
+                // Album art
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: track.albumArt != null
+                      ? Image(
+                          image: track.albumArt!,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.cover,
+                        )
+                      : Container(
+                          width: 44,
+                          height: 44,
+                          color: colors.surfaceVariant,
+                          child: Icon(
+                            Icons.music_note,
+                            size: 20,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                // Track info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        track.title,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: isPlaying ? colors.accent : colors.onSurface,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        track.artist,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colors.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        track.album,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colors.onSurfaceVariant,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+                // Duration + more
+                if (!_isSelecting) ...[
+                  Text(
+                    track.duration,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () => _showTrackMenu(context, index, colors),
+                    child: Icon(
+                      Icons.more_vert,
+                      size: 20,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+      }, childCount: _placeholderPlaylistTracks.length),
+    );
+  }
+
+  Widget _buildMultiSelectBar(NatsuyumeColorScheme colors) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: colors.surface,
+      child: Row(
         children: [
-          ListTile(
-            leading: Icon(Icons.queue_music, color: colors.onSurface),
-            title: Text(
-              'Add all to queue',
-              style: TextStyle(color: colors.onSurface),
+          GestureDetector(
+            onTap: _exitSelectMode,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: colors.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.close, color: colors.onSurface, size: 20),
             ),
-            onTap: () => Navigator.pop(context),
           ),
-          ListTile(
-            leading: Icon(Icons.share_outlined, color: colors.onSurface),
-            title: Text('Share', style: TextStyle(color: colors.onSurface)),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: Icon(Icons.delete_outline, color: colors.onSurface),
-            title: Text(
-              'Delete playlist',
-              style: TextStyle(color: colors.onSurface),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${_selectedIndices.length} selected',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: colors.onSurface,
+              ),
             ),
-            onTap: () => Navigator.pop(context),
+          ),
+          GestureDetector(
+            onTap: _showMultiSelectMenu,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: colors.accent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.more_vert, color: colors.background, size: 20),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  void _showPlaylistMenu(BuildContext context, NatsuyumeColorScheme colors) {
+    PlaylistDetailContextMenu.show(
+      context,
+      playlist: widget.playlist,
+      onExportM3U: () {},
+      onRenamePlaylist: () {},
+      onRemovePlaylist: () {},
+      onPlayAfterCurrent: () {},
+      onAddToCurrentQueue: () {},
+      onAddToQueue: () {},
+      onAddToPlaylists: () {},
+      onSelectMultiple: () => setState(() => _isSelecting = true),
+      onOrganizeSongs: () {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => PlaylistOrganizerScreen(
+              playlistName: widget.playlist.name,
+              tracks: _placeholderPlaylistTracks,
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -310,46 +568,23 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     int index,
     NatsuyumeColorScheme colors,
   ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: colors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: Icon(Icons.play_arrow, color: colors.onSurface),
-            title: Text('Play next', style: TextStyle(color: colors.onSurface)),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: Icon(Icons.queue_music, color: colors.onSurface),
-            title: Text(
-              'Add to queue',
-              style: TextStyle(color: colors.onSurface),
-            ),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: Icon(Icons.remove_circle_outline, color: colors.onSurface),
-            title: Text(
-              'Remove from playlist',
-              style: TextStyle(color: colors.onSurface),
-            ),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: Icon(Icons.info_outline, color: colors.onSurface),
-            title: Text(
-              'Track info',
-              style: TextStyle(color: colors.onSurface),
-            ),
-            onTap: () => Navigator.pop(context),
-          ),
-        ],
-      ),
+    PlaylistTrackContextMenu.show(
+      context,
+      track: _placeholderPlaylistTracks[index],
+      isFavorite: false,
+      onFavoriteTap: () {},
+      onSongInfo: () {},
+      onRemoveFromPlaylist: () {
+        setState(() {
+          if (_placeholderPlaylistTracks.length > 1) {
+            _placeholderPlaylistTracks.removeAt(index);
+          }
+        });
+      },
+      onPlayAfterCurrent: () {},
+      onAddToCurrentQueue: () {},
+      onAddToQueue: () {},
+      onAddToPlaylists: () {},
     );
   }
 }
@@ -427,6 +662,46 @@ class _ActionButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
         ),
         child: Icon(icon, size: 24, color: colors.onSurface),
+      ),
+    );
+  }
+}
+
+class _EqualizerIcon extends StatelessWidget {
+  final Color color;
+
+  const _EqualizerIcon({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        _Bar(height: 8, color: color),
+        const SizedBox(width: 2),
+        _Bar(height: 14, color: color),
+        const SizedBox(width: 2),
+        _Bar(height: 10, color: color),
+      ],
+    );
+  }
+}
+
+class _Bar extends StatelessWidget {
+  final double height;
+  final Color color;
+
+  const _Bar({required this.height, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 3,
+      height: height,
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(2),
       ),
     );
   }

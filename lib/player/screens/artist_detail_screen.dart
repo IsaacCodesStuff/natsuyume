@@ -5,8 +5,12 @@ import '../../widgets/artist_album_list.dart';
 import 'artists_screen.dart';
 import 'album_detail_screen.dart';
 import '../../widgets/album_grid_item.dart';
-import 'artist_editor_screen.dart';
 import 'artist_info_overlay.dart';
+import 'artist_editor_screen.dart';
+import 'context_menus/artist_detail_context_menu.dart';
+import 'context_menus/artist_track_context_menu.dart';
+import 'context_menus/artist_track_multiselect_menu.dart';
+import 'metadata_editor_screen.dart';
 
 final _placeholderArtistAlbums = [
   ArtistAlbumEntry(title: 'Summer Challenger', year: 2026, songCount: 3),
@@ -36,6 +40,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showTitleInBar = false;
   int? _currentAlbumIndex = 0;
+  bool _isSelecting = false;
+  final Set<int> _selectedIndices = {};
 
   static const double _coverThreshold = 260.0;
 
@@ -57,6 +63,56 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _enterSelectMode(int index) {
+    setState(() {
+      _isSelecting = true;
+      _selectedIndices.add(index);
+    });
+  }
+
+  void _toggleSelection(int index) {
+    setState(() {
+      if (_selectedIndices.contains(index)) {
+        _selectedIndices.remove(index);
+        if (_selectedIndices.isEmpty) _isSelecting = false;
+      } else {
+        _selectedIndices.add(index);
+      }
+    });
+  }
+
+  void _exitSelectMode() {
+    setState(() {
+      _isSelecting = false;
+      _selectedIndices.clear();
+    });
+  }
+
+  void _showMultiSelectMenu() {
+    final selected = _selectedIndices
+        .map(
+          (i) => TrackMetadata(
+            title: _placeholderArtistAlbums[i].title,
+            artist: widget.artist.name,
+            year: '${_placeholderArtistAlbums[i].year}',
+          ),
+        )
+        .toList();
+
+    ArtistTrackMultiselectMenu.show(
+      context,
+      count: _selectedIndices.length,
+      tracks: selected,
+      onPlayAfterCurrent: () => _exitSelectMode(),
+      onAddToCurrentQueue: () => _exitSelectMode(),
+      onAddToQueue: () => _exitSelectMode(),
+      onAddToPlaylists: () => _exitSelectMode(),
+      onAddToFavorites: () => _exitSelectMode(),
+      onRemoveFromFavorites: () => _exitSelectMode(),
+      onClearPlaybackHistory: () => _exitSelectMode(),
+    );
   }
 
   void _openAlbum(int index) {
@@ -89,25 +145,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             CustomScrollView(
               controller: _scrollController,
               slivers: [
-                // Space for top bar
                 const SliverToBoxAdapter(child: SizedBox(height: 56)),
-                // Artist photo hero with parallax fade
                 SliverToBoxAdapter(child: _buildPhotoHero(colors)),
-                // Artist info + action buttons
                 SliverToBoxAdapter(child: _buildArtistInfo(colors)),
-                // Album list
-                ArtistAlbumList(
-                  allSongsLabel: 'All songs',
-                  allSongsCount: 128,
-                  albums: _placeholderArtistAlbums,
-                  currentAlbumIndex: _currentAlbumIndex,
-                  onAllSongsTap: () {
-                    // Navigate to all songs view — coming after concept UI is ready
-                  },
-                  onAlbumTap: _openAlbum,
-                  onAlbumMoreTap: (i) => _showAlbumMenu(context, i, colors),
-                  onAllSongsMoreTap: () {},
-                ),
+                _buildAlbumList(colors),
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
@@ -142,12 +183,20 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 ],
               ),
             ),
-            // Pinned shuffle + play buttons when scrolled
-            if (_showTitleInBar)
+            // Pinned action buttons
+            if (_showTitleInBar && !_isSelecting)
               Positioned(
                 right: 16,
                 bottom: 16,
                 child: _buildActionButtons(colors),
+              ),
+            // Multi-select bar
+            if (_isSelecting)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: _buildMultiSelectBar(colors),
               ),
           ],
         ),
@@ -230,7 +279,6 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             ),
           ),
           const SizedBox(height: 12),
-          // Album count chip
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(
@@ -260,39 +308,80 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     );
   }
 
-  void _showArtistMenu(BuildContext context, NatsuyumeColorScheme colors) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: colors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
+  ArtistAlbumList _buildAlbumList(NatsuyumeColorScheme colors) {
+    return ArtistAlbumList(
+      allSongsLabel: 'All songs',
+      allSongsCount: 128,
+      albums: _placeholderArtistAlbums,
+      currentAlbumIndex: _isSelecting ? null : _currentAlbumIndex,
+      onAllSongsTap: () {},
+      onAlbumTap: (i) {
+        if (_isSelecting) {
+          _toggleSelection(i);
+        } else {
+          _openAlbum(i);
+        }
+      },
+      onAlbumMoreTap: (i) => _showAlbumMenu(context, i, colors),
+      onAllSongsMoreTap: () {},
+    );
+  }
+
+  Widget _buildMultiSelectBar(NatsuyumeColorScheme colors) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      color: colors.surface,
+      child: Row(
         children: [
-          ListTile(
-            leading: Icon(Icons.queue_music, color: colors.onSurface),
-            title: Text(
-              'Add all to queue',
-              style: TextStyle(color: colors.onSurface),
+          GestureDetector(
+            onTap: _exitSelectMode,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: colors.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.close, color: colors.onSurface, size: 20),
             ),
-            onTap: () => Navigator.pop(context),
           ),
-          ListTile(
-            leading: Icon(Icons.save_outlined, color: colors.onSurface),
-            title: Text(
-              'Save as playlist',
-              style: TextStyle(color: colors.onSurface),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${_selectedIndices.length} selected',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: colors.onSurface,
+              ),
             ),
-            onTap: () => Navigator.pop(context),
           ),
-          ListTile(
-            leading: Icon(Icons.share_outlined, color: colors.onSurface),
-            title: Text('Share', style: TextStyle(color: colors.onSurface)),
-            onTap: () => Navigator.pop(context),
+          GestureDetector(
+            onTap: _showMultiSelectMenu,
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: colors.accent,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.more_vert, color: colors.background, size: 20),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  void _showArtistMenu(BuildContext context, NatsuyumeColorScheme colors) {
+    ArtistDetailContextMenu.show(
+      context,
+      artist: widget.artist,
+      onPlayAfterCurrent: () {},
+      onAddToCurrentQueue: () {},
+      onAddToQueue: () {},
+      onAddToPlaylists: () {},
+      onSelectMultiple: () => setState(() => _isSelecting = true),
     );
   }
 
@@ -301,38 +390,17 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     int index,
     NatsuyumeColorScheme colors,
   ) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: colors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: Icon(Icons.queue_music, color: colors.onSurface),
-            title: Text(
-              'Add to queue',
-              style: TextStyle(color: colors.onSurface),
-            ),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: Icon(Icons.save_outlined, color: colors.onSurface),
-            title: Text(
-              'Save as playlist',
-              style: TextStyle(color: colors.onSurface),
-            ),
-            onTap: () => Navigator.pop(context),
-          ),
-          ListTile(
-            leading: Icon(Icons.share_outlined, color: colors.onSurface),
-            title: Text('Share', style: TextStyle(color: colors.onSurface)),
-            onTap: () => Navigator.pop(context),
-          ),
-        ],
-      ),
+    ArtistTrackContextMenu.show(
+      context,
+      album: _placeholderArtistAlbums[index],
+      artistName: widget.artist.name,
+      isFavorite: false,
+      onFavoriteTap: () {},
+      onSongInfo: () {},
+      onPlayAfterCurrent: () {},
+      onAddToCurrentQueue: () {},
+      onAddToQueue: () {},
+      onAddToPlaylists: () {},
     );
   }
 }

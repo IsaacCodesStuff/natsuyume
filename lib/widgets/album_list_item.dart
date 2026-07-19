@@ -7,6 +7,7 @@ class AlbumListItem extends StatelessWidget {
   final bool isPlaying;
   final VoidCallback onTap;
   final VoidCallback onMoreTap;
+  final VoidCallback? onLongPress;
 
   const AlbumListItem({
     super.key,
@@ -14,6 +15,7 @@ class AlbumListItem extends StatelessWidget {
     required this.isPlaying,
     required this.onTap,
     required this.onMoreTap,
+    this.onLongPress,
   });
 
   @override
@@ -22,6 +24,7 @@ class AlbumListItem extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 8),

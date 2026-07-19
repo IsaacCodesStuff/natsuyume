@@ -23,12 +23,14 @@ class AlbumGridItem extends StatelessWidget {
   final AlbumData album;
   final bool isPlaying;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
   const AlbumGridItem({
     super.key,
     required this.album,
     required this.isPlaying,
     required this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -37,6 +39,7 @@ class AlbumGridItem extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
+      onLongPress: onLongPress,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         decoration: BoxDecoration(

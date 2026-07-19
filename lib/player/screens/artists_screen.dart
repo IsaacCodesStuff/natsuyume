@@ -5,6 +5,7 @@ import '../../widgets/album_grid_item.dart';
 import '../../widgets/album_list_item.dart';
 import 'artist_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
+import 'context_menus/artist_tab_context_menu.dart';
 
 class ArtistData {
   final String name;
@@ -149,6 +150,15 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
               _placeholderArtists.indexOf(artists[index]) ==
               _playingArtistIndex,
           onTap: () => _openArtist(artists[index]),
+          onLongPress: () => ArtistTabContextMenu.show(
+            context,
+            artist: artists[index],
+            onPlayAfterCurrent: () {},
+            onAddToCurrentQueue: () {},
+            onAddToQueue: () {},
+            onAddToPlaylists: () {},
+            onSelectAllSongs: () {},
+          ),
         );
       },
     );
@@ -166,6 +176,15 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
               _playingArtistIndex,
           onTap: () => _openArtist(artists[index]),
           onMoreTap: () {},
+          onLongPress: () => ArtistTabContextMenu.show(
+            context,
+            artist: artists[index],
+            onPlayAfterCurrent: () {},
+            onAddToCurrentQueue: () {},
+            onAddToQueue: () {},
+            onAddToPlaylists: () {},
+            onSelectAllSongs: () {},
+          ),
         );
       },
     );

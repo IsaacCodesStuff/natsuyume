@@ -5,6 +5,7 @@ import '../../widgets/album_grid_item.dart';
 import '../../widgets/album_list_item.dart';
 import 'playlist_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
+import 'context_menus/playlist_tab_context_menu.dart';
 
 class PlaylistData {
   final String name;
@@ -155,6 +156,18 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
               _placeholderPlaylists.indexOf(playlists[index]) ==
               _playingPlaylistIndex,
           onTap: () => _openPlaylist(playlists[index]),
+          onLongPress: () => PlaylistTabContextMenu.show(
+            context,
+            playlist: playlists[index],
+            onExportM3U: () {},
+            onRenamePlaylist: () {},
+            onRemovePlaylist: () {},
+            onPlayAfterCurrent: () {},
+            onAddToCurrentQueue: () {},
+            onAddToQueue: () {},
+            onAddToPlaylists: () {},
+            onSelectAll: () {},
+          ),
         );
       },
     );
@@ -172,6 +185,18 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
               _playingPlaylistIndex,
           onTap: () => _openPlaylist(playlists[index]),
           onMoreTap: () {},
+          onLongPress: () => PlaylistTabContextMenu.show(
+            context,
+            playlist: playlists[index],
+            onExportM3U: () {},
+            onRenamePlaylist: () {},
+            onRemovePlaylist: () {},
+            onPlayAfterCurrent: () {},
+            onAddToCurrentQueue: () {},
+            onAddToQueue: () {},
+            onAddToPlaylists: () {},
+            onSelectAll: () {},
+          ),
         );
       },
     );
