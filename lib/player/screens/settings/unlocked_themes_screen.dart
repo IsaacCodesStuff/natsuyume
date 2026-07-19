@@ -1,14 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../theme/natsuyume_theme.dart';
+import '../../../theme/theme_registry.dart';
 import '../../../widgets/settings_section.dart';
 import '../../../widgets/settings_tile.dart';
-
-class UnlockedTheme {
-  final String name;
-  bool enabled;
-
-  UnlockedTheme({required this.name, this.enabled = true});
-}
 
 class UnlockedThemesScreen extends StatefulWidget {
   const UnlockedThemesScreen({super.key});
@@ -18,26 +12,24 @@ class UnlockedThemesScreen extends StatefulWidget {
 }
 
 class _UnlockedThemesScreenState extends State<UnlockedThemesScreen> {
-  final List<UnlockedTheme> _themes = [
-    UnlockedTheme(name: 'Natsuyume'),
-    UnlockedTheme(name: 'Rem'),
-    UnlockedTheme(name: 'Misaki'),
-    UnlockedTheme(name: 'Hestia'),
-    UnlockedTheme(name: 'Akane'),
-    UnlockedTheme(name: 'Syalis'),
-    UnlockedTheme(name: 'Liscia'),
-    UnlockedTheme(name: 'Itsuki'),
-    UnlockedTheme(name: 'Misumi'),
-    UnlockedTheme(name: 'Berry Blossom'),
-    UnlockedTheme(name: 'Jeanne'),
-    UnlockedTheme(name: 'Yoshino'),
-    UnlockedTheme(name: 'Erna'),
-    UnlockedTheme(name: 'Beta'),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    ThemeRegistry.instance.addListener(_onRegistryChanged);
+  }
+
+  @override
+  void dispose() {
+    ThemeRegistry.instance.removeListener(_onRegistryChanged);
+    super.dispose();
+  }
+
+  void _onRegistryChanged() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
+    final unlocked = ThemeRegistry.instance.unlockedThemes;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -66,23 +58,34 @@ class _UnlockedThemesScreenState extends State<UnlockedThemesScreen> {
             ),
             const SizedBox(height: 16),
             Expanded(
-              child: ListView(
-                padding: EdgeInsets.zero,
-                children: [
-                  SettingsSection(
-                    children: _themes.map((theme) {
-                      return SettingsToggleTile(
-                        title: theme.name,
-                        value: theme.enabled,
-                        onChanged: (v) {
-                          setState(() => theme.enabled = v);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 24),
-                ],
-              ),
+              child: unlocked.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No themes unlocked yet.\nTry entering a secret code in ???.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    )
+                  : ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        SettingsSection(
+                          children: unlocked.map((theme) {
+                            return SettingsToggleTile(
+                              title: theme.label,
+                              value: ThemeRegistry.instance.isEnabled(theme.id),
+                              onChanged: (v) {
+                                ThemeRegistry.instance.setEnabled(theme.id, v);
+                              },
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 24),
+                      ],
+                    ),
             ),
           ],
         ),

@@ -4,6 +4,7 @@ import '../../../widgets/settings_tile.dart';
 import '../../../widgets/settings_section.dart';
 import '../../../widgets/slide_route.dart';
 import 'unlocked_themes_screen.dart';
+import '../../../theme/theme_registry.dart';
 
 class EasterEggScreen extends StatefulWidget {
   const EasterEggScreen({super.key});
@@ -101,7 +102,7 @@ class _EasterEggScreenState extends State<EasterEggScreen> {
             TextButton(
               onPressed: () {
                 final code = controller.text.trim().toUpperCase();
-                final themeName = _validCodes[code];
+                final themeName = ThemeRegistry.instance.unlockByCode(code);
                 if (themeName != null) {
                   Navigator.pop(context);
                   _showThemeUnlockedToast(themeName);

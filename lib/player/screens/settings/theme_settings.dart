@@ -1,32 +1,20 @@
 import 'package:flutter/material.dart';
 import '../../../theme/natsuyume_theme.dart';
+import '../../../theme/theme_registry.dart';
 import '../../../widgets/settings_tile.dart';
 import '../../../widgets/settings_section.dart';
-
-enum PlayerTheme { light, dark, dynamic, manual }
+import 'manual_theme_screen.dart';
 
 enum ThemeStyle {
   tonalSpot,
   vibrant,
   expressive,
   spritz,
-  rainbowTonalSpot,
+  rainbow,
   fruitSalad,
-}
-
-extension PlayerThemeLabel on PlayerTheme {
-  String get label {
-    switch (this) {
-      case PlayerTheme.light:
-        return 'Light';
-      case PlayerTheme.dark:
-        return 'Dark';
-      case PlayerTheme.dynamic:
-        return 'Dynamic';
-      case PlayerTheme.manual:
-        return 'Manual';
-    }
-  }
+  neutral,
+  monochrome,
+  fidelity,
 }
 
 extension ThemeStyleLabel on ThemeStyle {
@@ -40,10 +28,16 @@ extension ThemeStyleLabel on ThemeStyle {
         return 'Expressive';
       case ThemeStyle.spritz:
         return 'Spritz';
-      case ThemeStyle.rainbowTonalSpot:
-        return 'Rainbow Tonal Spot';
+      case ThemeStyle.rainbow:
+        return 'Rainbow';
       case ThemeStyle.fruitSalad:
         return 'Fruit Salad';
+      case ThemeStyle.neutral:
+        return 'Neutral';
+      case ThemeStyle.monochrome:
+        return 'Monochrome';
+      case ThemeStyle.fidelity:
+        return 'Fidelity';
     }
   }
 }
@@ -56,11 +50,30 @@ class ThemeSettingsScreen extends StatefulWidget {
 }
 
 class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
-  PlayerTheme _playerTheme = PlayerTheme.dynamic;
   ThemeStyle _themeStyle = ThemeStyle.tonalSpot;
+  late String _selectedThemeId;
 
-  void _showPlayerThemeDialog() {
-    final colors = NatsuyumeTheme.of(context).colors;
+  @override
+  void initState() {
+    super.initState();
+    _selectedThemeId = ThemeRegistry.instance.selectedThemeId;
+    ThemeRegistry.instance.addListener(_onRegistryChanged);
+  }
+
+  @override
+  void dispose() {
+    ThemeRegistry.instance.removeListener(_onRegistryChanged);
+    super.dispose();
+  }
+
+  void _onRegistryChanged() {
+    setState(() {
+      _selectedThemeId = ThemeRegistry.instance.selectedThemeId;
+    });
+  }
+
+  void _showPlayerThemeDialog(NatsuyumeColorScheme colors) {
+    final available = ThemeRegistry.instance.availableThemes;
 
     showDialog(
       context: context,
@@ -77,19 +90,30 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: PlayerTheme.values.map((theme) {
-            return RadioListTile<PlayerTheme>(
-              value: theme,
-              groupValue: _playerTheme,
+          children: available.map((entry) {
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
               title: Text(
-                theme.label,
+                entry.label,
                 style: TextStyle(fontSize: 15, color: colors.onSurface),
               ),
-              activeColor: colors.accent,
-              onChanged: (v) {
-                if (v != null) {
-                  setState(() => _playerTheme = v);
-                  Navigator.pop(context);
+              trailing: _selectedThemeId == entry.id
+                  ? Icon(Icons.check, color: colors.accent)
+                  : null,
+              onTap: () {
+                ThemeRegistry.instance.selectTheme(entry.id);
+                setState(() => _selectedThemeId = entry.id);
+                // Apply the theme
+                final newColors = NatsuyumeColorScheme.fromId(entry.id);
+                NatsuyumeTheme.of(context).onThemeChange(newColors);
+                Navigator.pop(context);
+                // If manual, open the manual theme screen
+                if (entry.id == 'manual') {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ManualThemeScreen(),
+                    ),
+                  );
                 }
               },
             );
@@ -108,9 +132,7 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     );
   }
 
-  void _showThemeStyleDialog() {
-    final colors = NatsuyumeTheme.of(context).colors;
-
+  void _showThemeStyleDialog(NatsuyumeColorScheme colors) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -127,19 +149,18 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: ThemeStyle.values.map((style) {
-            return RadioListTile<ThemeStyle>(
-              value: style,
-              groupValue: _themeStyle,
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
               title: Text(
                 style.label,
                 style: TextStyle(fontSize: 15, color: colors.onSurface),
               ),
-              activeColor: colors.accent,
-              onChanged: (v) {
-                if (v != null) {
-                  setState(() => _themeStyle = v);
-                  Navigator.pop(context);
-                }
+              trailing: _themeStyle == style
+                  ? Icon(Icons.check, color: colors.accent)
+                  : null,
+              onTap: () {
+                setState(() => _themeStyle = style);
+                Navigator.pop(context);
               },
             );
           }).toList(),
@@ -157,9 +178,17 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     );
   }
 
+  String get _selectedThemeLabel => ThemeRegistry.instance.availableThemes
+      .firstWhere(
+        (e) => e.id == _selectedThemeId,
+        orElse: () => ThemeRegistry.builtInThemes.first,
+      )
+      .label;
+
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
+    final isManual = _selectedThemeId == 'manual';
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -191,13 +220,25 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
               children: [
                 SettingsTile(
                   title: 'Default player theme',
-                  subtitle: _playerTheme.label,
-                  onTap: _showPlayerThemeDialog,
+                  subtitle: _selectedThemeLabel,
+                  onTap: () => _showPlayerThemeDialog(colors),
                 ),
                 SettingsTile(
                   title: 'Theme style',
                   subtitle: _themeStyle.label,
-                  onTap: _showThemeStyleDialog,
+                  onTap: () => _showThemeStyleDialog(colors),
+                ),
+                SettingsTile(
+                  title: 'Customize colors',
+                  subtitle: 'Manually define theme colors',
+                  enabled: isManual,
+                  onTap: isManual
+                      ? () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ManualThemeScreen(),
+                          ),
+                        )
+                      : null,
                 ),
               ],
             ),
