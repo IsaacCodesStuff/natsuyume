@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../theme/natsuyume_theme.dart';
 import '../../../widgets/settings_tile.dart';
 import '../../../widgets/settings_section.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class BackupSettingsScreen extends StatelessWidget {
   const BackupSettingsScreen({super.key});
@@ -117,8 +118,10 @@ class BackupSettingsScreen extends StatelessWidget {
                         'This action cannot be undone.',
                     confirmLabel: 'Reset',
                     destructive: true,
-                    onConfirm: () {
-                      // Wired to core in 0.8.x
+                    onConfirm: () async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('onboarding_complete', false);
+                      // Full reset wired to core in 0.8.x
                     },
                   ),
                 ),

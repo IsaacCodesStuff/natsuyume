@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'onboarding/onboarding_flow.dart';
 import 'player/player_shell.dart';
 import 'theme/natsuyume_theme.dart';
 
-void main() {
-  runApp(const NatsuyumeApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
+
+  runApp(NatsuyumeApp(onboardingComplete: onboardingComplete));
 }
 
 class NatsuyumeApp extends StatelessWidget {
-  const NatsuyumeApp({super.key});
+  final bool onboardingComplete;
+
+  const NatsuyumeApp({super.key, required this.onboardingComplete});
 
   @override
   Widget build(BuildContext context) {
@@ -18,7 +26,7 @@ class NatsuyumeApp extends StatelessWidget {
         theme: ThemeData.dark().copyWith(
           scaffoldBackgroundColor: const Color(0xFF1A1A2E),
         ),
-        home: const PlayerShell(),
+        home: onboardingComplete ? const PlayerShell() : const OnboardingFlow(),
       ),
     );
   }

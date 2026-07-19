@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '/player/player_shell.dart';
 
 class AllSetScreen extends StatelessWidget {
   const AllSetScreen({super.key});
 
-  void _finish(BuildContext context) {
-    // Placeholder — will navigate to main library screen in 0.8.x
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const _PlaceholderHomeScreen()),
-    );
+  Future<void> _finish(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('onboarding_complete', true);
+
+    if (context.mounted) {
+      Navigator.of(
+        context,
+      ).pushReplacement(MaterialPageRoute(builder: (_) => const PlayerShell()));
+    }
   }
 
   @override
@@ -54,23 +60,6 @@ class AllSetScreen extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PlaceholderHomeScreen extends StatelessWidget {
-  const _PlaceholderHomeScreen();
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Text(
-          'Home Screen\n(coming in 0.8.x)',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 20, color: Color(0xFFB0A4C8)),
         ),
       ),
     );
