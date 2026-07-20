@@ -1,26 +1,40 @@
 #ifndef PLAYBACKMANAGER_H
 #define PLAYBACKMANAGER_H
 
-#include <QObject>
-#include <QVariantList>
+#include <string>
+#include <vector>
+#include <functional>
+#include <cstdint>
 #include "queuesession.h"
 #include "lrcparser.h"
 #include "library.h"
-#include <userdatamanager.h>
+#include "userdatamanager.h"
 
-class PlaybackManager : public QObject
+class PlaybackManager
 {
-    Q_OBJECT
-
 public:
-    explicit PlaybackManager(QueueSession *session, QObject *parent = nullptr);
+    explicit PlaybackManager(QueueSession *session);
 
     void setLibrary(Library *library);
+    void setUserDataManager(UserDataManager *mgr);
+
+    // --- Callbacks ---
+    std::function<void()> onIsPlayingChanged;
+    std::function<void()> onPositionChanged;
+    std::function<void()> onDurationChanged;
+    std::function<void()> onVolumeChanged;
+    std::function<void()> onMetadataChanged;
+    std::function<void()> onRepeatModeChanged;
+    std::function<void()> onShuffleChanged;
+    std::function<void()> onStopAfterCurrentChanged;
+    std::function<void()> onPlayingTrackChanged;
+    std::function<void()> onIsFavoriteChanged;
+    std::function<void()> onAbRepeatChanged;
 
     // --- Transport ---
     void play();
     void pause();
-    void seekTo(qint64 positionMs);
+    void seekTo(int64_t positionMs);
     void playNext();
     void playPrevious();
     void cycleRepeatMode();
@@ -31,25 +45,25 @@ public:
     float volume() const;
     void  setVolume(float volume);
 
-    // --- Playback state getters ---
-    bool   isPlaying()        const;
-    qint64 position()         const;
-    qint64 duration()         const;
-    int    repeatMode()       const;
-    bool   isShuffled()       const;
-    bool   stopAfterCurrent() const;
+    // --- Playback state ---
+    bool    isPlaying()        const;
+    int64_t position()         const;
+    int64_t duration()         const;
+    int     repeatMode()       const;
+    bool    isShuffled()       const;
+    bool    stopAfterCurrent() const;
 
     // --- Now-playing metadata ---
-    QString      trackTitle()  const;
-    QString      trackArtist() const;
-    QString      trackAlbum()  const;
-    QString      trackPath()   const;
-    bool         hasCoverArt() const;
-    QString      rawLyrics()   const;
-    QVariantList lyricLines()  const;
-    bool         lyricsAreSynced() const;
+    std::string              trackTitle()      const;
+    std::string              trackArtist()     const;
+    std::string              trackAlbum()      const;
+    std::string              trackPath()       const;
+    bool                     hasCoverArt()     const;
+    std::string              rawLyrics()       const;
+    std::vector<LrcLine>     lyricLines()      const;
+    bool                     lyricsAreSynced() const;
 
-    // --- Playing-queue track navigation ---
+    // --- Playing-queue navigation ---
     int  playingTrackIndex() const;
     int  playingTrackCount() const;
     bool hasPrevious()       const;
@@ -60,71 +74,49 @@ public:
     void setPlayCountThreshold(int percent);
 
     // --- Settings ---
-    void loadSettings();
-    void saveSettings();
+    void loadSettings(const std::string &dataDir);
+    void saveSettings(const std::string &dataDir);
 
     // --- Playback wiring ---
-    // Called by PlayerController when a queue gains/loses playback ownership
     void initPlayback(int queueIndex);
     void destroyPlayback(int queueIndex);
     void restorePlaybackState(int queueIndex);
     void resetPlayCountState();
 
-    // Returns whichever Playback instance is currently active.
-    // Today this is always the playing queue's single Playback;
-    // in 0.4.x this will return whichever of the two ping-pong
-    // players is currently playing rather than preloading.
     Playback *activePlayback() const;
 
-    // --- A-B Repeat ---
-    Q_INVOKABLE void setPointA();
-    Q_INVOKABLE void setPointB();
-    Q_INVOKABLE void clearAbRepeat();
-    bool   abRepeatActive() const;
-    qint64 pointA()         const;
-    qint64 pointB()         const;
-
-    void setUserDataManager(UserDataManager *userDataManager);
-
-signals:
-    void isPlayingChanged();
-    void positionChanged();
-    void durationChanged();
-    void volumeChanged();
-    void metadataChanged();
-    void coverArtChanged();
-    void repeatModeChanged();
-    void shuffleChanged();
-    void stopAfterCurrentChanged();
-    void playingTrackChanged();
-    void isFavoriteChanged();
-    void abRepeatChanged();
+    // --- A-B repeat ---
+    void    setPointA();
+    void    setPointB();
+    void    clearAbRepeat();
+    bool    abRepeatActive() const;
+    int64_t pointA()         const;
+    int64_t pointB()         const;
 
 private:
-    QueueSession       *m_session;
-    Library            *m_library  = nullptr;
-
-    float  m_volume             = 0.8f;
-    int    m_playCountThreshold = 10;
-    bool   m_playCountCredited  = false;
-    qint64 m_creditThresholdMs  = 0;
-
-    QList<LrcLine> m_lyricLines;
-    QString        m_rawLyrics;
-
-    void connectPlaybackSignals(Queue *queue);
-    void rebuildLyricLines();
-    bool m_isSeeking = false;
-
-    void connectCurrentPlaybackSignals(Queue *queue);
-
-    qint64 m_pointA         = -1;
-    qint64 m_pointB         = -1;
-    bool   m_abRepeatActive = false;
-
-    bool m_pendingGaplessAdvance = false;
-
+    QueueSession    *m_session;
+    Library         *m_library         = nullptr;
     UserDataManager *m_userDataManager = nullptr;
+
+    float   m_volume             = 0.8f;
+    int     m_playCountThreshold = 10;
+    bool    m_playCountCredited  = false;
+    int64_t m_creditThresholdMs  = 0;
+    bool    m_isSeeking          = false;
+    bool    m_pendingGaplessAdvance = false;
+
+    int64_t m_pointA         = -1;
+    int64_t m_pointB         = -1;
+    bool    m_abRepeatActive = false;
+
+    std::vector<LrcLine> m_lyricLines;
+    std::string          m_rawLyrics;
+
+    std::string m_dataDir;
+
+    void connectPlaybackCallbacks(Queue *queue);
+    void connectCurrentPlaybackCallbacks(Queue *queue);
+    void rebuildLyricLines();
 };
 
 #endif // PLAYBACKMANAGER_H

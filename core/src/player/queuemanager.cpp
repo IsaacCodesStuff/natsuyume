@@ -1,75 +1,112 @@
 #include "queuemanager.h"
-#include "queue.h"
 #include "metadata.h"
-#include <QTimer>
+#include <algorithm>
 
-QueueManager::QueueManager(QueueSession *session, QObject *parent)
-    : QObject{parent},
-    m_session{session},
-    m_library{nullptr}
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+static Natsuyume::CoreTrack toCoreTrack(const Track &t)
 {
+    Natsuyume::CoreTrack c;
+    c.path          = t.path;
+    c.title         = t.title;
+    c.artist        = t.artist;
+    c.album         = t.album;
+    c.albumArtist   = t.albumArtist;
+    c.composer      = t.composer;
+    c.genre         = t.genre;
+    c.trackNumber   = t.trackNumber;
+    c.discNumber    = t.discNumber;
+    c.year          = t.year;
+    c.duration      = t.duration;
+    c.playCount     = t.playCount;
+    c.dateAdded     = t.dateAdded;
+    c.dateLastPlayed = t.dateLastPlayed;
+    c.isFavorite    = t.isFavorite;
+    c.coverArtData  = t.coverArtData;
+    c.coverArtMimeType = t.coverArtMimeType;
+    c.lyrics        = t.lyrics;
+    c.lastModified  = t.lastModified;
+    return c;
 }
 
-// --- Internal helpers ---
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
 
-QString QueueManager::generateQueueName() const
+QueueManager::QueueManager(QueueSession *session)
+    : m_session(session)
+{}
+
+void QueueManager::connectQueueCallbacks(Queue *queue)
 {
-    QList<int> usedNumbers;
-    for (int i = 0; i < m_session->queueCount(); i++) {
+    // Queue-level callbacks QueueManager cares about.
+    // Playback-level callbacks are connected by PlaybackManager.
+    queue->onQueueChanged = [this]() {
+        // NatsuyumeCore will relay to Flutter via onQueueChanged callback
+    };
+}
+
+void QueueManager::setLibrary(Library *library)
+{
+    m_library = library;
+}
+
+// ---------------------------------------------------------------------------
+// Queue naming
+// ---------------------------------------------------------------------------
+
+std::string QueueManager::generateQueueName() const
+{
+    std::vector<int> usedNumbers;
+    for (int i = 0; i < m_session->queueCount(); ++i) {
         Queue *q = m_session->queueAt(i);
-        QString name = q->name();
-        if (name.startsWith("Queue ")) {
-            bool ok;
-            int number = QStringView(name).mid(6).toInt(&ok);
-            if (ok)
-                usedNumbers.append(number);
+        std::string name = q->name();
+        const std::string prefix = "Queue ";
+        if (name.rfind(prefix, 0) == 0) {
+            try {
+                int number = std::stoi(name.substr(prefix.size()));
+                usedNumbers.push_back(number);
+            } catch (...) {}
         }
     }
     int candidate = 1;
-    while (usedNumbers.contains(candidate))
+    while (std::find(usedNumbers.begin(), usedNumbers.end(), candidate)
+           != usedNumbers.end())
         candidate++;
-    return QString("Queue %1").arg(candidate);
+    return "Queue " + std::to_string(candidate);
 }
 
-void QueueManager::connectQueueSignals(Queue *queue)
+std::vector<std::string> QueueManager::queueNames() const
 {
-    // Queue-level signals that QueueManager cares about —
-    // playback-level signals are connected by PlaybackManager
-    connect(queue, &Queue::queueChanged, this, [this]() {
-        // PlayerController will relay this to QML via trackChanged
-    });
-}
-
-QStringList QueueManager::queueNames() const
-{
-    QStringList names;
-    for (int i = 0; i < m_session->queueCount(); i++)
-        names.append(m_session->queueAt(i)->name());
+    std::vector<std::string> names;
+    for (int i = 0; i < m_session->queueCount(); ++i)
+        names.push_back(m_session->queueAt(i)->name());
     return names;
 }
 
-// --- Queue lifecycle ---
+// ---------------------------------------------------------------------------
+// Queue lifecycle
+// ---------------------------------------------------------------------------
 
-void QueueManager::openFilesInNewQueue(const QStringList &paths,
-                                       const QString &name,
+void QueueManager::openFilesInNewQueue(const std::vector<std::string> &paths,
+                                       const std::string &name,
                                        bool shuffle)
 {
-    if (paths.isEmpty()) return;
+    if (paths.empty()) return;
 
-    // Pause the currently playing queue but leave its Playback intact
     int oldPlayingIndex = m_session->playingQueueIndex();
     if (oldPlayingIndex >= 0) {
         Queue *oldQueue = m_session->queueAt(oldPlayingIndex);
         if (oldQueue) oldQueue->pause();
     }
-    // Remove this: emit playbackDestroyRequested(oldPlayingIndex);
 
-    QString queueName = name.isEmpty() ? generateQueueName() : name;
-    Queue *newQueue = new Queue(queueName, this);
-    connectQueueSignals(newQueue);
+    std::string queueName = name.empty() ? generateQueueName() : name;
+    Queue *newQueue = new Queue(queueName);
+    connectQueueCallbacks(newQueue);
 
-    if (shuffle)
-        newQueue->toggleShuffle();
+    if (shuffle) newQueue->toggleShuffle();
 
     m_session->appendQueue(newQueue);
     int newIndex = m_session->queueCount() - 1;
@@ -77,37 +114,33 @@ void QueueManager::openFilesInNewQueue(const QStringList &paths,
     m_session->setViewedQueueIndex(newIndex);
     m_session->setPlayingQueueIndex(newIndex);
 
-    emit playbackInitNewRequested(newIndex);
+    if (onPlaybackInitNewRequested) onPlaybackInitNewRequested(newIndex);
     newQueue->addTracksBatch(paths, true);
 }
 
-void QueueManager::addPathsToNewQueue(const QStringList &paths,
-                                      const QString &name)
+void QueueManager::addPathsToNewQueue(const std::vector<std::string> &paths,
+                                      const std::string &name)
 {
-    if (paths.isEmpty()) return;
+    if (paths.empty()) return;
 
-    // Intentionally does not update viewedQueueIndex or playingQueueIndex —
-    // this creates a background queue without transferring playback.
-    // connectPlaybackSignals is still required via playbackInitRequested
-    // so the queue works correctly if the user switches to it later.
-    QString queueName = name.isEmpty() ? generateQueueName() : name;
-    Queue *newQueue = new Queue(queueName, this);
-    connectQueueSignals(newQueue);
+    std::string queueName = name.empty() ? generateQueueName() : name;
+    Queue *newQueue = new Queue(queueName);
+    connectQueueCallbacks(newQueue);
 
-    for (const QString &path : paths)
+    for (const auto &path : paths)
         newQueue->addTrack(path);
 
     m_session->appendQueue(newQueue);
-
     int newIndex = m_session->queueCount() - 1;
-    emit playbackInitRequested(newIndex);
+    if (onPlaybackInitRequested) onPlaybackInitRequested(newIndex);
 }
 
-void QueueManager::addPathsToQueue(int queueIndex, const QStringList &paths)
+void QueueManager::addPathsToQueue(int queueIndex,
+                                   const std::vector<std::string> &paths)
 {
     Queue *q = m_session->queueAt(queueIndex);
     if (!q) return;
-    for (const QString &path : paths)
+    for (const auto &path : paths)
         q->addTrack(path);
 }
 
@@ -116,11 +149,8 @@ void QueueManager::closeQueue(int index)
     if (!m_session->isValidIndex(index)) return;
 
     bool deletingPlaying = (index == m_session->playingQueueIndex());
-
     Queue *toDelete = m_session->queueAt(index);
     toDelete->pause();
-
-    // Destroy this queue's Playback explicitly before removing from list
     toDelete->destroyPlayback();
 
     int newViewedIndex  = m_session->viewedQueueIndex();
@@ -136,42 +166,38 @@ void QueueManager::closeQueue(int index)
             newViewedIndex--;
 
         if (deletingPlaying) {
-            newPlayingIndex = qBound(0, index, m_session->queueCount() - 2);
+            newPlayingIndex = std::max(0,
+                std::min(index, m_session->queueCount() - 2));
         } else if (index < newPlayingIndex) {
             newPlayingIndex--;
         }
     }
 
-    // Remove from session and reparent to defer actual deletion safely
     m_session->removeQueueAt(index);
-    toDelete->setParent(nullptr);  // detach from QueueManager ownership
-    toDelete->deleteLater();       // now safe — not in session list, no Playback child
+    delete toDelete;
 
     m_session->setViewedQueueIndex(newViewedIndex);
 
     if (deletingPlaying && newPlayingIndex >= 0) {
         m_session->setPlayingQueueIndex(newPlayingIndex);
-        emit playbackInitRequested(newPlayingIndex);
+        if (onPlaybackInitRequested) onPlaybackInitRequested(newPlayingIndex);
+
         Queue *nextQueue = m_session->queueAt(newPlayingIndex);
         if (nextQueue) {
-            if (nextQueue->isPlaying()) {
-                // Already playing, nothing to do
-            } else if (nextQueue->position() > 0 || nextQueue->duration() > 0) {
-                // Has a track loaded and paused — just resume
-                nextQueue->play();
-            } else if (nextQueue->currentTrackIndex() >= 0) {
-                // Cold queue, needs a fresh load
-                nextQueue->loadTrackAt(nextQueue->currentTrackIndex());
+            if (!nextQueue->isPlaying()) {
+                if (nextQueue->position() > 0 || nextQueue->duration() > 0)
+                    nextQueue->play();
+                else if (nextQueue->currentTrackIndex() >= 0)
+                    nextQueue->loadTrackAt(nextQueue->currentTrackIndex());
             }
         }
     }
 }
 
-void QueueManager::renameQueue(int index, const QString &name)
+void QueueManager::renameQueue(int index, const std::string &name)
 {
     Queue *q = m_session->queueAt(index);
-    if (!q) return;
-    q->setName(name);
+    if (q) q->setName(name);
 }
 
 void QueueManager::moveQueue(int from, int to)
@@ -181,7 +207,6 @@ void QueueManager::moveQueue(int from, int to)
 
     m_session->moveQueue(from, to);
 
-    // Keep indices tracking the same queue objects after the move
     int viewedIndex  = m_session->viewedQueueIndex();
     int playingIndex = m_session->playingQueueIndex();
 
@@ -201,155 +226,111 @@ void QueueManager::moveQueue(int from, int to)
 
 void QueueManager::viewQueue(int index)
 {
-    if (!m_session->isValidIndex(index)) return;
-    m_session->setViewedQueueIndex(index);
+    if (m_session->isValidIndex(index))
+        m_session->setViewedQueueIndex(index);
 }
 
-// --- Track manipulation ---
+// ---------------------------------------------------------------------------
+// Track manipulation
+// ---------------------------------------------------------------------------
 
-void QueueManager::addTrackToQueue(const QString &path)
+void QueueManager::addTrackToQueue(const std::string &path)
 {
     Queue *q = m_session->playingQueue();
-    if (!q) return;
-    q->addTrack(path);
+    if (q) q->addTrack(path);
 }
 
-void QueueManager::addAlbumToQueue(const QString &album,
+void QueueManager::addAlbumToQueue(const std::string &album,
                                    Library::TrackSort sort,
                                    bool ascending)
 {
     Queue *q = m_session->playingQueue();
     if (!q || !m_library) return;
-    QList<Track> tracks = m_library->tracksByAlbum(album, sort, ascending);
-    for (const Track &t : std::as_const(tracks))
+    auto tracks = m_library->tracksByAlbum(album, sort, ascending);
+    for (const Track &t : tracks)
         q->addTrack(t.path);
 }
 
 void QueueManager::removeTrackAt(int index)
 {
     Queue *q = m_session->viewedQueue();
-    if (!q) return;
-    q->removeTrack(index);
+    if (q) q->removeTrack(index);
 }
 
 void QueueManager::moveTrack(int from, int to)
 {
     Queue *q = m_session->viewedQueue();
-    if (!q) return;
-    q->moveTrack(from, to);
+    if (q) q->moveTrack(from, to);
 }
 
 void QueueManager::sortQueue(int sort, bool ascending)
 {
     Queue *q = m_session->viewedQueue();
-    if (!q) return;
-    q->sortTracks(static_cast<Library::TrackSort>(sort), ascending);
+    if (q) q->sortTracks(static_cast<Library::TrackSort>(sort), ascending);
 }
 
 void QueueManager::reverseQueue()
 {
     Queue *q = m_session->viewedQueue();
-    if (!q) return;
-    q->reverseTracks();
+    if (q) q->reverseTracks();
 }
 
-// --- Track lookup ---
+// ---------------------------------------------------------------------------
+// Track lookup
+// ---------------------------------------------------------------------------
 
-QVariantList QueueManager::trackList() const
+std::vector<Natsuyume::CoreTrack> QueueManager::trackList() const
 {
-    QVariantList list;
+    std::vector<Natsuyume::CoreTrack> list;
     Queue *q = m_session->viewedQueue();
     if (!q) return list;
-
-    for (int i = 0; i < q->trackCount(); i++) {
-        Track t = q->trackAt(i);
-        QVariantMap map;
-        map["title"]    = t.title;
-        map["artist"]   = t.artist;
-        map["album"]    = t.album;
-        map["path"]     = t.path;
-        map["duration"] = t.duration;
-        list.append(map);
-    }
+    for (int i = 0; i < q->trackCount(); ++i)
+        list.push_back(toCoreTrack(q->trackAt(i)));
     return list;
 }
 
-QVariantMap QueueManager::trackInfoByPath(const QString &path) const
+Natsuyume::CoreTrack QueueManager::trackInfoByPath(const std::string &path) const
 {
-    QVariantMap map;
-
-    // Check playing queue first — may have tracks not yet in library
+    // Check playing queue first
     Queue *q = m_session->playingQueue();
     if (q) {
-        for (int i = 0; i < q->trackCount(); i++) {
+        for (int i = 0; i < q->trackCount(); ++i) {
             Track t = q->trackAt(i);
-            if (t.path == path) {
-                map["path"]           = t.path;
-                map["title"]          = t.title;
-                map["artist"]         = t.artist;
-                map["album"]          = t.album;
-                map["albumArtist"]    = t.albumArtist;
-                map["composer"]       = t.composer;
-                map["genre"]          = t.genre;
-                map["trackNumber"]    = t.trackNumber;
-                map["discNumber"]     = t.discNumber;
-                map["year"]           = t.year;
-                map["duration"]       = t.duration;
-                map["playCount"]      = t.playCount;
-                map["dateAdded"]      = t.dateAdded;
-                map["dateLastPlayed"] = t.dateLastPlayed;
-                return map;
-            }
+            if (t.path == path) return toCoreTrack(t);
         }
     }
-
     // Fall back to library
     if (m_library) {
         Track t = m_library->trackByPath(path);
-        if (t.isValid()) {
-            map["path"]           = t.path;
-            map["title"]          = t.title;
-            map["artist"]         = t.artist;
-            map["album"]          = t.album;
-            map["albumArtist"]    = t.albumArtist;
-            map["composer"]       = t.composer;
-            map["genre"]          = t.genre;
-            map["trackNumber"]    = t.trackNumber;
-            map["discNumber"]     = t.discNumber;
-            map["year"]           = t.year;
-            map["duration"]       = t.duration;
-            map["playCount"]      = t.playCount;
-            map["dateAdded"]      = t.dateAdded;
-            map["dateLastPlayed"] = t.dateLastPlayed;
-            return map;
-        }
+        if (t.isValid()) return toCoreTrack(t);
     }
-
-    return map;
+    return Natsuyume::CoreTrack{};
 }
 
-qint64 QueueManager::queueTotalDuration() const
+int64_t QueueManager::queueTotalDuration() const
 {
     Queue *q = m_session->viewedQueue();
     if (!q) return 0;
-    qint64 total = 0;
+    int64_t total = 0;
     for (const Track &t : q->tracks())
         total += t.duration;
     return total;
 }
 
-bool QueueManager::isAlbumActiveQueue(const QString &album,
+bool QueueManager::isAlbumActiveQueue(const std::string &album,
                                       Library::TrackSort sort,
                                       bool ascending) const
 {
     Queue *q = m_session->playingQueue();
     if (!q || q->trackCount() == 0 || !m_library) return false;
     if (q->name() != album) return false;
-    QList<Track> albumTracks = m_library->tracksByAlbum(album, sort, ascending);
-    return q->trackCount() == albumTracks.size();
+    auto albumTracks = m_library->tracksByAlbum(album, sort, ascending);
+    return q->trackCount() == (int)albumTracks.size();
 }
 
-// --- Jump ---
+// ---------------------------------------------------------------------------
+// Jump
+// ---------------------------------------------------------------------------
 
 void QueueManager::jumpToTrack(int index)
 {
@@ -360,22 +341,21 @@ void QueueManager::jumpToTrack(int index)
     int playingIndex = m_session->playingQueueIndex();
 
     if (playingIndex != viewedIndex) {
-        // Transfer playback to the viewed queue
-        emit playbackDestroyRequested(playingIndex);
+        if (onPlaybackDestroyRequested) onPlaybackDestroyRequested(playingIndex);
         m_session->setPlayingQueueIndex(viewedIndex);
-        emit playbackInitRequested(viewedIndex);
+        if (onPlaybackInitRequested) onPlaybackInitRequested(viewedIndex);
     }
 
     viewed->loadTrackAt(index);
 }
 
-void QueueManager::jumpToTrackByPath(const QString &path)
+void QueueManager::jumpToTrackByPath(const std::string &path)
 {
     Queue *viewed = m_session->viewedQueue();
     if (!viewed) return;
 
     int foundIndex = -1;
-    for (int i = 0; i < viewed->trackCount(); i++) {
+    for (int i = 0; i < viewed->trackCount(); ++i) {
         if (viewed->trackAt(i).path == path) {
             foundIndex = i;
             break;
@@ -390,14 +370,16 @@ void QueueManager::jumpToTrackByPath(const QString &path)
     jumpToTrack(foundIndex);
 }
 
-// --- Persistence ---
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
 
 void QueueManager::saveQueues(int viewedIndex)
 {
     if (!m_library) return;
 
-    QList<QueueSnapshot> snapshots;
-    for (int i = 0; i < m_session->queueCount(); i++) {
+    std::vector<QueueSnapshot> snapshots;
+    for (int i = 0; i < m_session->queueCount(); ++i) {
         Queue *q = m_session->queueAt(i);
         q->saveState();
         QueueSnapshot snap;
@@ -407,8 +389,8 @@ void QueueManager::saveQueues(int viewedIndex)
         snap.wasPlaying        = q->isPlaying();
         snap.isActive          = (i == viewedIndex);
         for (const Track &t : q->tracks())
-            snap.paths << t.path;
-        snapshots.append(snap);
+            snap.paths.push_back(t.path);
+        snapshots.push_back(std::move(snap));
     }
     m_library->saveQueues(snapshots);
 }
@@ -417,33 +399,31 @@ void QueueManager::loadQueues(float volume)
 {
     if (!m_library) return;
 
-    QList<QueueSnapshot> snapshots = m_library->loadQueues();
-    if (snapshots.isEmpty()) return;
+    auto snapshots = m_library->loadQueues();
+    if (snapshots.empty()) return;
 
     int activeIndex = 0;
-    for (int i = 0; i < snapshots.size(); i++) {
+    for (int i = 0; i < (int)snapshots.size(); ++i) {
         const QueueSnapshot &snap = snapshots[i];
 
-        Queue *queue = new Queue(snap.name, this);
+        Queue *queue = new Queue(snap.name);
         queue->setVolume(volume);
-        connectQueueSignals(queue);
+        connectQueueCallbacks(queue);
 
-        for (const QString &path : snap.paths) {
+        for (const auto &path : snap.paths) {
             Track t = m_library->trackByPath(path);
-            if (!t.isValid())
-                t = Track(path);
+            if (!t.isValid()) t = Track(path);
             queue->addTrackSilent(t);
         }
 
         queue->setSavedPosition(snap.currentPosition);
         queue->setWasPlaying(false);
-        queue->setCurrentTrackIndex(qBound(0, snap.currentTrackIndex,
-                                           (int)snap.paths.size() - 1));
+        queue->setCurrentTrackIndex(
+            std::max(0, std::min(snap.currentTrackIndex,
+                                 (int)snap.paths.size() - 1)));
 
         m_session->appendQueue(queue);
-
-        if (snap.isActive)
-            activeIndex = i;
+        if (snap.isActive) activeIndex = i;
     }
 
     if (m_session->queueCount() == 0) return;
@@ -451,13 +431,6 @@ void QueueManager::loadQueues(float volume)
     m_session->setViewedQueueIndex(activeIndex);
     m_session->setPlayingQueueIndex(activeIndex);
 
-    // Defer playback init so UI renders first
-    QTimer::singleShot(100, this, [this, activeIndex]() {
-        emit playbackRestoreRequested(activeIndex);
-    });
-}
-
-void QueueManager::setLibrary(Library *library)
-{
-    m_library = library;
+    // No QTimer needed — caller (NatsuyumeCore::init) controls sequencing
+    if (onPlaybackRestoreRequested) onPlaybackRestoreRequested(activeIndex);
 }

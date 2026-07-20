@@ -1,62 +1,126 @@
 #include "playbackmanager.h"
-#include "queue.h"
 #include "metadata.h"
-#include <QDateTime>
-#include <QSettings>
+#include <chrono>
+#include <sqlite3.h>
 
-// Note: a ~50ms gap may be audible on some transitions due to Qt's FFmpeg
-// backend startup latency between PlayingState and first audio output.
-// This is a backend limitation; our swap sequence completes in <2ms.
-// True sample-accurate gapless would require dropping QMediaPlayer
-// in favor of raw PCM decoding via QAudioSink — deferred to future milestone.
-
-PlaybackManager::PlaybackManager(QueueSession *session, QObject *parent)
-    : QObject{parent},
-    m_session{session}
+static int64_t nowSeconds()
 {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
 }
 
-void PlaybackManager::setLibrary(Library *library)
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+PlaybackManager::PlaybackManager(QueueSession *session)
+    : m_session(session)
+{}
+
+void PlaybackManager::setLibrary(Library *library)         { m_library = library; }
+void PlaybackManager::setUserDataManager(UserDataManager *mgr) { m_userDataManager = mgr; }
+
+// ---------------------------------------------------------------------------
+// Settings (SQLite key-value in userdata.db)
+// ---------------------------------------------------------------------------
+
+void PlaybackManager::loadSettings(const std::string &dataDir)
 {
-    m_library = library;
-}
+    m_dataDir = dataDir;
+    std::string dbPath = dataDir + "/userdata.db";
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) return;
 
-// --- Settings ---
+    sqlite3_exec(db,
+        "CREATE TABLE IF NOT EXISTS settings "
+        "(key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        nullptr, nullptr, nullptr);
 
-void PlaybackManager::loadSettings()
-{
-    QSettings s;
-    m_volume             = s.value("playback/volume", 0.8f).toFloat();
-    m_playCountThreshold = s.value("playback/playCountThreshold", 10).toInt();
+    auto readVal = [&](const char *key, const std::string &fallback) -> std::string {
+        sqlite3_stmt *stmt = nullptr;
+        std::string result = fallback;
+        if (sqlite3_prepare_v2(db,
+                "SELECT value FROM settings WHERE key = ?",
+                -1, &stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_ROW) {
+                const char *v = reinterpret_cast<const char *>(
+                    sqlite3_column_text(stmt, 0));
+                if (v) result = v;
+            }
+            sqlite3_finalize(stmt);
+        }
+        return result;
+    };
 
-    for (int i = 0; i < m_session->queueCount(); i++)
+    try {
+        m_volume = std::stof(readVal("playback/volume", "0.8"));
+    } catch (...) { m_volume = 0.8f; }
+    try {
+        m_playCountThreshold = std::stoi(
+            readVal("playback/playCountThreshold", "10"));
+    } catch (...) { m_playCountThreshold = 10; }
+
+    sqlite3_close(db);
+
+    for (int i = 0; i < m_session->queueCount(); ++i)
         m_session->queueAt(i)->setVolume(m_volume);
 
-    emit volumeChanged();
-    emit playingTrackChanged();
+    if (onVolumeChanged)       onVolumeChanged();
+    if (onPlayingTrackChanged) onPlayingTrackChanged();
 }
 
-void PlaybackManager::saveSettings()
+void PlaybackManager::saveSettings(const std::string &dataDir)
 {
-    QSettings s;
-    s.setValue("playback/volume",             m_volume);
-    s.setValue("playback/playCountThreshold",  m_playCountThreshold);
+    std::string dbPath = dataDir + "/userdata.db";
+    sqlite3 *db = nullptr;
+    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) return;
+
+    sqlite3_exec(db,
+        "CREATE TABLE IF NOT EXISTS settings "
+        "(key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+        nullptr, nullptr, nullptr);
+
+    auto write = [&](const char *key, const std::string &value) {
+        sqlite3_stmt *stmt = nullptr;
+        if (sqlite3_prepare_v2(db,
+                "INSERT INTO settings (key,value) VALUES(?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=?",
+                -1, &stmt, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, key, -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 2, value.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_text(stmt, 3, value.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+            sqlite3_finalize(stmt);
+        }
+    };
+
+    write("playback/volume",
+          std::to_string(m_volume));
+    write("playback/playCountThreshold",
+          std::to_string(m_playCountThreshold));
+
+    sqlite3_close(db);
 }
 
-// --- Volume ---
+// ---------------------------------------------------------------------------
+// Volume
+// ---------------------------------------------------------------------------
 
 float PlaybackManager::volume() const { return m_volume; }
 
 void PlaybackManager::setVolume(float volume)
 {
     m_volume = volume;
-    for (int i = 0; i < m_session->queueCount(); i++)
+    for (int i = 0; i < m_session->queueCount(); ++i)
         m_session->queueAt(i)->setVolume(volume);
-    emit volumeChanged();
-    saveSettings();
+    if (onVolumeChanged) onVolumeChanged();
+    saveSettings(m_dataDir);
 }
 
-// --- Transport ---
+// ---------------------------------------------------------------------------
+// Transport
+// ---------------------------------------------------------------------------
 
 void PlaybackManager::play()
 {
@@ -68,7 +132,7 @@ void PlaybackManager::pause()
     if (Queue *q = m_session->playingQueue()) q->pause();
 }
 
-void PlaybackManager::seekTo(qint64 positionMs)
+void PlaybackManager::seekTo(int64_t positionMs)
 {
     m_isSeeking = true;
     if (Queue *q = m_session->playingQueue()) q->seekTo(positionMs);
@@ -98,37 +162,38 @@ void PlaybackManager::toggleShuffle()
 void PlaybackManager::toggleStopAfterCurrent()
 {
     Queue *q = m_session->playingQueue();
-    if (!q) return;
-    q->setStopAfterCurrent(!q->stopAfterCurrent());
+    if (q) q->setStopAfterCurrent(!q->stopAfterCurrent());
 }
 
-// --- Playback state getters ---
+// ---------------------------------------------------------------------------
+// Playback state getters
+// ---------------------------------------------------------------------------
 
-bool PlaybackManager::isPlaying() const
+bool    PlaybackManager::isPlaying()  const
 {
     Queue *q = m_session->playingQueue();
     return q ? q->isPlaying() : false;
 }
 
-qint64 PlaybackManager::position() const
+int64_t PlaybackManager::position()   const
 {
     Queue *q = m_session->playingQueue();
     return q ? q->position() : 0;
 }
 
-qint64 PlaybackManager::duration() const
+int64_t PlaybackManager::duration()   const
 {
     Queue *q = m_session->playingQueue();
     return q ? q->duration() : 0;
 }
 
-int PlaybackManager::repeatMode() const
+int PlaybackManager::repeatMode()     const
 {
     Queue *q = m_session->playingQueue();
     return q ? static_cast<int>(q->repeatMode()) : 0;
 }
 
-bool PlaybackManager::isShuffled() const
+bool PlaybackManager::isShuffled()    const
 {
     Queue *q = m_session->playingQueue();
     return q ? q->isShuffled() : false;
@@ -140,33 +205,35 @@ bool PlaybackManager::stopAfterCurrent() const
     return q ? q->stopAfterCurrent() : false;
 }
 
-// --- Now-playing metadata ---
+// ---------------------------------------------------------------------------
+// Now-playing metadata
+// ---------------------------------------------------------------------------
 
-QString PlaybackManager::trackTitle() const
+std::string PlaybackManager::trackTitle() const
 {
     Queue *q = m_session->playingQueue();
-    return q && q->currentTrackIndex() >= 0
+    return (q && q->currentTrackIndex() >= 0)
                ? q->trackAt(q->currentTrackIndex()).title : "";
 }
 
-QString PlaybackManager::trackArtist() const
+std::string PlaybackManager::trackArtist() const
 {
     Queue *q = m_session->playingQueue();
-    return q && q->currentTrackIndex() >= 0
+    return (q && q->currentTrackIndex() >= 0)
                ? q->trackAt(q->currentTrackIndex()).artist : "";
 }
 
-QString PlaybackManager::trackAlbum() const
+std::string PlaybackManager::trackAlbum() const
 {
     Queue *q = m_session->playingQueue();
-    return q && q->currentTrackIndex() >= 0
+    return (q && q->currentTrackIndex() >= 0)
                ? q->trackAt(q->currentTrackIndex()).album : "";
 }
 
-QString PlaybackManager::trackPath() const
+std::string PlaybackManager::trackPath() const
 {
     Queue *q = m_session->playingQueue();
-    return q && q->currentTrackIndex() >= 0
+    return (q && q->currentTrackIndex() >= 0)
                ? q->trackAt(q->currentTrackIndex()).path : "";
 }
 
@@ -174,29 +241,16 @@ bool PlaybackManager::hasCoverArt() const
 {
     Queue *q = m_session->playingQueue();
     if (!q || q->currentTrackIndex() < 0) return false;
-    return !q->trackAt(q->currentTrackIndex()).path.isEmpty();
+    return !q->trackAt(q->currentTrackIndex()).path.empty();
 }
 
-QString PlaybackManager::rawLyrics() const { return m_rawLyrics; }
+std::string          PlaybackManager::rawLyrics()      const { return m_rawLyrics; }
+std::vector<LrcLine> PlaybackManager::lyricLines()     const { return m_lyricLines; }
+bool                 PlaybackManager::lyricsAreSynced() const { return !m_lyricLines.empty(); }
 
-QVariantList PlaybackManager::lyricLines() const
-{
-    QVariantList result;
-    for (const LrcLine &line : m_lyricLines) {
-        QVariantMap map;
-        map["timestamp"] = line.timestamp;
-        map["text"]      = line.text;
-        result << map;
-    }
-    return result;
-}
-
-bool PlaybackManager::lyricsAreSynced() const
-{
-    return !m_lyricLines.isEmpty();
-}
-
-// --- Playing-queue track navigation ---
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
 
 int PlaybackManager::playingTrackIndex() const
 {
@@ -222,7 +276,9 @@ bool PlaybackManager::hasNext() const
     return q ? q->hasNext() : false;
 }
 
-// --- Play count ---
+// ---------------------------------------------------------------------------
+// Play count
+// ---------------------------------------------------------------------------
 
 int PlaybackManager::playCountThreshold() const { return m_playCountThreshold; }
 
@@ -230,10 +286,12 @@ void PlaybackManager::setPlayCountThreshold(int percent)
 {
     m_playCountThreshold = percent;
     resetPlayCountState();
-    saveSettings();
+    saveSettings(m_dataDir);
 }
 
-// --- Playback wiring ---
+// ---------------------------------------------------------------------------
+// Playback wiring
+// ---------------------------------------------------------------------------
 
 void PlaybackManager::initPlayback(int queueIndex)
 {
@@ -241,7 +299,7 @@ void PlaybackManager::initPlayback(int queueIndex)
     if (!q) return;
     q->setVolume(m_volume);
     q->initPlayback();
-    connectPlaybackSignals(q);
+    connectPlaybackCallbacks(q);
 }
 
 void PlaybackManager::destroyPlayback(int queueIndex)
@@ -255,11 +313,18 @@ void PlaybackManager::destroyPlayback(int queueIndex)
 void PlaybackManager::restorePlaybackState(int queueIndex)
 {
     Queue *q = m_session->queueAt(queueIndex);
-    if (!q) return;
-    q->restoreState();
+    if (q) q->restoreState();
 }
 
-// --- Private helpers ---
+Playback *PlaybackManager::activePlayback() const
+{
+    Queue *q = m_session->playingQueue();
+    return q ? q->currentPlayback() : nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
 
 void PlaybackManager::resetPlayCountState()
 {
@@ -268,8 +333,8 @@ void PlaybackManager::resetPlayCountState()
 
     Queue *q = m_session->playingQueue();
     if (q && q->currentTrackIndex() >= 0) {
-        qint64 dur = q->trackAt(q->currentTrackIndex()).duration;
-        m_creditThresholdMs = qint64(dur * (m_playCountThreshold / 100.0));
+        int64_t dur = q->trackAt(q->currentTrackIndex()).duration;
+        m_creditThresholdMs = int64_t(dur * (m_playCountThreshold / 100.0));
     }
 }
 
@@ -277,53 +342,59 @@ void PlaybackManager::rebuildLyricLines()
 {
     m_lyricLines.clear();
     Queue *q = m_session->playingQueue();
-    if (!q) return;
+    if (!q || q->currentTrackIndex() < 0) return;
 
     Track current = q->trackAt(q->currentTrackIndex());
-    if (current.path.isEmpty()) return;
+    if (current.path.empty()) return;
 
-    Track fresh = Metadata::read(current.path, false);
-    m_rawLyrics = fresh.lyrics;
+    Track fresh  = Metadata::read(current.path, false);
+    m_rawLyrics  = fresh.lyrics;
 
     if (LrcParser::isLrc(fresh.lyrics))
         m_lyricLines = LrcParser::parse(fresh.lyrics);
 }
 
-void PlaybackManager::connectPlaybackSignals(Queue *queue)
+void PlaybackManager::connectPlaybackCallbacks(Queue *queue)
 {
-    // Wire the current Playback's signals
-    connectCurrentPlaybackSignals(queue);
+    connectCurrentPlaybackCallbacks(queue);
 
-    // Wire queue-level signals
-    connect(queue, &Queue::trackChanged, this, [this]() {
+    queue->onTrackChanged = [this]() {
         resetPlayCountState();
-        clearAbRepeat(); // A-B repeat is per-track, clear on track change
+        clearAbRepeat();
         rebuildLyricLines();
-        emit playingTrackChanged();
-        emit metadataChanged();
-        emit isFavoriteChanged();
-        emit positionChanged();
-        emit durationChanged();
-    });
+        if (onPlayingTrackChanged) onPlayingTrackChanged();
+        if (onMetadataChanged)     onMetadataChanged();
+        if (onIsFavoriteChanged)   onIsFavoriteChanged();
+        if (onPositionChanged)     onPositionChanged();
+        if (onDurationChanged)     onDurationChanged();
+    };
 
-    connect(queue, &Queue::restoreCompleted, this, [this]() {
+    queue->onRestoreCompleted = [this]() {
         resetPlayCountState();
-    });
+    };
 
-    connect(queue, &Queue::repeatModeChanged,      this, [this]() { emit repeatModeChanged(); });
-    connect(queue, &Queue::shuffleChanged,          this, [this]() { emit shuffleChanged(); });
-    connect(queue, &Queue::stopAfterCurrentChanged, this, [this]() { emit stopAfterCurrentChanged(); });
+    queue->onRepeatModeChanged = [this]() {
+        if (onRepeatModeChanged) onRepeatModeChanged();
+    };
+
+    queue->onShuffleChanged = [this]() {
+        if (onShuffleChanged) onShuffleChanged();
+    };
+
+    queue->onStopAfterCurrentChanged = [this]() {
+        if (onStopAfterCurrentChanged) onStopAfterCurrentChanged();
+    };
 }
 
-void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
+void PlaybackManager::connectCurrentPlaybackCallbacks(Queue *queue)
 {
     Playback *pb = queue->currentPlayback();
     if (!pb) return;
 
-    connect(pb, &Playback::readyToPlay, this, [this]() {
+    pb->onReadyToPlay = [this]() {
         rebuildLyricLines();
-        emit metadataChanged();
-        emit isFavoriteChanged();
+        if (onMetadataChanged)   onMetadataChanged();
+        if (onIsFavoriteChanged) onIsFavoriteChanged();
 
         Queue *playingQ = m_session->playingQueue();
         if (!playingQ) return;
@@ -338,11 +409,7 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
 
         if (m_pendingGaplessAdvance) {
             m_pendingGaplessAdvance = false;
-            // Append next track for the one after this
-            Queue *playingQ = m_session->playingQueue();
-            if (!playingQ) return;
             if (playingQ->repeatMode() == Queue::RepeatTrack) {
-                // Clear any appended track so trackEnded fires naturally
                 if (Playback *p = playingQ->currentPlayback())
                     p->clearAppendedTrack();
                 return;
@@ -355,38 +422,32 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
             return;
         }
 
-        if (playingQ->repeatMode() == Queue::RepeatTrack) {
-            // Clear any previously appended track so trackEnded fires
-            if (Playback *p = playingQ->currentPlayback())
-                p->clearAppendedTrack();
-            return;
-        }
-
         Track next = playingQ->peekNextTrack();
         if (next.isValid()) {
             if (Playback *p = playingQ->currentPlayback())
                 p->appendTrack(next);
         }
-    });
+    };
 
-    connect(pb, &Playback::playbackStateChanged, this, [this]() {
-        emit isPlayingChanged();
-    });
+    pb->onPlaybackStateChanged = [this]() {
+        if (onIsPlayingChanged) onIsPlayingChanged();
+    };
 
-    connect(pb, &Playback::durationChanged, this, [this]() {
-        emit durationChanged();
+    pb->onDurationChanged = [this]() {
+        if (onDurationChanged) onDurationChanged();
         if (m_creditThresholdMs == 0 && !m_playCountCredited) {
             Queue *q = m_session->playingQueue();
             if (q && q->currentTrackIndex() >= 0) {
-                qint64 dur = q->duration();
+                int64_t dur = q->duration();
                 if (dur > 0)
-                    m_creditThresholdMs = qint64(dur * (m_playCountThreshold / 100.0));
+                    m_creditThresholdMs =
+                        int64_t(dur * (m_playCountThreshold / 100.0));
             }
         }
-    });
+    };
 
-    connect(pb, &Playback::positionChanged, this, [this]() {
-        emit positionChanged();
+    pb->onPositionChanged = [this]() {
+        if (onPositionChanged) onPositionChanged();
         if (m_isSeeking) return;
 
         if (m_abRepeatActive && m_pointA >= 0 && m_pointB >= 0) {
@@ -401,58 +462,50 @@ void PlaybackManager::connectCurrentPlaybackSignals(Queue *queue)
             Queue *q = m_session->playingQueue();
             if (q && q->position() >= m_creditThresholdMs) {
                 m_playCountCredited = true;
-                QString path = q->trackAt(q->currentTrackIndex()).path;
-                qint64 now   = QDateTime::currentSecsSinceEpoch();
+                std::string path = q->trackAt(q->currentTrackIndex()).path;
+                int64_t now = nowSeconds();
                 if (m_userDataManager) {
                     m_userDataManager->incrementPlayCount(path);
-                    // Update track stats in queue as before
-                    qint64 now = QDateTime::currentSecsSinceEpoch();
-                    for (int i = 0; i < m_session->queueCount(); i++)
+                    int newCount =
+                        q->trackAt(q->currentTrackIndex()).playCount + 1;
+                    for (int i = 0; i < m_session->queueCount(); ++i)
                         m_session->queueAt(i)->updateTrackStats(
-                            path, now,
-                            q->trackAt(q->currentTrackIndex()).playCount + 1);
+                            path, now, newCount);
                 }
-                emit metadataChanged();
+                if (onMetadataChanged) onMetadataChanged();
             }
         }
-    });
+    };
 
-    connect(pb, &Playback::trackAdvancedGapless, this, [this]() {
+    pb->onTrackAdvancedGapless = [this]() {
         m_pendingGaplessAdvance = true;
-    });
+    };
 }
 
-Playback *PlaybackManager::activePlayback() const
-{
-    Queue *q = m_session->playingQueue();
-    return q ? q->currentPlayback() : nullptr;
-}
+// ---------------------------------------------------------------------------
+// A-B repeat
+// ---------------------------------------------------------------------------
 
 void PlaybackManager::setPointA()
 {
     Queue *q = m_session->playingQueue();
     if (!q) return;
-
-    m_pointA        = q->position();
-    m_pointB        = -1;           // clear B when A is reset
+    m_pointA         = q->position();
+    m_pointB         = -1;
     m_abRepeatActive = false;
-    emit abRepeatChanged();
+    if (onAbRepeatChanged) onAbRepeatChanged();
 }
 
 void PlaybackManager::setPointB()
 {
     Queue *q = m_session->playingQueue();
-    if (!q || m_pointA < 0) return; // can't set B without A
-
-    qint64 currentPos = q->position();
-    if (currentPos <= m_pointA) return; // B must be after A
-
+    if (!q || m_pointA < 0) return;
+    int64_t currentPos = q->position();
+    if (currentPos <= m_pointA) return;
     m_pointB         = currentPos;
     m_abRepeatActive = true;
-
-    // Immediately seek to A and start the loop
     q->seekTo(m_pointA);
-    emit abRepeatChanged();
+    if (onAbRepeatChanged) onAbRepeatChanged();
 }
 
 void PlaybackManager::clearAbRepeat()
@@ -460,14 +513,9 @@ void PlaybackManager::clearAbRepeat()
     m_pointA         = -1;
     m_pointB         = -1;
     m_abRepeatActive = false;
-    emit abRepeatChanged();
+    if (onAbRepeatChanged) onAbRepeatChanged();
 }
 
-void PlaybackManager::setUserDataManager(UserDataManager *mgr)
-{
-    m_userDataManager = mgr;
-}
-
-bool   PlaybackManager::abRepeatActive() const { return m_abRepeatActive; }
-qint64 PlaybackManager::pointA()         const { return m_pointA; }
-qint64 PlaybackManager::pointB()         const { return m_pointB; }
+bool    PlaybackManager::abRepeatActive() const { return m_abRepeatActive; }
+int64_t PlaybackManager::pointA()         const { return m_pointA; }
+int64_t PlaybackManager::pointB()         const { return m_pointB; }

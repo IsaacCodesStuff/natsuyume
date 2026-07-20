@@ -1,80 +1,80 @@
 #ifndef USERDATAMANAGER_H
 #define USERDATAMANAGER_H
 
-#include <QObject>
-#include <QSet>
-#include <QVariantList>
+#include <string>
+#include <vector>
+#include <unordered_set>
+#include <functional>
+#include <cstdint>
 #include "userdata.h"
 #include "library.h"
+#include "coretypes.h"
 
-class UserDataManager : public QObject
+class UserDataManager
 {
-    Q_OBJECT
 public:
-    explicit UserDataManager(QObject *parent = nullptr);
+    UserDataManager();
 
-    bool open();
+    bool open(const std::string &dataDir);
     void setLibrary(Library *library);
 
+    // --- Callbacks ---
+    std::function<void()> onPlaylistsChanged;
+    std::function<void()> onPlaylistSortChanged;
+    std::function<void()> onIsFavoriteChanged;
+    std::function<void(const std::vector<std::string> &paths,
+                       const std::string &name)> onOpenInNewQueueRequested;
+
     // --- Favorites ---
-    bool          isFavorite(const QString &path) const;
-    void          toggleFavorite(const QString &path);
-    QSet<QString> allFavoritePaths() const;
+    bool                             isFavorite(const std::string &path) const;
+    void                             toggleFavorite(const std::string &path);
+    std::unordered_set<std::string>  allFavoritePaths() const;
 
     // --- Play stats ---
-    void incrementPlayCount(const QString &path);
+    void incrementPlayCount(const std::string &path);
     void applyUserData(Track &track) const;
-    void applyUserData(QList<Track> &tracks) const;
+    void applyUserData(std::vector<Track> &tracks) const;
 
     // --- Playlists ---
-    QVariantList allPlaylists()                                         const;
-    int          createPlaylist(const QString &name);
-    void         deletePlaylist(int playlistId);
-    void         renamePlaylist(int playlistId, const QString &name);
-    void         setPlaylistImage(int playlistId, const QString &imagePath);
-    void         addTrackToPlaylist(int playlistId, const QString &path);
-    void         removeTrackFromPlaylist(int playlistId, const QString &path);
-    void         moveTrackInPlaylist(int playlistId, int from, int to);
-    void         sortPlaylist(int playlistId);
-    int          saveQueueAsPlaylist(const QString &name,
-                            const QStringList &paths);
-    QList<Track> tracksForPlaylist(int playlistId)                      const;
-    void         openPlaylistInNewQueue(int playlistId, const QString &name);
+    std::vector<Natsuyume::CorePlaylistInfo> allPlaylists()              const;
+    int  createPlaylist(const std::string &name);
+    void deletePlaylist(int playlistId);
+    void renamePlaylist(int playlistId, const std::string &name);
+    void setPlaylistImage(int playlistId, const std::string &imagePath);
+    void addTrackToPlaylist(int playlistId, const std::string &path);
+    void removeTrackFromPlaylist(int playlistId, const std::string &path);
+    void moveTrackInPlaylist(int playlistId, int from, int to);
+    void sortPlaylist(int playlistId);
+    int  saveQueueAsPlaylist(const std::string &name,
+                             const std::vector<std::string> &paths);
+    std::vector<Track> tracksForPlaylist(int playlistId) const;
+    void openPlaylistInNewQueue(int playlistId, const std::string &name);
 
     // --- Playlist sort ---
-    int  playlistSort()              const;
-    bool playlistSortAscending()     const;
+    int  playlistSort()          const;
+    bool playlistSortAscending() const;
     void setPlaylistSort(int sort);
     void setPlaylistSortAscending(bool ascending);
 
     // --- Artist images ---
-    void    setArtistImage(const QString &artist, const QString &imagePath);
-    QString artistImage(const QString &artist) const;
+    void        setArtistImage(const std::string &artist,
+                               const std::string &imagePath);
+    std::string artistImage(const std::string &artist) const;
 
     // --- Clear operations ---
-    void clearUserData();   // wipes userdata.db — favorites, playlists, stats
-    void clearLibrary();    // tells Library to clear tracks only
+    void clearUserData();
+    void clearLibrary();
 
     // --- Settings ---
-    void loadSettings();
-    void saveSettings();
+    void loadSettings(const std::string &dataDir);
+    void saveSettings(const std::string &dataDir);
 
     // --- Constants ---
     static constexpr int kAllSongsPlaylistId  = -2;
     static constexpr int kFavoritesPlaylistId = -3;
 
-    // --- Request relay (mirrors old PlaylistManager pattern) ---
-    void requestAddToPlaylist(const QString &path);
-    void requestAddAlbumToPlaylist(const QString &albumName);
-    QList<PlaylistInfo> rawPlaylists() const;
-
-signals:
-    void playlistsChanged();
-    void playlistSortChanged();
-    void isFavoriteChanged();
-    void addToPlaylistRequested(const QString &path);
-    void addAlbumToPlaylistRequested(const QString &albumName);
-    void openInNewQueueRequested(const QStringList &paths, const QString &name);
+    // --- Raw playlists (internal use) ---
+    std::vector<PlaylistInfo> rawPlaylists() const;
 
 private:
     UserData *m_userData = nullptr;
@@ -82,6 +82,7 @@ private:
 
     Library::TrackSort m_playlistSort          = Library::TrackSort::TrackNumber;
     bool               m_playlistSortAscending = true;
+    std::string        m_dataDir;
 };
 
 #endif // USERDATAMANAGER_H

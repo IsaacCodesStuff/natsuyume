@@ -227,6 +227,9 @@ public:
     void clearUserData();
     void clearLibrary();
 
+    void setDataDir(const std::string &dir);
+    void pumpEvents();
+
 private:
     struct Impl;
     Impl *m_impl = nullptr;   // pImpl — keeps Qt internals out of this header
