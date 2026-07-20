@@ -1,25 +1,48 @@
 #include "queue.h"
-#include <QRandomGenerator>
-#include <QDateTime>
-#include <QTimer>
 #include <algorithm>
+#include <random>
+#include <chrono>
+#include <unicode/coll.h>
+#include <unicode/unistr.h>
 
-Queue::Queue(const QString &name, QObject *parent)
-    : QObject{parent},
-    m_name(name),
-    m_currentTrackIndex(-1),
-    m_savedPosition(0),
-    m_wasPlaying(false),
-    m_repeatMode(NoRepeat),
-    m_shuffled(false)
+// ---------------------------------------------------------------------------
+// ICU locale-aware string comparison
+// ---------------------------------------------------------------------------
+static icu::Collator *getCollator()
+{
+    static icu::Collator *coll = []() -> icu::Collator * {
+        UErrorCode err = U_ZERO_ERROR;
+        icu::Collator *c = icu::Collator::createInstance(err);
+        return U_SUCCESS(err) ? c : nullptr;
+    }();
+    return coll;
+}
+
+static int localeCompare(const std::string &a, const std::string &b)
+{
+    icu::Collator *coll = getCollator();
+    if (!coll) return a.compare(b);
+    UErrorCode err = U_ZERO_ERROR;
+    return static_cast<int>(
+        coll->compareUTF8(a, b, err));
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+Queue::Queue(const std::string &name)
+    : m_name(name)
 {}
+
+Queue::~Queue() {}
 
 void Queue::initPlayback()
 {
     if (m_currentPlayback) return;
-    m_currentPlayback = new Playback(this);
+    m_currentPlayback = new Playback();
     m_currentPlayback->setVolume(m_volume);
-    connectCurrentPlaybackSignals();
+    connectPlaybackCallbacks();
 }
 
 void Queue::destroyPlayback()
@@ -31,33 +54,29 @@ void Queue::destroyPlayback()
     }
 }
 
-Queue::~Queue() {}
+// ---------------------------------------------------------------------------
+// Playback callbacks
+// ---------------------------------------------------------------------------
 
-// --- Internal helpers ---
-
-void Queue::connectCurrentPlaybackSignals()
+void Queue::connectPlaybackCallbacks()
 {
-    connect(m_currentPlayback, &Playback::trackAdvancedGapless, this, [this]() {
-        advancePlayback(); // this already emits trackChanged()
-        // Don't emit trackChanged() again here
-    });
+    m_currentPlayback->onTrackAdvancedGapless = [this]() {
+        advancePlayback();
+    };
 
-    connect(m_currentPlayback, &Playback::trackEnded, this, [this]() {
+    m_currentPlayback->onTrackEnded = [this]() {
         if (m_stopAfterCurrent) {
             m_stopAfterCurrent = false;
-            emit stopAfterCurrentChanged();
+            if (onStopAfterCurrentChanged) onStopAfterCurrentChanged();
             return;
         }
 
         if (m_repeatMode == RepeatTrack) {
-            // Reload the track rather than seeking — mpv may be in idle
-            // state after end-file and not ready to accept seek commands
             m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex), true);
-            emit trackChanged();
+            if (onTrackChanged) onTrackChanged();
             return;
         }
 
-        // Normal advance — no preload ready (single track, repeat off, etc.)
         if (hasNext()) {
             if (m_shuffled) {
                 int next = nextShuffleIndex();
@@ -68,119 +87,124 @@ void Queue::connectCurrentPlaybackSignals()
             return;
         }
 
-        if (m_repeatMode == RepeatQueue && !m_tracks.isEmpty()) {
+        if (m_repeatMode == RepeatQueue && !m_tracks.empty()) {
             if (m_shuffled) {
                 generateShuffleOrder();
-                loadTrackAt(m_shuffleOrder.first());
+                loadTrackAt(m_shuffleOrder.front());
             } else {
                 loadTrackAt(0);
             }
             return;
         }
         // NoRepeat + no next = natural stop
-    });
+    };
 }
+
+// ---------------------------------------------------------------------------
+// Shuffle
+// ---------------------------------------------------------------------------
 
 void Queue::generateShuffleOrder()
 {
     m_shuffleOrder.clear();
-    for (int i = 0; i < m_tracks.size(); i++)
-        m_shuffleOrder.append(i);
+    for (int i = 0; i < (int)m_tracks.size(); ++i)
+        m_shuffleOrder.push_back(i);
 
-    for (int i = m_shuffleOrder.size() - 1; i > 0; i--) {
-        int j = QRandomGenerator::global()->bounded(i + 1);
-        m_shuffleOrder.swapItemsAt(i, j);
+    auto seed = std::chrono::steady_clock::now().time_since_epoch().count();
+    std::mt19937 rng(static_cast<unsigned>(seed));
+
+    for (int i = (int)m_shuffleOrder.size() - 1; i > 0; --i) {
+        std::uniform_int_distribution<int> dist(0, i);
+        int j = dist(rng);
+        std::swap(m_shuffleOrder[i], m_shuffleOrder[j]);
     }
 
-    int pos = m_shuffleOrder.indexOf(m_currentTrackIndex);
-    if (pos > 0)
-        m_shuffleOrder.move(pos, 0);
+    // Move current track to front of shuffle order
+    auto it = std::find(m_shuffleOrder.begin(), m_shuffleOrder.end(),
+                        m_currentTrackIndex);
+    if (it != m_shuffleOrder.end() && it != m_shuffleOrder.begin())
+        std::rotate(m_shuffleOrder.begin(), it, it + 1);
 }
 
 int Queue::nextShuffleIndex() const
 {
-    if (m_shuffleOrder.isEmpty()) return -1;
-    int pos = m_shuffleOrder.indexOf(m_currentTrackIndex);
-    if (pos < 0 || pos >= m_shuffleOrder.size() - 1) return -1;
-    return m_shuffleOrder.at(pos + 1);
+    if (m_shuffleOrder.empty()) return -1;
+    auto it = std::find(m_shuffleOrder.begin(), m_shuffleOrder.end(),
+                        m_currentTrackIndex);
+    if (it == m_shuffleOrder.end()) return -1;
+    ++it;
+    return (it == m_shuffleOrder.end()) ? -1 : *it;
 }
 
 int Queue::previousShuffleIndex() const
 {
-    if (m_shuffleOrder.isEmpty()) return -1;
-    int pos = m_shuffleOrder.indexOf(m_currentTrackIndex);
-    if (pos <= 0) return -1;
-    return m_shuffleOrder.at(pos - 1);
+    if (m_shuffleOrder.empty()) return -1;
+    auto it = std::find(m_shuffleOrder.begin(), m_shuffleOrder.end(),
+                        m_currentTrackIndex);
+    if (it == m_shuffleOrder.end() || it == m_shuffleOrder.begin()) return -1;
+    return *std::prev(it);
 }
 
-// --- Gapless playback ---
+// ---------------------------------------------------------------------------
+// Gapless
+// ---------------------------------------------------------------------------
 
 Track Queue::peekNextTrack() const
 {
-    if (m_tracks.isEmpty()) return Track();
+    if (m_tracks.empty()) return Track();
 
-    // RepeatTrack — next is the same track
     if (m_repeatMode == RepeatTrack)
-        return m_currentTrackIndex >= 0 ? m_tracks.at(m_currentTrackIndex) : Track();
+        return m_currentTrackIndex >= 0
+                   ? m_tracks.at(m_currentTrackIndex) : Track();
 
-    // Shuffle mode
     if (m_shuffled) {
         int next = nextShuffleIndex();
         if (next >= 0) return m_tracks.at(next);
-
-        // Shuffle + RepeatQueue — would wrap to beginning of new shuffle order
-        if (m_repeatMode == RepeatQueue && !m_shuffleOrder.isEmpty())
-            return m_tracks.at(m_shuffleOrder.first());
-
-        return Track(); // no next
+        if (m_repeatMode == RepeatQueue && !m_shuffleOrder.empty())
+            return m_tracks.at(m_shuffleOrder.front());
+        return Track();
     }
 
-    // Normal sequential
-    if (m_currentTrackIndex < m_tracks.size() - 1)
+    if (m_currentTrackIndex < (int)m_tracks.size() - 1)
         return m_tracks.at(m_currentTrackIndex + 1);
 
-    // RepeatQueue wrap
-    if (m_repeatMode == RepeatQueue && !m_tracks.isEmpty())
+    if (m_repeatMode == RepeatQueue && !m_tracks.empty())
         return m_tracks.at(0);
 
-    return Track(); // no next
+    return Track();
 }
 
 void Queue::advancePlayback()
 {
-    // Called by PlaybackManager after swapPlayback()
-    // Advances m_currentTrackIndex to match what was just swapped in
-    // PlaybackManager knows the target index because it drove preloadNextTrack()
-    // We recalculate it here from the current state to stay self-contained
-
     if (m_shuffled) {
         int next = nextShuffleIndex();
         if (next >= 0) {
             m_currentTrackIndex = next;
-        } else if (m_repeatMode == RepeatQueue && !m_shuffleOrder.isEmpty()) {
+        } else if (m_repeatMode == RepeatQueue && !m_shuffleOrder.empty()) {
             generateShuffleOrder();
-            m_currentTrackIndex = m_shuffleOrder.first();
+            m_currentTrackIndex = m_shuffleOrder.front();
         }
     } else {
-        if (m_currentTrackIndex < m_tracks.size() - 1) {
+        if (m_currentTrackIndex < (int)m_tracks.size() - 1) {
             m_currentTrackIndex++;
         } else if (m_repeatMode == RepeatQueue) {
             m_currentTrackIndex = 0;
         }
     }
 
-    emit trackChanged();
+    if (onTrackChanged) onTrackChanged();
 }
 
-// --- Track management ---
+// ---------------------------------------------------------------------------
+// Track management
+// ---------------------------------------------------------------------------
 
-void Queue::addTrack(const QString &filePath, bool autoPlayFirst)
+void Queue::addTrack(const std::string &filePath, bool autoPlayFirst)
 {
     Track track = Metadata::read(filePath, false);
-    m_tracks.append(track);
+    m_tracks.push_back(track);
 
-    if (m_shuffled)
-        generateShuffleOrder();
+    if (m_shuffled) generateShuffleOrder();
 
     if (m_currentTrackIndex < 0) {
         m_currentTrackIndex = 0;
@@ -188,34 +212,60 @@ void Queue::addTrack(const QString &filePath, bool autoPlayFirst)
             m_currentPlayback->loadTrack(m_tracks.at(0), autoPlayFirst);
     }
 
-    emit queueChanged();
+    if (onQueueChanged) onQueueChanged();
+}
+
+void Queue::addTracksBatch(const std::vector<std::string> &filePaths,
+                           bool autoPlayFirst)
+{
+    for (const auto &path : filePaths) {
+        Track track = Metadata::read(path, false);
+        m_tracks.push_back(track);
+    }
+
+    if (m_tracks.empty()) return;
+    if (m_shuffled) generateShuffleOrder();
+
+    if (m_currentTrackIndex < 0) {
+        int startIndex = (m_shuffled && !m_shuffleOrder.empty())
+                             ? m_shuffleOrder.front() : 0;
+        m_currentTrackIndex = startIndex;
+        if (m_currentPlayback)
+            m_currentPlayback->loadTrack(m_tracks.at(startIndex), autoPlayFirst);
+    }
+
+    if (onQueueChanged) onQueueChanged();
+}
+
+void Queue::addTrackSilent(const Track &track)
+{
+    m_tracks.push_back(track);
+    if (m_shuffled) generateShuffleOrder();
 }
 
 void Queue::removeTrack(int index)
 {
-    if (index < 0 || index >= m_tracks.size())
-        return;
+    if (index < 0 || index >= (int)m_tracks.size()) return;
 
-    m_tracks.removeAt(index);
+    m_tracks.erase(m_tracks.begin() + index);
+    if (m_shuffled) generateShuffleOrder();
 
-    if (m_shuffled)
-        generateShuffleOrder();
-
-    if (m_tracks.isEmpty()) {
+    if (m_tracks.empty()) {
         m_currentTrackIndex = -1;
         if (m_currentPlayback) m_currentPlayback->pause();
     } else if (index == m_currentTrackIndex) {
-        m_currentTrackIndex = qMin(index, m_tracks.size() - 1);
-        m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex));
+        m_currentTrackIndex = std::min(index, (int)m_tracks.size() - 1);
+        if (m_currentPlayback)
+            m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex));
     } else if (index < m_currentTrackIndex) {
         m_currentTrackIndex--;
     }
 
-    if (m_currentTrackIndex >= m_tracks.size())
-        m_currentTrackIndex = m_tracks.size() - 1;
+    if (m_currentTrackIndex >= (int)m_tracks.size())
+        m_currentTrackIndex = (int)m_tracks.size() - 1;
 
-    emit queueChanged();
-    emit trackChanged();
+    if (onQueueChanged)  onQueueChanged();
+    if (onTrackChanged)  onTrackChanged();
 }
 
 void Queue::clearTracks()
@@ -224,33 +274,32 @@ void Queue::clearTracks()
     m_tracks.clear();
     m_shuffleOrder.clear();
     m_currentTrackIndex = -1;
-
-    emit queueChanged();
+    if (onQueueChanged) onQueueChanged();
 }
 
-int Queue::trackCount() const { return m_tracks.size(); }
-Track Queue::trackAt(int index) const { return m_tracks.at(index); }
-QList<Track> Queue::tracks() const { return m_tracks; }
+int              Queue::trackCount() const { return (int)m_tracks.size(); }
+Track            Queue::trackAt(int index) const { return m_tracks.at(index); }
+std::vector<Track> Queue::tracks()   const { return m_tracks; }
 
-// --- Playback control ---
+// ---------------------------------------------------------------------------
+// Playback control
+// ---------------------------------------------------------------------------
 
 void Queue::play()  { if (m_currentPlayback) m_currentPlayback->play(); }
 void Queue::pause() { if (m_currentPlayback) m_currentPlayback->pause(); }
 
-void Queue::seekTo(qint64 positionMs)
+void Queue::seekTo(int64_t positionMs)
 {
     if (m_currentPlayback) m_currentPlayback->seekTo(positionMs);
 }
 
 void Queue::loadTrackAt(int index, bool autoPlay)
 {
-    if (index < 0 || index >= m_tracks.size()) return;
+    if (index < 0 || index >= (int)m_tracks.size()) return;
     m_currentTrackIndex = index;
-
     if (m_currentPlayback)
         m_currentPlayback->loadTrack(m_tracks.at(index), autoPlay);
-
-    emit trackChanged();
+    if (onTrackChanged) onTrackChanged();
 }
 
 void Queue::playNext()
@@ -261,7 +310,7 @@ void Queue::playNext()
             loadTrackAt(next);
         } else if (m_repeatMode == RepeatQueue) {
             generateShuffleOrder();
-            loadTrackAt(m_shuffleOrder.first());
+            loadTrackAt(m_shuffleOrder.front());
         }
         return;
     }
@@ -284,8 +333,8 @@ void Queue::playPrevious()
         int prev = previousShuffleIndex();
         if (prev >= 0) {
             loadTrackAt(prev);
-        } else if (m_repeatMode == RepeatQueue) {
-            loadTrackAt(m_shuffleOrder.last());
+        } else if (m_repeatMode == RepeatQueue && !m_shuffleOrder.empty()) {
+            loadTrackAt(m_shuffleOrder.back());
         }
         return;
     }
@@ -293,11 +342,13 @@ void Queue::playPrevious()
     if (hasPrevious()) {
         loadTrackAt(m_currentTrackIndex - 1);
     } else if (m_repeatMode == RepeatQueue) {
-        loadTrackAt(m_tracks.size() - 1);
+        loadTrackAt((int)m_tracks.size() - 1);
     }
 }
 
-// --- State save / restore ---
+// ---------------------------------------------------------------------------
+// State save / restore
+// ---------------------------------------------------------------------------
 
 void Queue::saveState()
 {
@@ -310,33 +361,36 @@ void Queue::saveState()
 void Queue::restoreState()
 {
     if (!m_currentPlayback) return;
-    if (m_currentTrackIndex < 0 || m_currentTrackIndex >= m_tracks.size()) return;
+    if (m_currentTrackIndex < 0 ||
+        m_currentTrackIndex >= (int)m_tracks.size()) return;
 
-    connect(m_currentPlayback, &Playback::readyToPlay, this, [this]() {
-        QTimer::singleShot(200, this, [this]() {
-            m_currentPlayback->seekTo(m_savedPosition);
-            // Always restore as paused regardless of m_wasPlaying —
-            // auto-play on restore is never intended behavior
-            m_currentPlayback->pause();
-            emit trackChanged();
-            emit restoreCompleted();
-        });
-    }, Qt::SingleShotConnection);
+    int64_t savedPos = m_savedPosition;
+
+    // One-shot: fire once on readyToPlay then restore original callback
+    auto prevCallback = m_currentPlayback->onReadyToPlay;
+    m_currentPlayback->onReadyToPlay = [this, savedPos, prevCallback]() {
+        m_currentPlayback->seekTo(savedPos);
+        m_currentPlayback->pause();
+        m_currentPlayback->onReadyToPlay = prevCallback;
+        if (onTrackChanged)    onTrackChanged();
+        if (onRestoreCompleted) onRestoreCompleted();
+    };
 
     m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex), false);
 }
 
-// --- Getters ---
+// ---------------------------------------------------------------------------
+// Getters
+// ---------------------------------------------------------------------------
 
-QString Queue::name() const { return m_name; }
-void    Queue::setName(const QString &name) { m_name = name; }
-
-int Queue::currentTrackIndex() const { return m_currentTrackIndex; }
+std::string Queue::name() const { return m_name; }
+void        Queue::setName(const std::string &name) { m_name = name; }
+int         Queue::currentTrackIndex() const { return m_currentTrackIndex; }
 
 bool Queue::hasNext() const
 {
     if (m_shuffled) return nextShuffleIndex() >= 0;
-    return m_currentTrackIndex < m_tracks.size() - 1;
+    return m_currentTrackIndex < (int)m_tracks.size() - 1;
 }
 
 bool Queue::hasPrevious() const
@@ -345,11 +399,13 @@ bool Queue::hasPrevious() const
     return m_currentTrackIndex > 0;
 }
 
-bool   Queue::isPlaying() const { return m_currentPlayback ? m_currentPlayback->isPlaying() : false; }
-qint64 Queue::position()  const { return m_currentPlayback ? m_currentPlayback->position()  : 0; }
-qint64 Queue::duration()  const { return m_currentPlayback ? m_currentPlayback->duration()  : 0; }
+bool    Queue::isPlaying() const { return m_currentPlayback ? m_currentPlayback->isPlaying() : false; }
+int64_t Queue::position()  const { return m_currentPlayback ? m_currentPlayback->position()  : 0; }
+int64_t Queue::duration()  const { return m_currentPlayback ? m_currentPlayback->duration()  : 0; }
 
-// --- Repeat ---
+// ---------------------------------------------------------------------------
+// Repeat
+// ---------------------------------------------------------------------------
 
 Queue::RepeatMode Queue::repeatMode() const { return m_repeatMode; }
 
@@ -361,17 +417,17 @@ void Queue::cycleRepeatMode()
     case RepeatTrack: m_repeatMode = NoRepeat;    break;
     }
 
-    // If switching to RepeatTrack, cancel any appended track
-    // so mpv doesn't auto-advance instead of repeating
     if (m_repeatMode == RepeatTrack && m_currentPlayback) {
         m_currentPlayback->clearAppendedTrack();
         m_currentPlayback->setRepeatTrackPending(true);
     }
 
-    emit repeatModeChanged();
+    if (onRepeatModeChanged) onRepeatModeChanged();
 }
 
-// --- Shuffle ---
+// ---------------------------------------------------------------------------
+// Shuffle
+// ---------------------------------------------------------------------------
 
 bool Queue::isShuffled() const { return m_shuffled; }
 
@@ -383,10 +439,12 @@ void Queue::toggleShuffle()
     else
         m_shuffleOrder.clear();
 
-    emit shuffleChanged();
+    if (onShuffleChanged) onShuffleChanged();
 }
 
-// --- Audio ---
+// ---------------------------------------------------------------------------
+// Audio
+// ---------------------------------------------------------------------------
 
 void Queue::setVolume(float volume)
 {
@@ -394,16 +452,22 @@ void Queue::setVolume(float volume)
     if (m_currentPlayback) m_currentPlayback->setVolume(volume);
 }
 
-Playback *Queue::currentPlayback()  const { return m_currentPlayback; }
-bool      Queue::hasPlayback()      const { return m_currentPlayback != nullptr; }
+Playback *Queue::currentPlayback() const { return m_currentPlayback; }
+bool      Queue::hasPlayback()     const { return m_currentPlayback != nullptr; }
+
+// ---------------------------------------------------------------------------
+// Track ops
+// ---------------------------------------------------------------------------
 
 void Queue::moveTrack(int from, int to)
 {
-    if (from < 0 || from >= m_tracks.size()) return;
-    if (to   < 0 || to   >= m_tracks.size()) return;
+    if (from < 0 || from >= (int)m_tracks.size()) return;
+    if (to   < 0 || to   >= (int)m_tracks.size()) return;
     if (from == to) return;
 
-    m_tracks.move(from, to);
+    Track t = std::move(m_tracks[from]);
+    m_tracks.erase(m_tracks.begin() + from);
+    m_tracks.insert(m_tracks.begin() + to, std::move(t));
 
     if (m_shuffled) generateShuffleOrder();
 
@@ -417,11 +481,12 @@ void Queue::moveTrack(int from, int to)
             m_currentTrackIndex++;
     }
 
-    emit queueChanged();
-    emit trackChanged();
+    if (onQueueChanged) onQueueChanged();
+    if (onTrackChanged) onTrackChanged();
 }
 
-void Queue::updateTrackStats(const QString &path, qint64 lastPlayed, int playCount)
+void Queue::updateTrackStats(const std::string &path,
+                             int64_t lastPlayed, int playCount)
 {
     for (Track &t : m_tracks) {
         if (t.path == path) {
@@ -432,47 +497,34 @@ void Queue::updateTrackStats(const QString &path, qint64 lastPlayed, int playCou
     }
 }
 
-void Queue::addTrackSilent(const Track &track)
-{
-    m_tracks.append(track);
-    if (m_shuffled) generateShuffleOrder();
-}
-
-bool Queue::stopAfterCurrent() const { return m_stopAfterCurrent; }
-
-void Queue::setStopAfterCurrent(bool stop)
-{
-    m_stopAfterCurrent = stop;
-    emit stopAfterCurrentChanged();
-}
-
 void Queue::sortTracks(Library::TrackSort sort, bool ascending)
 {
-    if (m_tracks.isEmpty()) return;
+    if (m_tracks.empty()) return;
 
-    QString currentPath = (m_currentTrackIndex >= 0 && m_currentTrackIndex < m_tracks.size())
-                              ? m_tracks.at(m_currentTrackIndex).path
-                              : QString();
+    std::string currentPath =
+        (m_currentTrackIndex >= 0 &&
+         m_currentTrackIndex < (int)m_tracks.size())
+            ? m_tracks.at(m_currentTrackIndex).path : "";
 
-    auto cmp = [sort, ascending](const Track &a, const Track &b) -> bool {
+    auto cmp = [&](const Track &a, const Track &b) -> bool {
         bool result = false;
         switch (sort) {
         case Library::TrackSort::Title:
-            result = a.title.localeAwareCompare(b.title) < 0; break;
+            result = localeCompare(a.title, b.title) < 0; break;
         case Library::TrackSort::Artist:
-            result = a.artist.localeAwareCompare(b.artist) < 0; break;
+            result = localeCompare(a.artist, b.artist) < 0; break;
         case Library::TrackSort::AlbumArtist:
-            result = a.albumArtist.localeAwareCompare(b.albumArtist) < 0; break;
+            result = localeCompare(a.albumArtist, b.albumArtist) < 0; break;
         case Library::TrackSort::Year:
             result = a.year < b.year; break;
         case Library::TrackSort::Duration:
             result = a.duration < b.duration; break;
         case Library::TrackSort::Genre:
-            result = a.genre.localeAwareCompare(b.genre) < 0; break;
+            result = localeCompare(a.genre, b.genre) < 0; break;
         case Library::TrackSort::Composer:
-            result = a.composer.localeAwareCompare(b.composer) < 0; break;
+            result = localeCompare(a.composer, b.composer) < 0; break;
         case Library::TrackSort::Filename:
-            result = a.path.localeAwareCompare(b.path) < 0; break;
+            result = localeCompare(a.path, b.path) < 0; break;
         case Library::TrackSort::DateAdded:
             result = a.dateAdded < b.dateAdded; break;
         case Library::TrackSort::DateLastPlayed:
@@ -481,10 +533,9 @@ void Queue::sortTracks(Library::TrackSort sort, bool ascending)
             result = a.playCount < b.playCount; break;
         case Library::TrackSort::TrackNumber:
         default:
-            if (a.discNumber != b.discNumber)
-                result = a.discNumber < b.discNumber;
-            else
-                result = a.trackNumber < b.trackNumber;
+            result = (a.discNumber != b.discNumber)
+                         ? a.discNumber < b.discNumber
+                         : a.trackNumber < b.trackNumber;
             break;
         }
         return ascending ? result : !result;
@@ -492,8 +543,8 @@ void Queue::sortTracks(Library::TrackSort sort, bool ascending)
 
     std::sort(m_tracks.begin(), m_tracks.end(), cmp);
 
-    if (!currentPath.isEmpty()) {
-        for (int i = 0; i < m_tracks.size(); ++i) {
+    if (!currentPath.empty()) {
+        for (int i = 0; i < (int)m_tracks.size(); ++i) {
             if (m_tracks.at(i).path == currentPath) {
                 m_currentTrackIndex = i;
                 break;
@@ -502,22 +553,22 @@ void Queue::sortTracks(Library::TrackSort sort, bool ascending)
     }
 
     if (m_shuffled) generateShuffleOrder();
-
-    emit queueChanged();
+    if (onQueueChanged) onQueueChanged();
 }
 
 void Queue::reverseTracks()
 {
-    if (m_tracks.isEmpty()) return;
+    if (m_tracks.empty()) return;
 
-    QString currentPath = (m_currentTrackIndex >= 0 && m_currentTrackIndex < m_tracks.size())
-                              ? m_tracks.at(m_currentTrackIndex).path
-                              : QString();
+    std::string currentPath =
+        (m_currentTrackIndex >= 0 &&
+         m_currentTrackIndex < (int)m_tracks.size())
+            ? m_tracks.at(m_currentTrackIndex).path : "";
 
     std::reverse(m_tracks.begin(), m_tracks.end());
 
-    if (!currentPath.isEmpty()) {
-        for (int i = 0; i < m_tracks.size(); ++i) {
+    if (!currentPath.empty()) {
+        for (int i = 0; i < (int)m_tracks.size(); ++i) {
             if (m_tracks.at(i).path == currentPath) {
                 m_currentTrackIndex = i;
                 break;
@@ -526,32 +577,25 @@ void Queue::reverseTracks()
     }
 
     if (m_shuffled) generateShuffleOrder();
-
-    emit queueChanged();
+    if (onQueueChanged) onQueueChanged();
 }
 
-void Queue::addTracksBatch(const QStringList &filePaths, bool autoPlayFirst)
+// ---------------------------------------------------------------------------
+// Stop after current
+// ---------------------------------------------------------------------------
+
+bool Queue::stopAfterCurrent() const { return m_stopAfterCurrent; }
+
+void Queue::setStopAfterCurrent(bool stop)
 {
-    for (const QString &path : filePaths) {
-        Track track = Metadata::read(path, false);
-        m_tracks.append(track);
-    }
-
-    if (m_tracks.isEmpty()) return;
-
-    if (m_shuffled) generateShuffleOrder();
-
-    if (m_currentTrackIndex < 0) {
-        int startIndex = (m_shuffled && !m_shuffleOrder.isEmpty())
-        ? m_shuffleOrder.first() : 0;
-        m_currentTrackIndex = startIndex;
-        if (m_currentPlayback)
-            m_currentPlayback->loadTrack(m_tracks.at(startIndex), autoPlayFirst);
-    }
-
-    emit queueChanged();
+    m_stopAfterCurrent = stop;
+    if (onStopAfterCurrentChanged) onStopAfterCurrentChanged();
 }
 
-void Queue::setSavedPosition(qint64 position)  { m_savedPosition = position; }
+// ---------------------------------------------------------------------------
+// State setters
+// ---------------------------------------------------------------------------
+
+void Queue::setSavedPosition(int64_t position) { m_savedPosition = position; }
 void Queue::setWasPlaying(bool wasPlaying)      { m_wasPlaying = wasPlaying; }
 void Queue::setCurrentTrackIndex(int index)     { m_currentTrackIndex = index; }

@@ -1,22 +1,35 @@
 #include "playback.h"
-#include <QMetaObject>
 #include <clocale>
-#include <QDebug>
+#include <cstring>
+#include <cstdio>
+#include <unistd.h>
+#include <cerrno>
 
-static inline void checkMpvError(int status, const char *context)
+static void checkMpvError(int status, const char *context)
 {
     if (status < 0)
-        qWarning() << "mpv error in" << context << ":" << mpv_error_string(status);
+        fprintf(stderr, "mpv error in %s: %s\n",
+                context, mpv_error_string(status));
 }
 
-Playback::Playback(QObject *parent)
-    : QObject{parent}
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+Playback::Playback()
 {
+    // Required before mpv_create()
     std::setlocale(LC_NUMERIC, "C");
+
+    // Self-pipe for wakeup marshalling
+    if (pipe(m_pipeFd) != 0) {
+        fprintf(stderr, "Playback: pipe() failed: %s\n", strerror(errno));
+        m_pipeFd[0] = m_pipeFd[1] = -1;
+    }
 
     m_mpv = mpv_create();
     if (!m_mpv) {
-        qWarning() << "Playback: failed to create mpv context";
+        fprintf(stderr, "Playback: failed to create mpv context\n");
         return;
     }
 
@@ -38,20 +51,36 @@ Playback::~Playback()
         mpv_terminate_destroy(m_mpv);
         m_mpv = nullptr;
     }
+    if (m_pipeFd[0] != -1) { close(m_pipeFd[0]); m_pipeFd[0] = -1; }
+    if (m_pipeFd[1] != -1) { close(m_pipeFd[1]); m_pipeFd[1] = -1; }
 }
+
+// ---------------------------------------------------------------------------
+// Wakeup marshalling
+// ---------------------------------------------------------------------------
 
 void Playback::mpvWakeupCallback(void *ctx)
 {
-    QMetaObject::invokeMethod(static_cast<Playback *>(ctx),
-                              "onMpvEvents",
-                              Qt::QueuedConnection);
+    // Called on mpv's internal thread — only safe operation is writing a byte
+    auto *self = static_cast<Playback *>(ctx);
+    if (self->m_pipeFd[1] != -1) {
+        char byte = 1;
+        write(self->m_pipeFd[1], &byte, 1);
+    }
 }
 
-void Playback::onMpvEvents()
+void Playback::processPendingEvents()
 {
     if (!m_mpv || m_processingEvents) return;
     m_processingEvents = true;
 
+    // Drain the pipe
+    if (m_pipeFd[0] != -1) {
+        char buf[64];
+        while (read(m_pipeFd[0], buf, sizeof(buf)) > 0) {}
+    }
+
+    // Drain mpv event queue
     while (true) {
         mpv_event *event = mpv_wait_event(m_mpv, 0);
         if (event->event_id == MPV_EVENT_NONE) break;
@@ -59,6 +88,18 @@ void Playback::onMpvEvents()
     }
 
     m_processingEvents = false;
+}
+
+// ---------------------------------------------------------------------------
+// Event handling
+// ---------------------------------------------------------------------------
+
+void Playback::observeProperties()
+{
+    checkMpvError(mpv_observe_property(m_mpv, 0, "time-pos",  MPV_FORMAT_DOUBLE), "observe time-pos");
+    checkMpvError(mpv_observe_property(m_mpv, 0, "duration",  MPV_FORMAT_DOUBLE), "observe duration");
+    checkMpvError(mpv_observe_property(m_mpv, 0, "core-idle", MPV_FORMAT_FLAG),   "observe core-idle");
+    checkMpvError(mpv_observe_property(m_mpv, 0, "pause",     MPV_FORMAT_FLAG),   "observe pause");
 }
 
 void Playback::handleMpvEvent(mpv_event *event)
@@ -71,19 +112,19 @@ void Playback::handleMpvEvent(mpv_event *event)
         if (strcmp(prop->name, "time-pos") == 0) {
             if (prop->format == MPV_FORMAT_DOUBLE) {
                 double secs = *reinterpret_cast<double *>(prop->data);
-                qint64 ms   = static_cast<qint64>(secs * 1000.0);
+                int64_t ms  = static_cast<int64_t>(secs * 1000.0);
                 if (ms != m_position) {
                     m_position = ms;
-                    emit positionChanged();
+                    if (onPositionChanged) onPositionChanged();
                 }
             }
         } else if (strcmp(prop->name, "duration") == 0) {
             if (prop->format == MPV_FORMAT_DOUBLE) {
                 double secs = *reinterpret_cast<double *>(prop->data);
-                qint64 ms   = static_cast<qint64>(secs * 1000.0);
+                int64_t ms  = static_cast<int64_t>(secs * 1000.0);
                 if (ms != m_duration) {
                     m_duration = ms;
-                    emit durationChanged();
+                    if (onDurationChanged) onDurationChanged();
                 }
             }
         } else if (strcmp(prop->name, "core-idle") == 0) {
@@ -92,7 +133,7 @@ void Playback::handleMpvEvent(mpv_event *event)
                 bool nowPlaying = !idle;
                 if (nowPlaying != m_isPlaying) {
                     m_isPlaying = nowPlaying;
-                    emit playbackStateChanged();
+                    if (onPlaybackStateChanged) onPlaybackStateChanged();
                 }
             }
         } else if (strcmp(prop->name, "pause") == 0) {
@@ -101,7 +142,7 @@ void Playback::handleMpvEvent(mpv_event *event)
                 bool nowPlaying = !paused;
                 if (nowPlaying != m_isPlaying) {
                     m_isPlaying = nowPlaying;
-                    emit playbackStateChanged();
+                    if (onPlaybackStateChanged) onPlaybackStateChanged();
                 }
             }
         }
@@ -121,7 +162,7 @@ void Playback::handleMpvEvent(mpv_event *event)
             const char *args[] = { "set", "pause", "yes", nullptr };
             mpv_command_async(m_mpv, 0, args);
         }
-        emit readyToPlay();
+        if (onReadyToPlay) onReadyToPlay();
         break;
     }
 
@@ -132,28 +173,25 @@ void Playback::handleMpvEvent(mpv_event *event)
             if (m_hasAppendedTrack && !m_repeatTrackPending) {
                 m_hasAppendedTrack = false;
                 m_gaplessAdvance   = true;
-                emit trackAdvancedGapless();
+                if (onTrackAdvancedGapless) onTrackAdvancedGapless();
             } else {
                 m_hasAppendedTrack   = false;
                 m_repeatTrackPending = false;
                 m_isPlaying          = false;
-                emit trackEnded();
+                if (onTrackEnded) onTrackEnded();
             }
         }
         break;
     }
+
     default:
         break;
     }
 }
 
-void Playback::observeProperties()
-{
-    checkMpvError(mpv_observe_property(m_mpv, 0, "time-pos",  MPV_FORMAT_DOUBLE), "observe time-pos");
-    checkMpvError(mpv_observe_property(m_mpv, 0, "duration",  MPV_FORMAT_DOUBLE), "observe duration");
-    checkMpvError(mpv_observe_property(m_mpv, 0, "core-idle", MPV_FORMAT_FLAG),   "observe core-idle");
-    checkMpvError(mpv_observe_property(m_mpv, 0, "pause",     MPV_FORMAT_FLAG),   "observe pause");
-}
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
 
 void Playback::loadTrack(const Track &track, bool autoPlay)
 {
@@ -163,11 +201,10 @@ void Playback::loadTrack(const Track &track, bool autoPlay)
     m_position        = 0;
     m_duration        = 0;
 
-    emit positionChanged();
-    emit durationChanged();
+    if (onPositionChanged) onPositionChanged();
+    if (onDurationChanged) onDurationChanged();
 
-    const QByteArray pathBytes = track.path.toUtf8();
-    const char *args[] = { "loadfile", pathBytes.constData(), "replace", nullptr };
+    const char *args[] = { "loadfile", track.path.c_str(), "replace", nullptr };
     checkMpvError(mpv_command_async(m_mpv, 0, args), "loadfile");
 }
 
@@ -191,25 +228,18 @@ void Playback::appendTrack(const Track &track)
     m_hasAppendedTrack = true;
     m_gaplessAdvance   = false;
 
-    const QByteArray pathBytes = track.path.toUtf8();
-    const char *args[] = { "loadfile", pathBytes.constData(), "append", nullptr };
+    const char *args[] = { "loadfile", track.path.c_str(), "append", nullptr };
     checkMpvError(mpv_command_async(m_mpv, 0, args), "appendTrack");
 }
 
-void Playback::seekTo(qint64 positionMs)
+void Playback::seekTo(int64_t positionMs)
 {
     if (!m_mpv) return;
-
-    double secs = positionMs / 1000.0;
-    const QByteArray secsStr = QString::number(secs, 'f', 3).toUtf8();
-    const char *args[] = { "seek", secsStr.constData(), "absolute", nullptr };
+    char secsStr[32];
+    snprintf(secsStr, sizeof(secsStr), "%.3f", positionMs / 1000.0);
+    const char *args[] = { "seek", secsStr, "absolute", nullptr };
     checkMpvError(mpv_command_async(m_mpv, 0, args), "seek");
 }
-
-bool   Playback::isPlaying() const { return m_isPlaying; }
-qint64 Playback::position()  const { return m_position; }
-qint64 Playback::duration()  const { return m_duration; }
-float  Playback::volume()    const { return m_volume; }
 
 void Playback::setVolume(float volume)
 {

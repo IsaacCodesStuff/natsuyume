@@ -1,61 +1,70 @@
 #ifndef PLAYBACK_H
 #define PLAYBACK_H
 
-#include <QObject>
 #include <mpv/client.h>
+#include <functional>
+#include <atomic>
+#include <mutex>
+#include <cstdint>
 #include "track.h"
 
-class Playback : public QObject
+class Playback
 {
-    Q_OBJECT
-
 public:
-    explicit Playback(QObject *parent = nullptr);
+    Playback();
     ~Playback();
 
     // --- Controls ---
     void play();
     void pause();
-    void appendTrack(const Track &track);
-    void seekTo(qint64 positionMs);
     void loadTrack(const Track &track, bool autoPlay = false);
-
-    // --- Getters ---
-    bool   isPlaying() const;
-    qint64 position()  const;
-    qint64 duration()  const;
-    float  volume()    const;
-    void   setVolume(float volume);
-    void clearAppendedTrack(); // removes any appended track from mpv's playlist
+    void appendTrack(const Track &track);
+    void seekTo(int64_t positionMs);
+    void setVolume(float volume);
+    void clearAppendedTrack();
     void setRepeatTrackPending(bool pending) { m_repeatTrackPending = pending; }
 
-signals:
-    void playbackStateChanged();
-    void positionChanged();
-    void durationChanged();
-    void readyToPlay();
-    void trackEnded();
-    void trackAdvancedGapless();
+    // --- Getters ---
+    bool    isPlaying() const { return m_isPlaying; }
+    int64_t position()  const { return m_position;  }
+    int64_t duration()  const { return m_duration;  }
+    float   volume()    const { return m_volume;    }
 
-private slots:
-    void onMpvEvents();
+    // --- Callbacks (set before use) ---
+    std::function<void()> onPlaybackStateChanged;
+    std::function<void()> onPositionChanged;
+    std::function<void()> onDurationChanged;
+    std::function<void()> onReadyToPlay;
+    std::function<void()> onTrackEnded;
+    std::function<void()> onTrackAdvancedGapless;
+
+    // Called by the owner's event loop to drain pending mpv events.
+    // Must be called on the main thread whenever the wakeup pipe is readable.
+    void processPendingEvents();
+
+    // File descriptor that becomes readable when mpv has events pending.
+    // The owner should poll/select/epoll this and call processPendingEvents().
+    int wakeupReadFd() const { return m_pipeFd[0]; }
 
 private:
     mpv_handle *m_mpv = nullptr;
-    float       m_volume = 0.8f;
-    bool        m_pendingAutoPlay = false;
-    bool        m_isPlaying = false;
-    qint64      m_position  = 0;
-    qint64      m_duration  = 0;
+
+    float   m_volume   = 0.8f;
+    bool    m_isPlaying       = false;
+    bool    m_pendingAutoPlay = false;
+    bool    m_processingEvents = false;
+    bool    m_hasAppendedTrack = false;
+    bool    m_gaplessAdvance   = false;
+    bool    m_repeatTrackPending = false;
+    int64_t m_position = 0;
+    int64_t m_duration = 0;
+
+    // Self-pipe for wakeup marshalling
+    int m_pipeFd[2] = {-1, -1};
 
     void handleMpvEvent(mpv_event *event);
     void observeProperties();
-
     static void mpvWakeupCallback(void *ctx);
-    bool m_hasAppendedTrack = false;
-    bool m_gaplessAdvance = false;
-    bool m_processingEvents = false;
-    bool m_repeatTrackPending = false;
 };
 
 #endif // PLAYBACK_H
