@@ -1,47 +1,63 @@
 #include "userdata.h"
-#include <QSqlQuery>
-#include <QSqlError>
-#include <QStandardPaths>
-#include <QDir>
-#include <QDateTime>
-#include <QDebug>
+#include <chrono>
+#include <filesystem>
 
-UserData::UserData(QObject *parent)
-    : QObject(parent)
-{}
+// ---------------------------------------------------------------------------
+// RAII statement wrapper (same pattern as library.cpp)
+// ---------------------------------------------------------------------------
+struct Stmt {
+    sqlite3_stmt *s = nullptr;
+    ~Stmt() { if (s) sqlite3_finalize(s); }
+    operator sqlite3_stmt *() { return s; }
+};
+
+static int64_t nowSeconds()
+{
+    return std::chrono::duration_cast<std::chrono::seconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+UserData::UserData() = default;
 
 UserData::~UserData()
 {
-    if (m_db.isOpen())
-        m_db.close();
+    if (m_db) sqlite3_close(m_db);
 }
 
-bool UserData::open()
+bool UserData::open(const std::string &dataDir)
 {
-    QString dataPath = QStandardPaths::writableLocation(
-        QStandardPaths::AppDataLocation);
-    QDir().mkpath(dataPath);
+    std::filesystem::create_directories(dataDir);
+    std::string dbPath = dataDir + "/userdata.db";
 
-    m_db = QSqlDatabase::addDatabase("QSQLITE", "natsuyume_userdata");
-    m_db.setDatabaseName(dataPath + "/userdata.db");
-
-    if (!m_db.open()) {
-        qWarning() << "UserData: failed to open database:" << m_db.lastError().text();
+    if (sqlite3_open(dbPath.c_str(), &m_db) != SQLITE_OK)
         return false;
-    }
 
     createSchema();
     return true;
 }
 
+bool UserData::exec(const std::string &sql) const
+{
+    char *err = nullptr;
+    int rc = sqlite3_exec(m_db, sql.c_str(), nullptr, nullptr, &err);
+    if (err) sqlite3_free(err);
+    return rc == SQLITE_OK;
+}
+
+// ---------------------------------------------------------------------------
+// Schema
+// ---------------------------------------------------------------------------
+
 void UserData::createSchema()
 {
-    QSqlQuery q(m_db);
-    q.exec("PRAGMA journal_mode=WAL");
-    q.exec("PRAGMA foreign_keys = ON");
+    exec("PRAGMA journal_mode=WAL");
+    exec("PRAGMA foreign_keys=ON");
 
-    // Per-track user data — keyed by path, independent of library.db
-    q.exec(R"(
+    exec(R"(
         CREATE TABLE IF NOT EXISTS user_track_data (
             path             TEXT PRIMARY KEY,
             play_count       INTEGER NOT NULL DEFAULT 0,
@@ -50,15 +66,13 @@ void UserData::createSchema()
         )
     )");
 
-    // Favorited paths not in the library (moved/deleted tracks)
-    q.exec(R"(
+    exec(R"(
         CREATE TABLE IF NOT EXISTS favorite_paths (
             path TEXT PRIMARY KEY
         )
     )");
 
-    // Playlists with optional user-supplied image
-    q.exec(R"(
+    exec(R"(
         CREATE TABLE IF NOT EXISTS playlists (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             name       TEXT NOT NULL UNIQUE,
@@ -66,373 +80,470 @@ void UserData::createSchema()
         )
     )");
 
-    q.exec(R"(
+    exec(R"(
         CREATE TABLE IF NOT EXISTS playlist_tracks (
             playlist_id INTEGER NOT NULL,
-            path        TEXT NOT NULL,
+            path        TEXT    NOT NULL,
             position    INTEGER NOT NULL,
             PRIMARY KEY (playlist_id, path),
             FOREIGN KEY (playlist_id) REFERENCES playlists(id) ON DELETE CASCADE
         )
     )");
 
-    // Per-artist user-supplied image
-    q.exec(R"(
+    exec(R"(
         CREATE TABLE IF NOT EXISTS artist_images (
             artist     TEXT PRIMARY KEY,
             image_path TEXT NOT NULL DEFAULT ''
         )
     )");
-
-    if (q.lastError().isValid())
-        qWarning() << "UserData: schema error:" << q.lastError().text();
 }
 
-// --- Favorites ---
+// ---------------------------------------------------------------------------
+// Favorites
+// ---------------------------------------------------------------------------
 
-void UserData::setFavorite(const QString &path, bool favorite)
+void UserData::setFavorite(const std::string &path, bool favorite)
 {
-    // Ensure row exists in user_track_data
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        INSERT OR IGNORE INTO user_track_data (path) VALUES (:path)
-    )");
-    q.bindValue(":path", path);
-    q.exec();
-
-    q.prepare(R"(
-        UPDATE user_track_data SET is_favorite = :fav WHERE path = :path
-    )");
-    q.bindValue(":fav",  favorite ? 1 : 0);
-    q.bindValue(":path", path);
-    q.exec();
-
-    // Also maintain favorite_paths for tracks not in the library
-    if (favorite) {
-        q.prepare("INSERT OR IGNORE INTO favorite_paths (path) VALUES (:path)");
-    } else {
-        q.prepare("DELETE FROM favorite_paths WHERE path = :path");
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db,
+                "INSERT OR IGNORE INTO user_track_data (path) VALUES (?)",
+                -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+        }
     }
-    q.bindValue(":path", path);
-    q.exec();
-
-    emit favoritesChanged();
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db,
+                "UPDATE user_track_data SET is_favorite = ? WHERE path = ?",
+                -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int (stmt, 1, favorite ? 1 : 0);
+            sqlite3_bind_text(stmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+        }
+    }
+    {
+        Stmt stmt;
+        const char *sql = favorite
+            ? "INSERT OR IGNORE INTO favorite_paths (path) VALUES (?)"
+            : "DELETE FROM favorite_paths WHERE path = ?";
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+        }
+    }
+    if (onFavoritesChanged) onFavoritesChanged();
 }
 
-bool UserData::isFavorite(const QString &path) const
+bool UserData::isFavorite(const std::string &path) const
 {
-    QSqlQuery q(m_db);
-    q.prepare("SELECT is_favorite FROM user_track_data WHERE path = :path");
-    q.bindValue(":path", path);
-    q.exec();
-    if (q.next()) return q.value(0).toInt() == 1;
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT is_favorite FROM user_track_data WHERE path = ?",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW)
+        return sqlite3_column_int(stmt, 0) == 1;
     return false;
 }
 
-QSet<QString> UserData::allFavoritePaths() const
+std::unordered_set<std::string> UserData::allFavoritePaths() const
 {
-    QSet<QString> result;
-    QSqlQuery q(m_db);
-    q.exec("SELECT path FROM user_track_data WHERE is_favorite = 1");
-    while (q.next()) result.insert(q.value(0).toString());
-    q.exec("SELECT path FROM favorite_paths");
-    while (q.next()) result.insert(q.value(0).toString());
+    std::unordered_set<std::string> result;
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db,
+                "SELECT path FROM user_track_data WHERE is_favorite = 1",
+                -1, &stmt.s, nullptr) == SQLITE_OK) {
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                const char *v = reinterpret_cast<const char *>(
+                    sqlite3_column_text(stmt, 0));
+                if (v) result.insert(v);
+            }
+        }
+    }
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db,
+                "SELECT path FROM favorite_paths",
+                -1, &stmt.s, nullptr) == SQLITE_OK) {
+            while (sqlite3_step(stmt) == SQLITE_ROW) {
+                const char *v = reinterpret_cast<const char *>(
+                    sqlite3_column_text(stmt, 0));
+                if (v) result.insert(v);
+            }
+        }
+    }
     return result;
 }
 
-// --- Play stats ---
+// ---------------------------------------------------------------------------
+// Play stats
+// ---------------------------------------------------------------------------
 
-void UserData::incrementPlayCount(const QString &path)
+void UserData::incrementPlayCount(const std::string &path)
 {
-    QSqlQuery q(m_db);
-    q.prepare("INSERT OR IGNORE INTO user_track_data (path) VALUES (:path)");
-    q.bindValue(":path", path);
-    q.exec();
-
-    q.prepare(R"(
-        UPDATE user_track_data
-        SET play_count       = play_count + 1,
-            date_last_played = :now
-        WHERE path = :path
-    )");
-    q.bindValue(":now",  QDateTime::currentSecsSinceEpoch());
-    q.bindValue(":path", path);
-    q.exec();
-
-    emit statsChanged();
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db,
+                "INSERT OR IGNORE INTO user_track_data (path) VALUES (?)",
+                -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+        }
+    }
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            UPDATE user_track_data
+            SET play_count = play_count + 1,
+                date_last_played = ?
+            WHERE path = ?
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int64(stmt, 1, nowSeconds());
+            sqlite3_bind_text (stmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+        }
+    }
+    if (onStatsChanged) onStatsChanged();
 }
 
-int UserData::playCount(const QString &path) const
+int UserData::playCount(const std::string &path) const
 {
-    QSqlQuery q(m_db);
-    q.prepare("SELECT play_count FROM user_track_data WHERE path = :path");
-    q.bindValue(":path", path);
-    q.exec();
-    return q.next() ? q.value(0).toInt() : 0;
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT play_count FROM user_track_data WHERE path = ?",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return 0;
+    sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_TRANSIENT);
+    return sqlite3_step(stmt) == SQLITE_ROW ? sqlite3_column_int(stmt, 0) : 0;
 }
 
-qint64 UserData::dateLastPlayed(const QString &path) const
+int64_t UserData::dateLastPlayed(const std::string &path) const
 {
-    QSqlQuery q(m_db);
-    q.prepare("SELECT date_last_played FROM user_track_data WHERE path = :path");
-    q.bindValue(":path", path);
-    q.exec();
-    return q.next() ? q.value(0).toLongLong() : 0;
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT date_last_played FROM user_track_data WHERE path = ?",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return 0;
+    sqlite3_bind_text(stmt, 1, path.c_str(), -1, SQLITE_TRANSIENT);
+    return sqlite3_step(stmt) == SQLITE_ROW
+               ? sqlite3_column_int64(stmt, 0) : 0;
 }
 
-// --- Merging ---
+// ---------------------------------------------------------------------------
+// Merging
+// ---------------------------------------------------------------------------
 
 void UserData::applyUserData(Track &track) const
 {
-    QSqlQuery q(m_db);
-    q.prepare(R"(
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db, R"(
         SELECT play_count, date_last_played, is_favorite
-        FROM user_track_data WHERE path = :path
-    )");
-    q.bindValue(":path", track.path);
-    q.exec();
-    if (q.next()) {
-        track.playCount      = q.value(0).toInt();
-        track.dateLastPlayed = q.value(1).toLongLong();
-        track.isFavorite     = q.value(2).toInt() == 1;
+        FROM user_track_data WHERE path = ?
+    )", -1, &stmt.s, nullptr) != SQLITE_OK)
+        return;
+
+    sqlite3_bind_text(stmt, 1, track.path.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        track.playCount      = sqlite3_column_int  (stmt, 0);
+        track.dateLastPlayed = sqlite3_column_int64(stmt, 1);
+        track.isFavorite     = sqlite3_column_int  (stmt, 2) == 1;
     }
 }
 
-void UserData::applyUserData(QList<Track> &tracks) const
+void UserData::applyUserData(std::vector<Track> &tracks) const
 {
     for (Track &t : tracks)
         applyUserData(t);
 }
 
-// --- Playlists ---
+// ---------------------------------------------------------------------------
+// Playlists
+// ---------------------------------------------------------------------------
 
-int UserData::createPlaylist(const QString &name)
+int UserData::createPlaylist(const std::string &name)
 {
-    QSqlQuery q(m_db);
-    q.prepare("INSERT INTO playlists (name) VALUES (:name)");
-    q.bindValue(":name", name);
-    if (!q.exec()) {
-        qWarning() << "UserData: createPlaylist error:" << q.lastError().text();
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "INSERT INTO playlists (name) VALUES (?)",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
         return -1;
-    }
-    emit playlistsChanged();
-    return q.lastInsertId().toInt();
+
+    sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+        return -1;
+
+    int id = static_cast<int>(sqlite3_last_insert_rowid(m_db));
+    if (onPlaylistsChanged) onPlaylistsChanged();
+    return id;
 }
 
 void UserData::deletePlaylist(int playlistId)
 {
-    QSqlQuery q(m_db);
-    q.prepare("DELETE FROM playlists WHERE id = :id");
-    q.bindValue(":id", playlistId);
-    q.exec();
-    emit playlistsChanged();
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "DELETE FROM playlists WHERE id = ?",
+            -1, &stmt.s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int(stmt, 1, playlistId);
+        sqlite3_step(stmt);
+    }
+    if (onPlaylistsChanged) onPlaylistsChanged();
 }
 
-void UserData::renamePlaylist(int playlistId, const QString &name)
+void UserData::renamePlaylist(int playlistId, const std::string &name)
 {
-    QSqlQuery q(m_db);
-    q.prepare("UPDATE playlists SET name = :name WHERE id = :id");
-    q.bindValue(":name", name);
-    q.bindValue(":id",   playlistId);
-    q.exec();
-    emit playlistsChanged();
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "UPDATE playlists SET name = ? WHERE id = ?",
+            -1, &stmt.s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, name.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (stmt, 2, playlistId);
+        sqlite3_step(stmt);
+    }
+    if (onPlaylistsChanged) onPlaylistsChanged();
 }
 
-void UserData::setPlaylistImage(int playlistId, const QString &imagePath)
+void UserData::setPlaylistImage(int playlistId, const std::string &imagePath)
 {
-    QSqlQuery q(m_db);
-    q.prepare("UPDATE playlists SET image_path = :img WHERE id = :id");
-    q.bindValue(":img", imagePath);
-    q.bindValue(":id",  playlistId);
-    q.exec();
-    emit playlistsChanged();
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "UPDATE playlists SET image_path = ? WHERE id = ?",
+            -1, &stmt.s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, imagePath.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (stmt, 2, playlistId);
+        sqlite3_step(stmt);
+    }
+    if (onPlaylistsChanged) onPlaylistsChanged();
 }
 
-void UserData::addTrackToPlaylist(int playlistId, const QString &path)
+void UserData::addTrackToPlaylist(int playlistId, const std::string &path)
 {
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        SELECT COALESCE(MAX(position), -1)
-        FROM playlist_tracks WHERE playlist_id = :id
-    )");
-    q.bindValue(":id", playlistId);
-    q.exec();
-    int nextPos = q.next() ? q.value(0).toInt() + 1 : 0;
-
-    q.prepare(R"(
-        INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
-        VALUES (:id, :path, :pos)
-    )");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":path", path);
-    q.bindValue(":pos",  nextPos);
-    q.exec();
-    emit playlistsChanged();
+    int nextPos = 0;
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            SELECT COALESCE(MAX(position), -1)
+            FROM playlist_tracks WHERE playlist_id = ?
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, playlistId);
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+                nextPos = sqlite3_column_int(stmt, 0) + 1;
+        }
+    }
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
+            VALUES (?,?,?)
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int (stmt, 1, playlistId);
+            sqlite3_bind_text(stmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int (stmt, 3, nextPos);
+            sqlite3_step(stmt);
+        }
+    }
+    if (onPlaylistsChanged) onPlaylistsChanged();
 }
 
-void UserData::removeTrackFromPlaylist(int playlistId, const QString &path)
+void UserData::removeTrackFromPlaylist(int playlistId, const std::string &path)
 {
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        SELECT position FROM playlist_tracks
-        WHERE playlist_id = :id AND path = :path
-    )");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":path", path);
-    q.exec();
-    if (!q.next()) return;
-    int removedPos = q.value(0).toInt();
-
-    q.prepare(R"(
-        DELETE FROM playlist_tracks
-        WHERE playlist_id = :id AND path = :path
-    )");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":path", path);
-    q.exec();
-
-    q.prepare(R"(
-        UPDATE playlist_tracks SET position = position - 1
-        WHERE playlist_id = :id AND position > :pos
-    )");
-    q.bindValue(":id",  playlistId);
-    q.bindValue(":pos", removedPos);
-    q.exec();
-    emit playlistsChanged();
+    int removedPos = -1;
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            SELECT position FROM playlist_tracks
+            WHERE playlist_id = ? AND path = ?
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int (stmt, 1, playlistId);
+            sqlite3_bind_text(stmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
+            if (sqlite3_step(stmt) == SQLITE_ROW)
+                removedPos = sqlite3_column_int(stmt, 0);
+        }
+    }
+    if (removedPos < 0) return;
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            DELETE FROM playlist_tracks
+            WHERE playlist_id = ? AND path = ?
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int (stmt, 1, playlistId);
+            sqlite3_bind_text(stmt, 2, path.c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_step(stmt);
+        }
+    }
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            UPDATE playlist_tracks SET position = position - 1
+            WHERE playlist_id = ? AND position > ?
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, playlistId);
+            sqlite3_bind_int(stmt, 2, removedPos);
+            sqlite3_step(stmt);
+        }
+    }
+    if (onPlaylistsChanged) onPlaylistsChanged();
 }
 
 void UserData::moveTrackInPlaylist(int playlistId, int from, int to)
 {
     if (from == to) return;
-    QSqlQuery q(m_db);
 
-    q.prepare(R"(
-        UPDATE playlist_tracks SET position = -1
-        WHERE playlist_id = :id AND position = :from
-    )");
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":from", from);
-    q.exec();
-
-    if (from < to) {
-        q.prepare(R"(
-            UPDATE playlist_tracks SET position = position - 1
-            WHERE playlist_id = :id AND position > :from AND position <= :to
-        )");
-    } else {
-        q.prepare(R"(
-            UPDATE playlist_tracks SET position = position + 1
-            WHERE playlist_id = :id AND position >= :to AND position < :from
-        )");
+    // Temporarily set to -1 to avoid constraint conflicts
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            UPDATE playlist_tracks SET position = -1
+            WHERE playlist_id = ? AND position = ?
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, playlistId);
+            sqlite3_bind_int(stmt, 2, from);
+            sqlite3_step(stmt);
+        }
     }
-    q.bindValue(":id",   playlistId);
-    q.bindValue(":from", from);
-    q.bindValue(":to",   to);
-    q.exec();
-
-    q.prepare(R"(
-        UPDATE playlist_tracks SET position = :to
-        WHERE playlist_id = :id AND position = -1
-    )");
-    q.bindValue(":id", playlistId);
-    q.bindValue(":to", to);
-    q.exec();
-    emit playlistsChanged();
+    {
+        Stmt stmt;
+        const char *sql = (from < to)
+            ? "UPDATE playlist_tracks SET position = position - 1 WHERE playlist_id = ? AND position > ? AND position <= ?"
+            : "UPDATE playlist_tracks SET position = position + 1 WHERE playlist_id = ? AND position >= ? AND position < ?";
+        if (sqlite3_prepare_v2(m_db, sql, -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, playlistId);
+            sqlite3_bind_int(stmt, 2, from);
+            sqlite3_bind_int(stmt, 3, to);
+            sqlite3_step(stmt);
+        }
+    }
+    {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            UPDATE playlist_tracks SET position = ?
+            WHERE playlist_id = ? AND position = -1
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int(stmt, 1, to);
+            sqlite3_bind_int(stmt, 2, playlistId);
+            sqlite3_step(stmt);
+        }
+    }
+    if (onPlaylistsChanged) onPlaylistsChanged();
 }
 
 void UserData::sortPlaylist(int playlistId,
                             Library::TrackSort sort, bool ascending)
 {
-    // Fetch ordered paths from library.db via a cross-db query is not
-    // possible here — caller must supply sorted paths instead.
-    // This is handled by UserDataManager::sortPlaylist.
-    Q_UNUSED(playlistId); Q_UNUSED(sort); Q_UNUSED(ascending);
-    qWarning() << "UserData::sortPlaylist: call UserDataManager::sortPlaylist instead";
+    // Intentionally unimplemented here — handled by UserDataManager::sortPlaylist
+    (void)playlistId; (void)sort; (void)ascending;
 }
 
-int UserData::saveQueueAsPlaylist(const QString &name, const QStringList &paths)
+int UserData::saveQueueAsPlaylist(const std::string &name,
+                                  const std::vector<std::string> &paths)
 {
     int id = createPlaylist(name);
     if (id < 0) return -1;
 
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
-        VALUES (:id, :path, :pos)
-    )");
-    for (int i = 0; i < paths.size(); ++i) {
-        q.bindValue(":id",   id);
-        q.bindValue(":path", paths[i]);
-        q.bindValue(":pos",  i);
-        q.exec();
+    for (int i = 0; i < (int)paths.size(); ++i) {
+        Stmt stmt;
+        if (sqlite3_prepare_v2(m_db, R"(
+            INSERT OR IGNORE INTO playlist_tracks (playlist_id, path, position)
+            VALUES (?,?,?)
+        )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int (stmt, 1, id);
+            sqlite3_bind_text(stmt, 2, paths[i].c_str(), -1, SQLITE_TRANSIENT);
+            sqlite3_bind_int (stmt, 3, i);
+            sqlite3_step(stmt);
+        }
     }
-    emit playlistsChanged();
+    if (onPlaylistsChanged) onPlaylistsChanged();
     return id;
 }
 
-QList<PlaylistInfo> UserData::allPlaylists() const
+std::vector<PlaylistInfo> UserData::allPlaylists() const
 {
-    QList<PlaylistInfo> result;
-    QSqlQuery q(m_db);
-    q.exec("SELECT id, name, image_path FROM playlists ORDER BY name ASC");
-    while (q.next()) {
+    std::vector<PlaylistInfo> result;
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT id, name, image_path FROM playlists ORDER BY name ASC",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return result;
+
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
         PlaylistInfo info;
-        info.id        = q.value(0).toInt();
-        info.name      = q.value(1).toString();
-        info.imagePath = q.value(2).toString();
-        result.append(info);
+        info.id   = sqlite3_column_int(stmt, 0);
+        const char *n = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
+        const char *p = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
+        info.name      = n ? n : "";
+        info.imagePath = p ? p : "";
+        result.push_back(std::move(info));
     }
     return result;
 }
 
-QStringList UserData::playlistTrackPaths(int playlistId) const
+std::vector<std::string> UserData::playlistTrackPaths(int playlistId) const
 {
-    QStringList result;
-    QSqlQuery q(m_db);
-    q.prepare(R"(
+    std::vector<std::string> result;
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db, R"(
         SELECT path FROM playlist_tracks
-        WHERE playlist_id = :id ORDER BY position ASC
-    )");
-    q.bindValue(":id", playlistId);
-    q.exec();
-    while (q.next()) result.append(q.value(0).toString());
+        WHERE playlist_id = ? ORDER BY position ASC
+    )", -1, &stmt.s, nullptr) != SQLITE_OK)
+        return result;
+
+    sqlite3_bind_int(stmt, 1, playlistId);
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *v = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+        if (v) result.push_back(v);
+    }
     return result;
 }
 
-// --- Artist images ---
+// ---------------------------------------------------------------------------
+// Artist images
+// ---------------------------------------------------------------------------
 
-void UserData::setArtistImage(const QString &artist, const QString &imagePath)
+void UserData::setArtistImage(const std::string &artist,
+                              const std::string &imagePath)
 {
-    QSqlQuery q(m_db);
-    q.prepare(R"(
-        INSERT INTO artist_images (artist, image_path)
-        VALUES (:artist, :img)
-        ON CONFLICT(artist) DO UPDATE SET image_path = :img
-    )");
-    q.bindValue(":artist", artist);
-    q.bindValue(":img",    imagePath);
-    q.exec();
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db, R"(
+        INSERT INTO artist_images (artist, image_path) VALUES (?,?)
+        ON CONFLICT(artist) DO UPDATE SET image_path = ?
+    )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, artist.c_str(),    -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, imagePath.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, imagePath.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+    }
 }
 
-QString UserData::artistImage(const QString &artist) const
+std::string UserData::artistImage(const std::string &artist) const
 {
-    QSqlQuery q(m_db);
-    q.prepare("SELECT image_path FROM artist_images WHERE artist = :artist");
-    q.bindValue(":artist", artist);
-    q.exec();
-    return q.next() ? q.value(0).toString() : QString();
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT image_path FROM artist_images WHERE artist = ?",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return "";
+    sqlite3_bind_text(stmt, 1, artist.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *v = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+        return v ? v : "";
+    }
+    return "";
 }
 
-// --- Nuclear reset ---
+// ---------------------------------------------------------------------------
+// Nuclear reset
+// ---------------------------------------------------------------------------
 
 void UserData::clearAll()
 {
-    QSqlQuery q(m_db);
-    q.exec("DELETE FROM user_track_data");
-    q.exec("DELETE FROM favorite_paths");
-    q.exec("DELETE FROM playlists");
-    q.exec("DELETE FROM artist_images");
-    emit playlistsChanged();
-    emit favoritesChanged();
-    emit statsChanged();
+    exec("DELETE FROM user_track_data");
+    exec("DELETE FROM favorite_paths");
+    exec("DELETE FROM playlists");
+    exec("DELETE FROM artist_images");
+    if (onPlaylistsChanged) onPlaylistsChanged();
+    if (onFavoritesChanged) onFavoritesChanged();
+    if (onStatsChanged)     onStatsChanged();
 }

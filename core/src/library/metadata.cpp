@@ -16,49 +16,84 @@
 #include <taglib/mp4tag.h>
 #include <taglib/mp4item.h>
 
-#include <QImage>
-#include <QDebug>
-#include "lrcparser.h"
-#include <QFileInfo>
-#include <QFile>
-#include <QDir>
+#include <unicode/unistr.h>
+#include <unicode/normalizer2.h>
 
-// Helper to read a Xiph comment field (Ogg/FLAC)
-static QString xiphField(TagLib::Ogg::XiphComment *xiph, const char *key)
+#include <fstream>
+#include <sstream>
+#include <filesystem>
+#include <cstring>
+
+#include "lrcparser.h"
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+static std::string xiphField(TagLib::Ogg::XiphComment *xiph, const char *key)
 {
-    if (!xiph) return QString(""); // Changed to ""
+    if (!xiph) return "";
     const auto &map = xiph->fieldListMap();
     auto it = map.find(key);
     if (it == map.end() || it->second.isEmpty())
-        return QString(""); // Changed to ""
-    return QString::fromStdString(it->second.front().to8Bit(true));
-}
-
-static QImage loadAndCapImage(const uchar *data, int size, int maxDimension = 1000)
-{
-    QImage img;
-    img.loadFromData(data, size);
-    if (img.isNull()) return img;
-    if (img.width() > maxDimension || img.height() > maxDimension)
-        img = img.scaled(maxDimension, maxDimension,
-                         Qt::KeepAspectRatio,
-                         Qt::SmoothTransformation);
-    return img;
+        return "";
+    return it->second.front().to8Bit(true);
 }
 
 static int xiphInt(TagLib::Ogg::XiphComment *xiph, const char *key)
 {
-    QString val = xiphField(xiph, key);
-    if (val.isEmpty()) return 0;
+    std::string val = xiphField(xiph, key);
+    if (val.empty()) return 0;
     // Handle "1/2" disc/track format
-    return val.section('/', 0, 0).toInt();
+    auto slash = val.find('/');
+    std::string part = (slash != std::string::npos) ? val.substr(0, slash) : val;
+    try { return std::stoi(part); } catch (...) { return 0; }
 }
 
-Track Metadata::read(const QString &path, bool includeCoverArt)
+// Copy raw image bytes into track — no decoding, no scaling.
+// Flutter handles display-side scaling.
+static void loadCoverBytes(Track &track,
+                           const void *data,
+                           size_t size,
+                           const std::string &mimeType = "image/jpeg")
+{
+    if (!data || size == 0) return;
+    const uint8_t *bytes = reinterpret_cast<const uint8_t *>(data);
+    track.coverArtData.assign(bytes, bytes + size);
+    track.coverArtMimeType = mimeType;
+}
+
+// NFC-normalize + trim a UTF-8 string via ICU
+static std::string normalizeStr(const std::string &s)
+{
+    if (s.empty()) return s;
+
+    UErrorCode err = U_ZERO_ERROR;
+    const icu::Normalizer2 *nfc =
+        icu::Normalizer2::getNFCInstance(err);
+    if (U_FAILURE(err)) return s;
+
+    icu::UnicodeString us = icu::UnicodeString::fromUTF8(s);
+    icu::UnicodeString normalized = nfc->normalize(us, err);
+    if (U_FAILURE(err)) return s;
+
+    // Trim whitespace
+    normalized.trim();
+
+    std::string result;
+    normalized.toUTF8String(result);
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// Metadata::read
+// ---------------------------------------------------------------------------
+
+Track Metadata::read(const std::string &path, bool includeCoverArt)
 {
     Track track(path);
 
-    TagLib::FileRef ref(path.toUtf8().constData());
+    TagLib::FileRef ref(path.c_str());
 
     if (ref.isNull() || !ref.tag())
         return track;
@@ -66,14 +101,14 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
     TagLib::Tag *tag = ref.tag();
 
     // --- Basic tags ---
-    QString title  = QString::fromStdString(tag->title().to8Bit(true));
-    QString artist = QString::fromStdString(tag->artist().to8Bit(true));
-    QString album  = QString::fromStdString(tag->album().to8Bit(true));
-    QString genre  = QString::fromStdString(tag->genre().to8Bit(true));
+    std::string title  = tag->title().to8Bit(true);
+    std::string artist = tag->artist().to8Bit(true);
+    std::string album  = tag->album().to8Bit(true);
+    std::string genre  = tag->genre().to8Bit(true);
 
-    track.title  = title.isEmpty()  ? "Unknown Title"  : title;
-    track.artist = artist.isEmpty() ? "Unknown Artist" : artist;
-    track.album  = album.isEmpty()  ? "Unknown Album"  : album;
+    track.title  = title.empty()  ? "Unknown Title"  : title;
+    track.artist = artist.empty() ? "Unknown Artist" : artist;
+    track.album  = album.empty()  ? "Unknown Album"  : album;
     track.genre  = genre;
     track.year   = tag->year();
 
@@ -84,58 +119,59 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
     // --- Format-specific extended tags ---
     if (auto *mp3 = dynamic_cast<TagLib::MPEG::File *>(ref.file())) {
         if (auto *id3 = mp3->ID3v2Tag()) {
-            // Album artist
             auto aaFrames = id3->frameListMap()["TPE2"];
             if (!aaFrames.isEmpty())
-                track.albumArtist = QString::fromStdString(
-                    aaFrames.front()->toString().to8Bit(true));
+                track.albumArtist =
+                    aaFrames.front()->toString().to8Bit(true);
 
-            // Composer
             auto compFrames = id3->frameListMap()["TCOM"];
             if (!compFrames.isEmpty())
-                track.composer = QString::fromStdString(
-                    compFrames.front()->toString().to8Bit(true));
+                track.composer =
+                    compFrames.front()->toString().to8Bit(true);
 
-            // Track number (handles "5/12" format)
             auto trackFrames = id3->frameListMap()["TRCK"];
             if (!trackFrames.isEmpty()) {
-                QString trk = QString::fromStdString(
-                    trackFrames.front()->toString().to8Bit(true));
-                track.trackNumber = trk.section('/', 0, 0).toInt();
+                std::string trk = trackFrames.front()->toString().to8Bit(true);
+                auto slash = trk.find('/');
+                std::string part = (slash != std::string::npos)
+                                       ? trk.substr(0, slash) : trk;
+                try { track.trackNumber = std::stoi(part); } catch (...) {}
             }
 
-            // Disc number
             auto discFrames = id3->frameListMap()["TPOS"];
             if (!discFrames.isEmpty()) {
-                QString disc = QString::fromStdString(
-                    discFrames.front()->toString().to8Bit(true));
-                track.discNumber = disc.section('/', 0, 0).toInt();
-                if (track.discNumber < 1) track.discNumber = 1;
+                std::string disc = discFrames.front()->toString().to8Bit(true);
+                auto slash = disc.find('/');
+                std::string part = (slash != std::string::npos)
+                                       ? disc.substr(0, slash) : disc;
+                try {
+                    track.discNumber = std::stoi(part);
+                    if (track.discNumber < 1) track.discNumber = 1;
+                } catch (...) {}
             }
 
-            // Cover art
             if (includeCoverArt) {
                 auto apicFrames = id3->frameListMap()["APIC"];
                 if (!apicFrames.isEmpty()) {
                     auto *frame = dynamic_cast<TagLib::ID3v2::AttachedPictureFrame *>(
                         apicFrames.front());
                     if (frame) {
-                        track.coverArt = loadAndCapImage(
-                            reinterpret_cast<const uchar *>(frame->picture().data()),
-                            frame->picture().size());
+                        std::string mime = frame->mimeType().to8Bit(true);
+                        if (mime.empty()) mime = "image/jpeg";
+                        loadCoverBytes(track,
+                                       frame->picture().data(),
+                                       frame->picture().size(),
+                                       mime);
                     }
                 }
             }
 
-            // Lyrics — prefer USLT (synced-text container), fall back to SYLT
             auto usltFrames = id3->frameListMap()["USLT"];
             if (!usltFrames.isEmpty())
-                track.lyrics = QString::fromStdString(
-                    usltFrames.front()->toString().to8Bit(true));
+                track.lyrics = usltFrames.front()->toString().to8Bit(true);
         }
     }
     else if (auto *flac = dynamic_cast<TagLib::FLAC::File *>(ref.file())) {
-        // Extended tags from Xiph comment
         if (auto *xiph = flac->xiphComment()) {
             track.albumArtist = xiphField(xiph, "ALBUMARTIST");
             track.composer    = xiphField(xiph, "COMPOSER");
@@ -143,17 +179,19 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
             track.discNumber  = xiphInt(xiph, "DISCNUMBER");
             if (track.discNumber < 1) track.discNumber = 1;
             track.lyrics = xiphField(xiph, "LYRICS");
-            if (track.lyrics.isEmpty())
-            track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
+            if (track.lyrics.empty())
+                track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
         }
 
-        // Cover art
         if (includeCoverArt) {
             const auto &pics = flac->pictureList();
             if (!pics.isEmpty()) {
-                track.coverArt = loadAndCapImage(
-                    reinterpret_cast<const uchar *>(pics.front()->data().data()),
-                    pics.front()->data().size());
+                std::string mime = pics.front()->mimeType().to8Bit(true);
+                if (mime.empty()) mime = "image/jpeg";
+                loadCoverBytes(track,
+                               pics.front()->data().data(),
+                               pics.front()->data().size(),
+                               mime);
             }
         }
     }
@@ -165,15 +203,18 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
             track.discNumber  = xiphInt(xiph, "DISCNUMBER");
             if (track.discNumber < 1) track.discNumber = 1;
             track.lyrics = xiphField(xiph, "LYRICS");
-            if (track.lyrics.isEmpty())
-            track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
+            if (track.lyrics.empty())
+                track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
 
             if (includeCoverArt) {
                 const auto &pics = xiph->pictureList();
                 if (!pics.isEmpty()) {
-                    track.coverArt = loadAndCapImage(
-                        reinterpret_cast<const uchar *>(pics.front()->data().data()),
-                        pics.front()->data().size());
+                    std::string mime = pics.front()->mimeType().to8Bit(true);
+                    if (mime.empty()) mime = "image/jpeg";
+                    loadCoverBytes(track,
+                                   pics.front()->data().data(),
+                                   pics.front()->data().size(),
+                                   mime);
                 }
             }
         }
@@ -186,15 +227,18 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
             track.discNumber  = xiphInt(xiph, "DISCNUMBER");
             if (track.discNumber < 1) track.discNumber = 1;
             track.lyrics = xiphField(xiph, "LYRICS");
-            if (track.lyrics.isEmpty())
-            track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
+            if (track.lyrics.empty())
+                track.lyrics = xiphField(xiph, "UNSYNCEDLYRICS");
 
             if (includeCoverArt) {
                 const auto &pics = xiph->pictureList();
                 if (!pics.isEmpty()) {
-                    track.coverArt = loadAndCapImage(
-                        reinterpret_cast<const uchar *>(pics.front()->data().data()),
-                        pics.front()->data().size());
+                    std::string mime = pics.front()->mimeType().to8Bit(true);
+                    if (mime.empty()) mime = "image/jpeg";
+                    loadCoverBytes(track,
+                                   pics.front()->data().data(),
+                                   pics.front()->data().size(),
+                                   mime);
                 }
             }
         }
@@ -203,12 +247,12 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
         if (auto *mp4tag = mp4->tag()) {
             const auto &items = mp4tag->itemMap();
 
-            auto getStr = [&](const char *key) -> QString {
+            auto getStr = [&](const char *key) -> std::string {
                 auto it = items.find(key);
-                if (it == items.end()) return QString(""); // Changed to ""
+                if (it == items.end()) return "";
                 auto list = it->second.toStringList();
-                if (list.isEmpty()) return QString(""); // Changed to ""
-                return QString::fromStdString(list.front().to8Bit(true));
+                if (list.isEmpty()) return "";
+                return list.front().to8Bit(true);
             };
 
             track.albumArtist = getStr("aART");
@@ -227,64 +271,63 @@ Track Metadata::read(const QString &path, bool includeCoverArt)
                 if (track.discNumber < 1) track.discNumber = 1;
             }
 
-            // Cover art
             if (includeCoverArt) {
                 auto covIt = items.find("covr");
                 if (covIt != items.end()) {
                     auto coverList = covIt->second.toCoverArtList();
                     if (!coverList.isEmpty()) {
-                        track.coverArt = loadAndCapImage(
-                            reinterpret_cast<const uchar *>(coverList.front().data().data()),
-                            coverList.front().data().size());
+                        std::string mime =
+                            coverList.front().format() == TagLib::MP4::CoverArt::PNG
+                                ? "image/png" : "image/jpeg";
+                        loadCoverBytes(track,
+                                       coverList.front().data().data(),
+                                       coverList.front().data().size(),
+                                       mime);
                     }
                 }
             }
 
-            // Lyrics
             track.lyrics = getStr("\xa9lyr");
         }
     }
 
-    // ── Lyrics ────────────────────────────────────────────────────────────────
-    // Priority: .lrc sidecar > embedded tag
+    // --- LRC sidecar (priority over embedded lyrics) ---
+    std::filesystem::path audioPath(path);
+    std::filesystem::path lrcPath =
+        audioPath.parent_path() / (audioPath.stem().string() + ".lrc");
 
-    // 1. Look for a .lrc file next to the audio file
-    QFileInfo fi(path);
-    QString lrcPath = fi.dir().filePath(fi.completeBaseName() + ".lrc");
-    QFile lrcFile(lrcPath);
-    if (lrcFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        track.lyrics = QString::fromUtf8(lrcFile.readAll());
-        return track; // sidecar takes priority, skip embedded
+    if (std::filesystem::exists(lrcPath)) {
+        std::ifstream lrcFile(lrcPath);
+        if (lrcFile.is_open()) {
+            std::ostringstream ss;
+            ss << lrcFile.rdbuf();
+            track.lyrics = ss.str();
+        }
     }
 
-    // Sanitize all string fields — normalize null QStrings to empty,
-    // apply NFC normalization, and fill in fallback display values
-    auto sanitizeStr = [](QString &s) {
-        if (s.isNull()) s = QString("");
-        s = s.normalized(QString::NormalizationForm_C).trimmed();
+    // --- Sanitize all string fields ---
+    auto sanitize = [](std::string &s) {
+        s = normalizeStr(s);
     };
 
-    sanitizeStr(track.title);
-    sanitizeStr(track.artist);
-    sanitizeStr(track.album);
-    sanitizeStr(track.albumArtist);
-    sanitizeStr(track.composer);
-    sanitizeStr(track.genre);
-    sanitizeStr(track.lyrics);
+    sanitize(track.title);
+    sanitize(track.artist);
+    sanitize(track.album);
+    sanitize(track.albumArtist);
+    sanitize(track.composer);
+    sanitize(track.genre);
+    sanitize(track.lyrics);
 
-    // Fallback display values for missing required fields
-    if (track.title.isEmpty())  track.title  = "Unknown Title";
-    if (track.artist.isEmpty()) track.artist = "Unknown Artist";
-    if (track.album.isEmpty())  track.album  = "Unknown Album";
+    // Fallback display values
+    if (track.title.empty())  track.title  = "Unknown Title";
+    if (track.artist.empty()) track.artist = "Unknown Artist";
+    if (track.album.empty())  track.album  = "Unknown Album";
 
     // Numeric sanity
     if (track.trackNumber < 0) track.trackNumber = 0;
     if (track.discNumber  < 1) track.discNumber  = 1;
     if (track.year        < 0) track.year        = 0;
     if (track.duration    < 0) track.duration    = 0;
-
-    // 2. Embedded lyrics — already read per-format above, stored in track.lyrics
-    //    (populated in the format blocks below; nothing to do here)
 
     return track;
 }

@@ -2,6 +2,9 @@
 #include "metadata.h"
 #include <filesystem>
 #include <algorithm>
+#include <chrono>
+#include <unicode/unistr.h>
+#include <unicode/normalizer2.h>
 
 namespace fs = std::filesystem;
 
@@ -30,6 +33,20 @@ static bool isSupportedExtension(const std::string &ext)
     return std::find(exts.begin(), exts.end(), ext) != exts.end();
 }
 
+static std::string nfcNormalize(const std::string &s)
+{
+    if (s.empty()) return s;
+    UErrorCode err = U_ZERO_ERROR;
+    const icu::Normalizer2 *nfc = icu::Normalizer2::getNFCInstance(err);
+    if (U_FAILURE(err)) return s;
+    icu::UnicodeString us = icu::UnicodeString::fromUTF8(s);
+    icu::UnicodeString normalized = nfc->normalize(us, err);
+    if (U_FAILURE(err)) return s;
+    std::string result;
+    normalized.toUTF8String(result);
+    return result;
+}
+
 FileIndexer::FileIndexer() = default;
 
 FileIndexer::~FileIndexer()
@@ -44,7 +61,7 @@ bool FileIndexer::isScanning() const
     return m_scanning.load();
 }
 
-void FileIndexer::setKnownPaths(const std::unordered_map<std::string, qint64> &paths)
+void FileIndexer::setKnownPaths(const std::unordered_map<std::string, int64_t> &paths)
 {
     m_knownPathsSnapshot = paths;
 }
@@ -53,7 +70,6 @@ void FileIndexer::scanFolder(const std::string &folderPath)
 {
     if (m_scanning.load()) return;
 
-    // Join previous thread if it finished but wasn't cleaned up
     if (m_thread.joinable())
         m_thread.join();
 
@@ -82,82 +98,80 @@ void FileIndexer::cancel()
 void FileIndexer::doScan(const std::string &folderPath)
 {
     try {
-    fs::path root(folderPath);
-    if (!fs::exists(root) || !fs::is_directory(root)) {
-        if (m_onScanFinished) m_onScanFinished();
-        return;
-    }
-
-    // Count supported files first
-    int total = 0;
-    std::error_code ec;
-    for (const auto &entry : fs::recursive_directory_iterator(root,
-                                                              fs::directory_options::skip_permission_denied, ec)) {
-        if (entry.is_regular_file() &&
-            isSupportedExtension(extensionOf(entry.path())))
-            total++;
-    }
-
-    if (m_onScanStarted) m_onScanStarted(total);
-
-    int scanned = 0;
-    std::vector<Track> batch;
-    batch.reserve(10);
-    const int batchSize = 10;
-
-    for (const auto &entry : fs::recursive_directory_iterator(root,
-                                                              fs::directory_options::skip_permission_denied, ec)) {
-        if (m_cancelled.load()) {
-            if (!batch.empty() && m_onTracksFound)
-                m_onTracksFound(batch);
-            if (m_onScanCancelled) m_onScanCancelled();
+        fs::path root(folderPath);
+        if (!fs::exists(root) || !fs::is_directory(root)) {
+            if (m_onScanFinished) m_onScanFinished();
             return;
         }
 
-        if (!entry.is_regular_file()) continue;
-        if (!isSupportedExtension(extensionOf(entry.path()))) continue;
-
-        const std::string path = entry.path().string();
-        QString qpath = QString::fromStdString(path).normalized(QString::NormalizationForm_C);
-
-        // Get disk modification time
-        qint64 diskMtime = 0;
-        std::error_code mec;
-        auto ftime = fs::last_write_time(entry.path(), mec);
-        if (!mec) {
-            diskMtime = std::chrono::duration_cast<std::chrono::seconds>(
-                            ftime.time_since_epoch()).count();
+        // Count supported files first
+        int total = 0;
+        std::error_code ec;
+        for (const auto &entry : fs::recursive_directory_iterator(
+                root, fs::directory_options::skip_permission_denied, ec)) {
+            if (entry.is_regular_file() &&
+                isSupportedExtension(extensionOf(entry.path())))
+                total++;
         }
 
-        auto it = m_knownPaths.find(path);
-        bool isNew      = (it == m_knownPaths.end());
-        bool isModified = !isNew && (it->second < diskMtime);
+        if (m_onScanStarted) m_onScanStarted(total);
 
-        if (isNew || isModified) {
-            Track track = Metadata::read(qpath, false);
-            track.lastModified = diskMtime;
-            m_knownPaths[path] = diskMtime;
+        int scanned = 0;
+        std::vector<Track> batch;
+        batch.reserve(10);
+        const int batchSize = 10;
 
-            batch.push_back(track);
-
-            if ((int)batch.size() >= batchSize) {
-                if (m_onTracksFound) m_onTracksFound(batch);
-                batch.clear();
+        for (const auto &entry : fs::recursive_directory_iterator(
+                root, fs::directory_options::skip_permission_denied, ec)) {
+            if (m_cancelled.load()) {
+                if (!batch.empty() && m_onTracksFound)
+                    m_onTracksFound(batch);
+                if (m_onScanCancelled) m_onScanCancelled();
+                return;
             }
+
+            if (!entry.is_regular_file()) continue;
+            if (!isSupportedExtension(extensionOf(entry.path()))) continue;
+
+            // NFC-normalize the path for consistent DB keying
+            const std::string path = nfcNormalize(entry.path().string());
+
+            // Get disk modification time
+            int64_t diskMtime = 0;
+            std::error_code mec;
+            auto ftime = fs::last_write_time(entry.path(), mec);
+            if (!mec) {
+                diskMtime = std::chrono::duration_cast<std::chrono::seconds>(
+                    ftime.time_since_epoch()).count();
+            }
+
+            auto it = m_knownPaths.find(path);
+            bool isNew      = (it == m_knownPaths.end());
+            bool isModified = !isNew && (it->second < diskMtime);
+
+            if (isNew || isModified) {
+                Track track = Metadata::read(path, false);
+                track.lastModified = diskMtime;
+                m_knownPaths[path] = diskMtime;
+
+                batch.push_back(std::move(track));
+
+                if ((int)batch.size() >= batchSize) {
+                    if (m_onTracksFound) m_onTracksFound(batch);
+                    batch.clear();
+                }
+            }
+
+            if (m_onScanProgress)
+                m_onScanProgress(++scanned, total,
+                                 entry.path().filename().string());
         }
 
-        if (m_onScanProgress)
-            m_onScanProgress(++scanned, total, entry.path().filename().string());
-    }
+        if (!batch.empty() && m_onTracksFound)
+            m_onTracksFound(batch);
 
-    if (!batch.empty() && m_onTracksFound)
-        m_onTracksFound(batch);
-
-    if (m_onScanFinished) m_onScanFinished();
-
-    } catch (const std::exception &e) {
-        // Log if you have a non-Qt logger, otherwise just swallow
         if (m_onScanFinished) m_onScanFinished();
+
     } catch (...) {
         if (m_onScanFinished) m_onScanFinished();
     }

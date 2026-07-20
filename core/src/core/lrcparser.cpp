@@ -1,54 +1,67 @@
 #include "lrcparser.h"
-#include <QRegularExpression>
+#include <regex>
+#include <sstream>
 #include <algorithm>
 
-static const QRegularExpression kTimestamp(
+static const std::regex kTimestamp(
     R"(\[(\d{1,3}):(\d{2})[\.\:](\d{1,3})\])"
-    );
+);
 
-static const QRegularExpression kMetaTag(
+static const std::regex kMetaTag(
     R"(\[[a-z]+:.*\])"
-    );
+);
 
-bool LrcParser::isLrc(const QString &text)
+bool LrcParser::isLrc(const std::string &text)
 {
-    return kTimestamp.match(text).hasMatch();
+    return std::regex_search(text, kTimestamp);
 }
 
-QList<LrcLine> LrcParser::parse(const QString &lrc)
+std::vector<LrcLine> LrcParser::parse(const std::string &lrc)
 {
-    QList<LrcLine> result;
+    std::vector<LrcLine> result;
 
-    for (const QString &rawLine : lrc.split('\n')) {
-        QString line = rawLine.trimmed();
-        if (line.isEmpty()) continue;
+    std::istringstream stream(lrc);
+    std::string rawLine;
 
-        // Collect all timestamps on this line (a line can have multiple)
-        QList<qint64> timestamps;
-        auto it = kTimestamp.globalMatch(line);
-        while (it.hasNext()) {
-            auto m = it.next();
-            int  mins  = m.captured(1).toInt();
-            int  secs  = m.captured(2).toInt();
-            // Third group may be centiseconds (2 digits) or milliseconds (3 digits)
-            QString csStr = m.captured(3);
-            int ms = csStr.toInt();
+    while (std::getline(stream, rawLine)) {
+        // Trim whitespace
+        auto start = rawLine.find_first_not_of(" \t\r");
+        auto end   = rawLine.find_last_not_of(" \t\r");
+        if (start == std::string::npos) continue;
+        std::string line = rawLine.substr(start, end - start + 1);
+        if (line.empty()) continue;
+
+        // Collect all timestamps on this line
+        std::vector<int64_t> timestamps;
+        auto it  = std::sregex_iterator(line.begin(), line.end(), kTimestamp);
+        auto eof = std::sregex_iterator();
+        for (; it != eof; ++it) {
+            const auto &m  = *it;
+            int mins       = std::stoi(m[1].str());
+            int secs       = std::stoi(m[2].str());
+            std::string csStr = m[3].str();
+            int ms         = std::stoi(csStr);
             if (csStr.length() <= 2)
                 ms *= 10; // centiseconds → milliseconds
-            timestamps << (qint64(mins) * 60000 + qint64(secs) * 1000 + ms);
+            timestamps.push_back(int64_t(mins) * 60000 + int64_t(secs) * 1000 + ms);
         }
 
-        if (timestamps.isEmpty()) continue;
+        if (timestamps.empty()) continue;
 
-        // Strip all timestamp tags to get the lyric text
-        QString text = line;
-        text.remove(kTimestamp);
-        text.remove(kMetaTag);
-        text = text.trimmed();
+        // Strip all timestamp and meta tags to get the lyric text
+        std::string text = std::regex_replace(line, kTimestamp, "");
+        text = std::regex_replace(text, kMetaTag, "");
 
-        // One LRC line can carry multiple timestamps (repeated chorus etc.)
-        for (qint64 ts : timestamps)
-            result << LrcLine{ ts, text };
+        // Trim the result
+        auto ts = text.find_first_not_of(" \t");
+        auto te = text.find_last_not_of(" \t");
+        if (ts != std::string::npos)
+            text = text.substr(ts, te - ts + 1);
+        else
+            text = "";
+
+        for (int64_t ts : timestamps)
+            result.push_back({ ts, text });
     }
 
     std::sort(result.begin(), result.end(),

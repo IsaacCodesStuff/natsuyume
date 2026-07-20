@@ -5,20 +5,19 @@
 #include <functional>
 #include <string>
 #include <thread>
-#include <unordered_set>
+#include <unordered_map>
 #include <vector>
-
+#include <cstdint>
 #include "track.h"
 
 class FileIndexer
 {
 public:
-    // Callbacks replacing Qt signals
-    using TracksFoundCallback    = std::function<void(const std::vector<Track> &)>;
-    using ScanProgressCallback   = std::function<void(int scanned, int total, const std::string &currentFile)>;
-    using ScanStartedCallback    = std::function<void(int totalFiles)>;
-    using ScanFinishedCallback   = std::function<void()>;
-    using ScanCancelledCallback  = std::function<void()>;
+    using TracksFoundCallback     = std::function<void(const std::vector<Track> &)>;
+    using ScanProgressCallback    = std::function<void(int scanned, int total, const std::string &currentFile)>;
+    using ScanStartedCallback     = std::function<void(int totalFiles)>;
+    using ScanFinishedCallback    = std::function<void()>;
+    using ScanCancelledCallback   = std::function<void()>;
     using ScanningChangedCallback = std::function<void(bool scanning)>;
 
     FileIndexer();
@@ -26,26 +25,25 @@ public:
 
     void scanFolder(const std::string &folderPath);
     void cancel();
-    void setKnownPaths(const std::unordered_map<std::string, qint64> &paths);
+    void setKnownPaths(const std::unordered_map<std::string, int64_t> &paths);
     bool isScanning() const;
 
-    // Callback setters
-    void onTracksFound(TracksFoundCallback cb)        { m_onTracksFound    = std::move(cb); }
-    void onScanProgress(ScanProgressCallback cb)      { m_onScanProgress   = std::move(cb); }
-    void onScanStarted(ScanStartedCallback cb)        { m_onScanStarted    = std::move(cb); }
-    void onScanFinished(ScanFinishedCallback cb)      { m_onScanFinished   = std::move(cb); }
-    void onScanCancelled(ScanCancelledCallback cb)    { m_onScanCancelled  = std::move(cb); }
-    void onScanningChanged(ScanningChangedCallback cb){ m_onScanningChanged = std::move(cb); }
+    void onTracksFound    (TracksFoundCallback cb)     { m_onTracksFound     = std::move(cb); }
+    void onScanProgress   (ScanProgressCallback cb)    { m_onScanProgress    = std::move(cb); }
+    void onScanStarted    (ScanStartedCallback cb)     { m_onScanStarted     = std::move(cb); }
+    void onScanFinished   (ScanFinishedCallback cb)    { m_onScanFinished    = std::move(cb); }
+    void onScanCancelled  (ScanCancelledCallback cb)   { m_onScanCancelled   = std::move(cb); }
+    void onScanningChanged(ScanningChangedCallback cb) { m_onScanningChanged = std::move(cb); }
 
     static const std::vector<std::string> s_supportedExtensions;
 
 private:
-    std::thread  m_thread;
+    std::thread       m_thread;
     std::atomic<bool> m_cancelled{false};
     std::atomic<bool> m_scanning{false};
 
-    std::unordered_map<std::string, qint64> m_knownPaths;
-    std::unordered_map<std::string, qint64> m_knownPathsSnapshot;
+    std::unordered_map<std::string, int64_t> m_knownPaths;
+    std::unordered_map<std::string, int64_t> m_knownPathsSnapshot;
 
     TracksFoundCallback     m_onTracksFound;
     ScanProgressCallback    m_onScanProgress;

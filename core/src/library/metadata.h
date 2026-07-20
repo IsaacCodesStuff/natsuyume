@@ -2,12 +2,12 @@
 #define METADATA_H
 
 #include "track.h"
-#include <QString>
+#include <string>
 
 class Metadata
 {
 public:
-    static Track read(const QString &path, bool includeCoverArt = true);
+    static Track read(const std::string &path, bool includeCoverArt = true);
 };
 
 #endif // METADATA_H
