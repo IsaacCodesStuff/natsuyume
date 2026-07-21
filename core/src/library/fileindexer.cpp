@@ -3,8 +3,8 @@
 #include <filesystem>
 #include <algorithm>
 #include <chrono>
-#include <unicode/unistr.h>
-#include <unicode/normalizer2.h>
+#include <unicode/unorm2.h>
+#include <unicode/ustring.h>
 
 namespace fs = std::filesystem;
 
@@ -37,13 +37,28 @@ static std::string nfcNormalize(const std::string &s)
 {
     if (s.empty()) return s;
     UErrorCode err = U_ZERO_ERROR;
-    const icu::Normalizer2 *nfc = icu::Normalizer2::getNFCInstance(err);
+    const UNormalizer2 *nfc = unorm2_getNFCInstance(&err);
     if (U_FAILURE(err)) return s;
-    icu::UnicodeString us = icu::UnicodeString::fromUTF8(s);
-    icu::UnicodeString normalized = nfc->normalize(us, err);
+
+    int32_t u16len = 0;
+    u_strFromUTF8(nullptr, 0, &u16len, s.c_str(), -1, &err);
+    err = U_ZERO_ERROR;
+    std::vector<UChar> u16(u16len + 1);
+    u_strFromUTF8(u16.data(), u16len + 1, &u16len, s.c_str(), -1, &err);
     if (U_FAILURE(err)) return s;
-    std::string result;
-    normalized.toUTF8String(result);
+
+    std::vector<UChar> norm(u16len * 2 + 1);
+    int32_t normLen = unorm2_normalize(nfc, u16.data(), u16len,
+                                       norm.data(), norm.size(), &err);
+    if (U_FAILURE(err)) return s;
+
+    int32_t u8len = 0;
+    u_strToUTF8(nullptr, 0, &u8len, norm.data(), normLen, &err);
+    err = U_ZERO_ERROR;
+    std::string result(u8len, '\0');
+    u_strToUTF8(result.data(), u8len + 1, &u8len, norm.data(), normLen, &err);
+    if (U_FAILURE(err)) return s;
+
     return result;
 }
 

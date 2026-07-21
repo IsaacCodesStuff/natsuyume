@@ -2,29 +2,15 @@
 #include <algorithm>
 #include <random>
 #include <chrono>
-#include <unicode/coll.h>
-#include <unicode/unistr.h>
+#include <cstring>
+
 
 // ---------------------------------------------------------------------------
 // ICU locale-aware string comparison
 // ---------------------------------------------------------------------------
-static icu::Collator *getCollator()
-{
-    static icu::Collator *coll = []() -> icu::Collator * {
-        UErrorCode err = U_ZERO_ERROR;
-        icu::Collator *c = icu::Collator::createInstance(err);
-        return U_SUCCESS(err) ? c : nullptr;
-    }();
-    return coll;
-}
-
 static int localeCompare(const std::string &a, const std::string &b)
 {
-    icu::Collator *coll = getCollator();
-    if (!coll) return a.compare(b);
-    UErrorCode err = U_ZERO_ERROR;
-    return static_cast<int>(
-        coll->compareUTF8(a, b, err));
+    return strcoll(a.c_str(), b.c_str());
 }
 
 // ---------------------------------------------------------------------------
