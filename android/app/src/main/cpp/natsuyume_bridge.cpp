@@ -1,6 +1,12 @@
 #include "natsuyumecore.h"
 #include <cstring>
 #include <cstdlib>
+#include <thread>
+#include <atomic>
+#include <android/log.h>
+#define LOG(msg) __android_log_print(ANDROID_LOG_DEBUG, "NatsuyumeCore", "%s", msg)
+
+static std::atomic<bool> g_prewarm_done{false};
 
 using Natsuyume::NatsuyumeCore;
 
@@ -26,8 +32,12 @@ void ncore_shutdown(NatsuyumeCore* core) {
     if (core) core->shutdown();
 }
 
-void ncore_pump_events(NatsuyumeCore* core) {
-    if (core) core->pumpEvents();
+// Open a single file in a new queue and start playing
+void ncore_open_file(NatsuyumeCore* core, const char* path) {
+    if (!core || !path) return;
+    LOG("ncore_open_file entered");
+    core->openFilesInNewQueue({std::string(path)}, "", false);
+    LOG("ncore_open_file returned");
 }
 
 char* ncore_get_version() {

@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <unistd.h>
 #include <cerrno>
+#include <thread>
+#include <atomic>
 
 static void checkMpvError(int status, const char *context)
 {
@@ -43,10 +45,12 @@ Playback::Playback()
 
     mpv_set_wakeup_callback(m_mpv, mpvWakeupCallback, this);
     observeProperties();
+    startEventThread();
 }
 
 Playback::~Playback()
 {
+    stopEventThread(); // must be before mpv_terminate_destroy
     if (m_mpv) {
         mpv_terminate_destroy(m_mpv);
         m_mpv = nullptr;
@@ -257,4 +261,30 @@ void Playback::clearAppendedTrack()
     m_hasAppendedTrack = false;
     const char *args[] = { "playlist-clear", nullptr };
     checkMpvError(mpv_command_async(m_mpv, 0, args), "playlist-clear");
+}
+
+void Playback::startEventThread()
+{
+    m_eventThreadRunning = true;
+    m_eventThread = std::thread([this]() {
+        while (m_eventThreadRunning) {
+            // Block until mpv wakes us up, timeout 100ms
+            struct pollfd pfd = { m_pipeFd[0], POLLIN, 0 };
+            int ret = ::poll(&pfd, 1, 100);
+            if (ret > 0 && m_eventThreadRunning)
+                processPendingEvents();
+        }
+    });
+}
+
+void Playback::stopEventThread()
+{
+    m_eventThreadRunning = false;
+    // Wake the thread so it exits
+    if (m_pipeFd[1] != -1) {
+        char byte = 1;
+        write(m_pipeFd[1], &byte, 1);
+    }
+    if (m_eventThread.joinable())
+        m_eventThread.join();
 }

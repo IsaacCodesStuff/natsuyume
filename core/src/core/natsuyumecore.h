@@ -228,7 +228,6 @@ public:
     void clearLibrary();
 
     void setDataDir(const std::string &dir);
-    void pumpEvents();
 
 private:
     struct Impl;

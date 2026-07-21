@@ -260,24 +260,6 @@ struct NatsuyumeCore::Impl
                 callbacks->onScanFoldersChanged();
         };
     }
-
-    // -----------------------------------------------------------------------
-    // Event pump — call this on the main thread periodically.
-    // Drains both the mpv wakeup pipe and the LibraryManager callback queue.
-    // -----------------------------------------------------------------------
-    void pumpEvents()
-    {
-        // Drain mpv wakeup pipe if there's an active playback
-        Playback *pb = playbackManager->activePlayback();
-        if (pb) {
-            struct pollfd pfd = { pb->wakeupReadFd(), POLLIN, 0 };
-            if (::poll(&pfd, 1, 0) > 0)
-                pb->processPendingEvents();
-        }
-
-        // Drain LibraryManager's cross-thread callback queue
-        libraryManager->drainCallbacks();
-    }
 };
 
 // ---------------------------------------------------------------------------
@@ -307,11 +289,6 @@ void NatsuyumeCore::setDataDir(const std::string &dir)
 void NatsuyumeCore::shutdown()
 {
     m_impl->shutdown();
-}
-
-void NatsuyumeCore::pumpEvents()
-{
-    m_impl->pumpEvents();
 }
 
 // --- Playback ---

@@ -7,6 +7,9 @@
 #include <mutex>
 #include <cstdint>
 #include "track.h"
+#include <thread>
+#include <atomic>
+#include <poll.h>
 
 class Playback
 {
@@ -65,6 +68,12 @@ private:
     void handleMpvEvent(mpv_event *event);
     void observeProperties();
     static void mpvWakeupCallback(void *ctx);
+
+    std::thread m_eventThread;
+    std::atomic<bool> m_eventThreadRunning{false};
+
+    void startEventThread();
+    void stopEventThread();
 };
 
 #endif // PLAYBACK_H

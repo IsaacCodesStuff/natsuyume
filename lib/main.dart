@@ -13,9 +13,12 @@ void main() async {
   try {
     NatsuyumeCore.instance.init();
     print('NatsuyumeCore init OK');
+    await NatsuyumeCore.instance.initCore();
+    print('NatsuyumeCore initCore OK');
   } catch (e) {
     print('NatsuyumeCore init FAILED: $e');
   }
+
   runApp(NatsuyumeApp(onboardingComplete: onboardingComplete));
 }
 
