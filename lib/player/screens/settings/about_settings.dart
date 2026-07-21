@@ -4,6 +4,7 @@ import '../../../widgets/settings_section.dart';
 import '../../../widgets/settings_tile.dart';
 import '../../../widgets/slide_route.dart';
 import 'easter_egg_screen.dart';
+import 'package:natsuyume/core/natsuyume_core.dart'; // adjust import path if needed
 
 class AboutSettingsScreen extends StatefulWidget {
   const AboutSettingsScreen({super.key});
@@ -122,7 +123,8 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
               children: [
                 SettingsTile(
                   title: 'Version',
-                  subtitle: 'Natsuyume internal beta build 0.7.x',
+                  subtitle:
+                      'Natsuyume internal beta build ${NatsuyumeCore.instance.version}',
                   onTap: null,
                 ),
                 SettingsTile(

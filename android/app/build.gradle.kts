@@ -8,6 +8,13 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "28.2.13676358"  // Pin explicitly — don't use flutter.ndkVersion
 
+    packaging {
+        jniLibs {
+            excludes += "**/libc++_shared.so"
+            pickFirsts += "**/libc++_shared.so"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -46,7 +53,7 @@ android {
     // Tell Gradle where our prebuilt .so files live so they get packaged
     sourceSets {
         getByName("main") {
-            jniLibs.srcDirs("../jni/libs")
+            jniLibs.srcDirs(listOf("../jni/libs"))
         }
     }
 

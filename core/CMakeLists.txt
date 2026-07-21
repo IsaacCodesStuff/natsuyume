@@ -70,6 +70,7 @@ find_library(log-lib log)
 # ---------------------------------------------------------------------------
 # Link
 # ---------------------------------------------------------------------------
+set(CMAKE_ANDROID_STL_TYPE c++_static)
 target_link_libraries(natsuyume_core PRIVATE
     mpv
     tag
