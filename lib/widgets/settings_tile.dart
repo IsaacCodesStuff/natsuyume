@@ -23,54 +23,57 @@ class SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
 
-    return GestureDetector(
-      onTap: enabled ? onTap : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        child: Row(
-          children: [
-            if (icon != null) ...[
-              Icon(
-                icon,
-                size: 22,
-                color: enabled
-                    ? colors.onSurfaceVariant
-                    : colors.onSurfaceVariant.withValues(alpha: 0.4),
-              ),
-              const SizedBox(width: 16),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    title,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w400,
-                      color: enabled
-                          ? colors.onSurface
-                          : colors.onSurface.withValues(alpha: 0.4),
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: enabled ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              if (icon != null) ...[
+                Icon(
+                  icon,
+                  size: 22,
+                  color: enabled
+                      ? colors.onSurfaceVariant
+                      : colors.onSurfaceVariant.withValues(alpha: 0.4),
+                ),
+                const SizedBox(width: 16),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                     Text(
-                      subtitle!,
+                      title,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w400,
                         color: enabled
-                            ? colors.onSurfaceVariant
-                            : colors.onSurfaceVariant.withValues(alpha: 0.4),
+                            ? colors.onSurface
+                            : colors.onSurface.withValues(alpha: 0.4),
                       ),
                     ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: enabled
+                              ? colors.onSurfaceVariant
+                              : colors.onSurfaceVariant.withValues(alpha: 0.4),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-            if (trailing != null) ...[const SizedBox(width: 12), trailing!],
-          ],
+              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+            ],
+          ),
         ),
       ),
     );

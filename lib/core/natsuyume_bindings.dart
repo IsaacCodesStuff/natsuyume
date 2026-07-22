@@ -50,6 +50,77 @@ typedef NcoreNext = void Function(Pointer<Void>);
 typedef _NcorePreviousNative = Void Function(Pointer<Void>);
 typedef NcorePrevious = void Function(Pointer<Void>);
 
+// int ncore_is_playing(void*)
+typedef _NcoreIsPlayingNative = Int32 Function(Pointer<Void>);
+typedef NcoreIsPlaying = int Function(Pointer<Void>);
+
+// int64_t ncore_get_position(void*)
+typedef _NcoreGetPositionNative = Int64 Function(Pointer<Void>);
+typedef NcoreGetPosition = int Function(Pointer<Void>);
+
+// int64_t ncore_get_duration(void*)
+typedef _NcoreGetDurationNative = Int64 Function(Pointer<Void>);
+typedef NcoreGetDuration = int Function(Pointer<Void>);
+
+// void ncore_get_current_track(void*, char**, char**, ...)
+typedef _NcoreGetCurrentTrackNative =
+    Void Function(
+      Pointer<Void>,
+      Pointer<Pointer<Utf8>>, // path
+      Pointer<Pointer<Utf8>>, // title
+      Pointer<Pointer<Utf8>>, // artist
+      Pointer<Pointer<Utf8>>, // album
+      Pointer<Pointer<Utf8>>, // album_artist
+      Pointer<Pointer<Utf8>>, // genre
+      Pointer<Int32>, // track_number
+      Pointer<Int32>, // year
+      Pointer<Int64>, // duration
+      Pointer<Int32>, // play_count
+      Pointer<Int32>, // is_favorite
+    );
+typedef NcoreGetCurrentTrack =
+    void Function(
+      Pointer<Void>,
+      Pointer<Pointer<Utf8>>,
+      Pointer<Pointer<Utf8>>,
+      Pointer<Pointer<Utf8>>,
+      Pointer<Pointer<Utf8>>,
+      Pointer<Pointer<Utf8>>,
+      Pointer<Pointer<Utf8>>,
+      Pointer<Int32>,
+      Pointer<Int32>,
+      Pointer<Int64>,
+      Pointer<Int32>,
+      Pointer<Int32>,
+    );
+
+// Callback function types (Dart side)
+typedef PlaybackStateCallback = void Function(int isPlaying);
+typedef PositionCallback = void Function(int positionMs);
+typedef DurationCallback = void Function(int durationMs);
+typedef TrackChangedCallback = void Function();
+
+// Native registration function typedefs
+typedef _NcoreSetPlaybackStateCallbackNative =
+    Void Function(Pointer<Void>, Pointer<NativeFunction<Void Function(Int32)>>);
+typedef NcoreSetPlaybackStateCallback =
+    void Function(Pointer<Void>, Pointer<NativeFunction<Void Function(Int32)>>);
+
+typedef _NcoreSetPositionCallbackNative =
+    Void Function(Pointer<Void>, Pointer<NativeFunction<Void Function(Int64)>>);
+typedef NcoreSetPositionCallback =
+    void Function(Pointer<Void>, Pointer<NativeFunction<Void Function(Int64)>>);
+
+typedef _NcoreSetDurationCallbackNative =
+    Void Function(Pointer<Void>, Pointer<NativeFunction<Void Function(Int64)>>);
+typedef NcoreSetDurationCallback =
+    void Function(Pointer<Void>, Pointer<NativeFunction<Void Function(Int64)>>);
+
+typedef _NcoreSetTrackChangedCallbackNative =
+    Void Function(Pointer<Void>, Pointer<NativeFunction<Void Function()>>);
+typedef NcoreSetTrackChangedCallback =
+    void Function(Pointer<Void>, Pointer<NativeFunction<Void Function()>>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -69,6 +140,16 @@ class NatsuyumeBindings {
   late final NcorePause ncorePause;
   late final NcoreNext ncoreNext;
   late final NcorePrevious ncorePrevious;
+
+  late final NcoreIsPlaying ncoreIsPlaying;
+  late final NcoreGetPosition ncoreGetPosition;
+  late final NcoreGetDuration ncoreGetDuration;
+  late final NcoreGetCurrentTrack ncoreGetCurrentTrack;
+
+  late final NcoreSetPlaybackStateCallback ncoreSetPlaybackStateCallback;
+  late final NcoreSetPositionCallback ncoreSetPositionCallback;
+  late final NcoreSetDurationCallback ncoreSetDurationCallback;
+  late final NcoreSetTrackChangedCallback ncoreSetTrackChangedCallback;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -115,6 +196,48 @@ class NatsuyumeBindings {
 
     ncorePrevious = _lib
         .lookup<NativeFunction<_NcorePreviousNative>>('ncore_previous')
+        .asFunction();
+
+    ncoreIsPlaying = _lib
+        .lookup<NativeFunction<_NcoreIsPlayingNative>>('ncore_is_playing')
+        .asFunction();
+
+    ncoreGetPosition = _lib
+        .lookup<NativeFunction<_NcoreGetPositionNative>>('ncore_get_position')
+        .asFunction();
+
+    ncoreGetDuration = _lib
+        .lookup<NativeFunction<_NcoreGetDurationNative>>('ncore_get_duration')
+        .asFunction();
+
+    ncoreGetCurrentTrack = _lib
+        .lookup<NativeFunction<_NcoreGetCurrentTrackNative>>(
+          'ncore_get_current_track',
+        )
+        .asFunction();
+
+    ncoreSetPlaybackStateCallback = _lib
+        .lookup<NativeFunction<_NcoreSetPlaybackStateCallbackNative>>(
+          'ncore_set_playback_state_callback',
+        )
+        .asFunction();
+
+    ncoreSetPositionCallback = _lib
+        .lookup<NativeFunction<_NcoreSetPositionCallbackNative>>(
+          'ncore_set_position_callback',
+        )
+        .asFunction();
+
+    ncoreSetDurationCallback = _lib
+        .lookup<NativeFunction<_NcoreSetDurationCallbackNative>>(
+          'ncore_set_duration_callback',
+        )
+        .asFunction();
+
+    ncoreSetTrackChangedCallback = _lib
+        .lookup<NativeFunction<_NcoreSetTrackChangedCallbackNative>>(
+          'ncore_set_track_changed_callback',
+        )
         .asFunction();
   }
 }

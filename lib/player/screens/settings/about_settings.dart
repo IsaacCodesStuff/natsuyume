@@ -128,25 +128,6 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                   onTap: null,
                 ),
                 SettingsTile(
-                  title: 'Test Playback',
-                  subtitle: 'Tap to play Summer Challenger.flac',
-                  onTap: () async {
-                    await NatsuyumeCore.instance.openFile(
-                      '/storage/emulated/0/Music/VideoToMp3/AudioFormat/Summer Challenger.flac',
-                    );
-                  },
-                ),
-                SettingsTile(
-                  title: 'Pause',
-                  subtitle: 'Tap to pause',
-                  onTap: () => NatsuyumeCore.instance.pause(),
-                ),
-                SettingsTile(
-                  title: 'Play',
-                  subtitle: 'Tap to resume',
-                  onTap: () => NatsuyumeCore.instance.play(),
-                ),
-                SettingsTile(
                   title: 'Open source licenses',
                   onTap: () {
                     showLicensePage(context: context);

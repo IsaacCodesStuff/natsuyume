@@ -6,6 +6,7 @@
 #include <cerrno>
 #include <thread>
 #include <atomic>
+#include <fcntl.h>
 
 static void checkMpvError(int status, const char *context)
 {
@@ -27,6 +28,10 @@ Playback::Playback()
     if (pipe(m_pipeFd) != 0) {
         fprintf(stderr, "Playback: pipe() failed: %s\n", strerror(errno));
         m_pipeFd[0] = m_pipeFd[1] = -1;
+    } else {
+        // Set read end non-blocking so drain loop doesn't block
+        int flags = fcntl(m_pipeFd[0], F_GETFL, 0);
+        fcntl(m_pipeFd[0], F_SETFL, flags | O_NONBLOCK);
     }
 
     m_mpv = mpv_create();
@@ -78,13 +83,7 @@ void Playback::processPendingEvents()
     if (!m_mpv || m_processingEvents) return;
     m_processingEvents = true;
 
-    // Drain the pipe
-    if (m_pipeFd[0] != -1) {
-        char buf[64];
-        while (read(m_pipeFd[0], buf, sizeof(buf)) > 0) {}
-    }
-
-    // Drain mpv event queue
+    // Drain mpv event queue only — pipe is drained by event thread
     while (true) {
         mpv_event *event = mpv_wait_event(m_mpv, 0);
         if (event->event_id == MPV_EVENT_NONE) break;
@@ -111,8 +110,7 @@ void Playback::handleMpvEvent(mpv_event *event)
     switch (event->event_id) {
 
     case MPV_EVENT_PROPERTY_CHANGE: {
-        auto *prop = reinterpret_cast<mpv_event_property *>(event->data);
-
+    auto *prop = reinterpret_cast<mpv_event_property *>(event->data);
         if (strcmp(prop->name, "time-pos") == 0) {
             if (prop->format == MPV_FORMAT_DOUBLE) {
                 double secs = *reinterpret_cast<double *>(prop->data);
@@ -268,11 +266,14 @@ void Playback::startEventThread()
     m_eventThreadRunning = true;
     m_eventThread = std::thread([this]() {
         while (m_eventThreadRunning) {
-            // Block until mpv wakes us up, timeout 100ms
             struct pollfd pfd = { m_pipeFd[0], POLLIN, 0 };
             int ret = ::poll(&pfd, 1, 100);
-            if (ret > 0 && m_eventThreadRunning)
-                processPendingEvents();
+            if (!m_eventThreadRunning) break;
+            if (m_pipeFd[0] != -1) {
+                char buf[64];
+                while (read(m_pipeFd[0], buf, sizeof(buf)) > 0) {}
+            }
+            processPendingEvents();
         }
     });
 }
