@@ -1,23 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../theme/natsuyume_theme.dart';
-import '../../widgets/album_grid_item.dart';
-import '../../widgets/album_track_list.dart';
+import '../../core/library_types.dart';
+import '../../core/natsuyume_core.dart';
 import '../../widgets/collection_detail_bar.dart';
 import 'album_info_overlay.dart';
 import 'context_menus/album_detail_context_menu.dart';
 import 'context_menus/album_track_context_menu.dart';
 import 'context_menus/album_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
-
-final _placeholderTracks = [
-  CollectionTrack(
-    title: 'Summer Challenger',
-    artist: '水瀬いのり',
-    duration: '4:25',
-  ),
-  CollectionTrack(title: 'ハートノフレーバー', artist: '水瀬いのり', duration: '5:12'),
-  CollectionTrack(title: 'リフローレセンス', artist: '水瀬いのり', duration: '4:31'),
-];
 
 class AlbumDetailScreen extends StatefulWidget {
   final AlbumData album;
@@ -36,9 +26,10 @@ class AlbumDetailScreen extends StatefulWidget {
 class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showTitleInBar = false;
-  int _currentTrackIndex = 1;
+  int _currentTrackIndex = -1;
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
+  List<CollectionTrack> _tracks = [];
 
   static const double _coverThreshold = 260.0;
 
@@ -46,6 +37,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadTracks();
+  }
+
+  void _loadTracks() {
+    final tracks = NatsuyumeCore.instance.getAlbumTracks(widget.album.title);
+    setState(() => _tracks = tracks);
   }
 
   void _onScroll() {
@@ -90,10 +87,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   void _showMultiSelectMenu() {
     final selected = _selectedIndices
         .map(
-          (i) => TrackMetadata(
-            title: _placeholderTracks[i].title,
-            artist: _placeholderTracks[i].artist,
-          ),
+          (i) =>
+              TrackMetadata(title: _tracks[i].title, artist: _tracks[i].artist),
         )
         .toList();
 
@@ -111,7 +106,23 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     );
   }
 
-  String get _totalDuration => '14:38';
+  String get _totalDuration {
+    final totalMs = _tracks.fold<int>(0, (sum, t) {
+      final parts = t.duration.split(':');
+      if (parts.length != 2) return sum;
+      final min = int.tryParse(parts[0]) ?? 0;
+      final sec = int.tryParse(parts[1]) ?? 0;
+      return sum + min * 60000 + sec * 1000;
+    });
+    final totalSec = totalMs ~/ 1000;
+    final h = totalSec ~/ 3600;
+    final m = (totalSec % 3600) ~/ 60;
+    final s = totalSec % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +143,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
-            // Floating top bar
             Positioned(
               top: 0,
               left: 0,
@@ -144,14 +154,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 onMoreTap: () => _showAlbumMenu(context, colors),
               ),
             ),
-            // Pinned shuffle + play
             if (_showTitleInBar && !_isSelecting)
               Positioned(
                 right: 16,
                 bottom: 16,
                 child: _buildActionButtons(colors, small: true),
               ),
-            // Multi-select bar
             if (_isSelecting)
               Positioned(
                 left: 0,
@@ -174,7 +182,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             : 0.0;
         final opacity = (1.0 - (offset / _coverThreshold)).clamp(0.0, 1.0);
         final parallaxOffset = offset * 0.4;
-
         return Opacity(
           opacity: opacity,
           child: Transform.translate(
@@ -248,10 +255,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             children: [
               _InfoChip(label: '${widget.album.year}', colors: colors),
               const SizedBox(width: 8),
-              _InfoChip(
-                label: '${widget.album.songCount} songs',
-                colors: colors,
-              ),
+              _InfoChip(label: '${_tracks.length} songs', colors: colors),
               const SizedBox(width: 8),
               _InfoChip(label: _totalDuration, colors: colors),
             ],
@@ -269,7 +273,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }) {
     final size = small ? 48.0 : 56.0;
     final iconSize = small ? 20.0 : 24.0;
-
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -295,7 +298,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   SliverList _buildTrackList(NatsuyumeColorScheme colors) {
     return SliverList(
       delegate: SliverChildBuilderDelegate((context, index) {
-        final track = _placeholderTracks[index];
+        final track = _tracks[index];
         final isPlaying = index == _currentTrackIndex;
         final isSelected = _selectedIndices.contains(index);
 
@@ -330,7 +333,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             ),
             child: Row(
               children: [
-                // Checkbox or index
                 if (_isSelecting)
                   SizedBox(
                     width: 32,
@@ -358,7 +360,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           ),
                   ),
                 const SizedBox(width: 10),
-                // Album art
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: track.albumArt != null
@@ -380,7 +381,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         ),
                 ),
                 const SizedBox(width: 12),
-                // Track info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -409,7 +409,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     ],
                   ),
                 ),
-                // Duration + more
                 if (!_isSelecting) ...[
                   Text(
                     track.duration,
@@ -432,7 +431,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             ),
           ),
         );
-      }, childCount: _placeholderTracks.length),
+      }, childCount: _tracks.length),
     );
   }
 
@@ -501,7 +500,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   ) {
     AlbumTrackContextMenu.show(
       context,
-      track: _placeholderTracks[index],
+      track: _tracks[index],
       isFavorite: false,
       onFavoriteTap: () {},
       onSongInfo: () {},
@@ -513,6 +512,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 }
 
+// Local widget classes — unchanged from original
 class _InfoChip extends StatelessWidget {
   final String label;
   final NatsuyumeColorScheme colors;

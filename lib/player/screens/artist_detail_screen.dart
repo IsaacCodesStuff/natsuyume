@@ -1,26 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../theme/natsuyume_theme.dart';
+import '../../core/library_types.dart';
+import '../../core/natsuyume_core.dart';
 import '../../widgets/collection_detail_bar.dart';
 import '../../widgets/artist_album_list.dart';
-import 'artists_screen.dart';
 import 'album_detail_screen.dart';
-import '../../widgets/album_grid_item.dart';
 import 'artist_info_overlay.dart';
 import 'artist_editor_screen.dart';
 import 'context_menus/artist_detail_context_menu.dart';
 import 'context_menus/artist_track_context_menu.dart';
 import 'context_menus/artist_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
-
-final _placeholderArtistAlbums = [
-  ArtistAlbumEntry(title: 'Summer Challenger', year: 2026, songCount: 3),
-  ArtistAlbumEntry(title: 'Turquoise', year: 2025, songCount: 8),
-  ArtistAlbumEntry(title: 'Travel Record', year: 2025, songCount: 23),
-  ArtistAlbumEntry(title: 'heart bookmark', year: 2024, songCount: 7),
-  ArtistAlbumEntry(title: 'スクラップアート', year: 2023, songCount: 3),
-  ArtistAlbumEntry(title: 'アイオライト', year: 2023, songCount: 3),
-  ArtistAlbumEntry(title: 'glow', year: 2022, songCount: 14),
-];
 
 class ArtistDetailScreen extends StatefulWidget {
   final ArtistData artist;
@@ -42,6 +32,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   final int _currentAlbumIndex = 0;
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
+  List<ArtistAlbumEntry> _albums = [];
 
   static const double _coverThreshold = 260.0;
 
@@ -49,6 +40,12 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadAlbums();
+  }
+
+  void _loadAlbums() {
+    final albums = NatsuyumeCore.instance.getArtistAlbums(widget.artist.name);
+    setState(() => _albums = albums);
   }
 
   void _onScroll() {
@@ -87,9 +84,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     final selected = _selectedIndices
         .map(
           (i) => TrackMetadata(
-            title: _placeholderArtistAlbums[i].title,
+            title: _albums[i].title,
             artist: widget.artist.name,
-            year: '${_placeholderArtistAlbums[i].year}',
+            year: '${_albums[i].year}',
           ),
         )
         .toList();
@@ -109,7 +106,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   }
 
   void _openAlbum(int index) {
-    final entry = _placeholderArtistAlbums[index];
+    final entry = _albums[index];
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AlbumDetailScreen(
@@ -120,11 +117,13 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             songCount: entry.songCount,
             coverArt: entry.coverArt,
           ),
-          isAlbumPlaying: index == _currentAlbumIndex,
+          isAlbumPlaying: false,
         ),
       ),
     );
   }
+
+  int get _totalTrackCount => _albums.fold(0, (sum, a) => sum + a.songCount);
 
   @override
   Widget build(BuildContext context) {
@@ -145,7 +144,6 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
-            // Floating top bar
             Positioned(
               top: 0,
               left: 0,
@@ -176,14 +174,12 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 ],
               ),
             ),
-            // Pinned action buttons
             if (_showTitleInBar && !_isSelecting)
               Positioned(
                 right: 16,
                 bottom: 16,
                 child: _buildActionButtons(colors),
               ),
-            // Multi-select bar
             if (_isSelecting)
               Positioned(
                 left: 0,
@@ -206,7 +202,6 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             : 0.0;
         final opacity = (1.0 - (offset / _coverThreshold)).clamp(0.0, 1.0);
         final parallaxOffset = offset * 0.4;
-
         return Opacity(
           opacity: opacity,
           child: Transform.translate(
@@ -225,9 +220,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
               heightFactor: 1.0,
               child: ArtistInfoOverlay(
                 artist: widget.artist,
-                totalAlbums: widget.artist.albumCount,
-                totalTracks: 128,
-                totalDuration: '8:32:14',
+                totalAlbums: _albums.length,
+                totalTracks: _totalTrackCount,
+                totalDuration: '—',
                 description: 'No description yet.',
               ),
             ),
@@ -279,7 +274,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              '${widget.artist.albumCount} albums',
+              '${_albums.length} albums',
               style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
             ),
           ),
@@ -304,8 +299,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   ArtistAlbumList _buildAlbumList(NatsuyumeColorScheme colors) {
     return ArtistAlbumList(
       allSongsLabel: 'All songs',
-      allSongsCount: 128,
-      albums: _placeholderArtistAlbums,
+      allSongsCount: _totalTrackCount,
+      albums: _albums,
       currentAlbumIndex: _isSelecting ? null : _currentAlbumIndex,
       onAllSongsTap: () {},
       onAlbumTap: (i) {
@@ -385,7 +380,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   ) {
     ArtistTrackContextMenu.show(
       context,
-      album: _placeholderArtistAlbums[index],
+      album: _albums[index],
       artistName: widget.artist.name,
       isFavorite: false,
       onFavoriteTap: () {},

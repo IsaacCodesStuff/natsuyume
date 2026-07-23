@@ -272,4 +272,114 @@ char* ncore_get_queue_json(NatsuyumeCore* core) {
     return out;
 }
 
+// ---------------------------------------------------------------------------
+// Library queries
+// ---------------------------------------------------------------------------
+
+static std::string escapeJson(const std::string& s) {
+    std::string out;
+    for (char c : s) {
+        if      (c == '"')  out += "\\\"";
+        else if (c == '\\') out += "\\\\";
+        else if (c == '\n') out += "\\n";
+        else if (c == '\r') out += "\\r";
+        else if (c == '\t') out += "\\t";
+        else out += c;
+    }
+    return out;
+}
+
+static char* mallocStr(const std::string& s) {
+    char* out = static_cast<char*>(malloc(s.size() + 1));
+    memcpy(out, s.c_str(), s.size() + 1);
+    return out;
+}
+
+char* ncore_get_albums_json(NatsuyumeCore* core) {
+    if (!core) return mallocStr("[]");
+
+    std::vector<std::string> albums = core->allAlbums();
+    std::string json = "[";
+    for (size_t i = 0; i < albums.size(); i++) {
+        if (i > 0) json += ",";
+        const std::string& name = albums[i];
+        auto tracks = core->tracksForAlbum(name);
+
+        int year = 0;
+        for (const auto& t : tracks)
+            if (t.year > year) year = t.year;
+
+        json += "{";
+        json += "\"title\":\"" + escapeJson(name) + "\",";
+        json += "\"artist\":\"" + escapeJson(tracks.empty() ? "" : tracks.front().albumArtist.empty() ? tracks.front().artist : tracks.front().albumArtist) + "\",";
+        json += "\"year\":" + std::to_string(year) + ",";
+        json += "\"songCount\":" + std::to_string(tracks.size());
+        json += "}";
+    }
+    json += "]";
+    return mallocStr(json);
+}
+
+char* ncore_get_artists_json(NatsuyumeCore* core) {
+    if (!core) return mallocStr("[]");
+
+    std::vector<std::string> artists = core->allArtists();
+    std::string json = "[";
+    for (size_t i = 0; i < artists.size(); i++) {
+        if (i > 0) json += ",";
+        const std::string& name = artists[i];
+        auto albums = core->albumsForArtist(name);
+
+        json += "{";
+        json += "\"name\":\"" + escapeJson(name) + "\",";
+        json += "\"albumCount\":" + std::to_string(albums.size());
+        json += "}";
+    }
+    json += "]";
+    return mallocStr(json);
+}
+
+char* ncore_get_album_tracks_json(NatsuyumeCore* core, const char* albumName) {
+    if (!core || !albumName) return mallocStr("[]");
+
+    auto tracks = core->tracksForAlbum(std::string(albumName));
+    std::string json = "[";
+    for (size_t i = 0; i < tracks.size(); i++) {
+        if (i > 0) json += ",";
+        const auto& t = tracks[i];
+        json += "{";
+        json += "\"path\":\"" + escapeJson(t.path) + "\",";
+        json += "\"title\":\"" + escapeJson(t.title) + "\",";
+        json += "\"artist\":\"" + escapeJson(t.artist) + "\",";
+        json += "\"durationMs\":" + std::to_string(t.duration);
+        json += "}";
+    }
+    json += "]";
+    return mallocStr(json);
+}
+
+char* ncore_get_artist_albums_json(NatsuyumeCore* core, const char* artistName) {
+    if (!core || !artistName) return mallocStr("[]");
+
+    auto albums = core->albumsForArtist(std::string(artistName));
+    std::string json = "[";
+    for (size_t i = 0; i < albums.size(); i++) {
+        if (i > 0) json += ",";
+        const std::string& name = albums[i];
+        auto tracks = core->tracksForAlbum(name);
+
+        int year = 0;
+        for (const auto& t : tracks)
+            if (t.year > year) year = t.year;
+
+        json += "{";
+        json += "\"title\":\"" + escapeJson(name) + "\",";
+        json += "\"year\":" + std::to_string(year) + ",";
+        json += "\"songCount\":" + std::to_string(tracks.size());
+        json += "}";
+    }
+    json += "]";
+    return mallocStr(json);
+}
+
 } // extern "C"

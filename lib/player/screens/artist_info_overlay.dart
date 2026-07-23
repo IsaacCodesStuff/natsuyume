@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import '../../widgets/collection_info_overlay.dart';
 import 'artists_screen.dart';
 import 'artist_editor_screen.dart';
+import '../../core/library_types.dart';
 
 class ArtistInfoOverlay extends StatelessWidget {
-  final ArtistData artist;
-
-  // Placeholder stats — wired to userdata.db in 0.8.x
+  final ArtistData artist; // add this line
   final int totalAlbums;
   final int totalTracks;
   final String totalDuration;

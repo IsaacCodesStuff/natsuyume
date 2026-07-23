@@ -1,21 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
-
-class ArtistAlbumEntry {
-  final String title;
-  final int year;
-  final int songCount;
-  final ImageProvider? coverArt;
-
-  const ArtistAlbumEntry({
-    required this.title,
-    required this.year,
-    required this.songCount,
-    this.coverArt,
-  });
-
-  String get subtitle => '$year · $songCount songs';
-}
+import '../core/library_types.dart';
 
 class ArtistAlbumList extends StatelessWidget {
   final String allSongsLabel;

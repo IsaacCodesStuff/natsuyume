@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import '../../widgets/collection_info_overlay.dart';
 import '../../widgets/album_grid_item.dart';
 import 'metadata_editor_screen.dart';
+import '../../core/library_types.dart';
 
 class AlbumInfoOverlay extends StatelessWidget {
-  final AlbumData album;
+  final AlbumData album; // add this line
   final String artistName;
   final String albumArtist;
   final String composer;

@@ -3,29 +3,11 @@ import '../../theme/natsuyume_theme.dart';
 import '../../widgets/library_top_bar.dart';
 import '../../widgets/album_grid_item.dart';
 import '../../widgets/album_list_item.dart';
+import '../../core/library_types.dart';
+import '../../core/natsuyume_core.dart';
 import 'artist_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
 import 'context_menus/artist_tab_context_menu.dart';
-
-class ArtistData {
-  final String name;
-  final int albumCount;
-  final ImageProvider? photo;
-
-  const ArtistData({required this.name, required this.albumCount, this.photo});
-
-  String get subtitle => '$albumCount albums';
-}
-
-final _placeholderArtists = [
-  ArtistData(name: '水瀬いのり', albumCount: 20),
-  ArtistData(name: '鬼頭明里', albumCount: 16),
-  ArtistData(name: '幾田りら', albumCount: 12),
-  ArtistData(name: '高橋李依', albumCount: 2),
-  ArtistData(name: 'YOASOBI', albumCount: 8),
-  ArtistData(name: 'Michael Jackson', albumCount: 9),
-  ArtistData(name: 'Unknown Artist', albumCount: 1),
-];
 
 class ArtistsScreen extends StatefulWidget {
   const ArtistsScreen({super.key});
@@ -37,24 +19,43 @@ class ArtistsScreen extends StatefulWidget {
 class _ArtistsScreenState extends State<ArtistsScreen> {
   LibraryLayout _layout = LibraryLayout.grid;
   String _searchQuery = '';
-  final int _playingArtistIndex = 0;
+  List<ArtistData> _artists = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadArtists();
+    NatsuyumeCore.instance.scanState.addListener(_onScanStateChanged);
+  }
+
+  @override
+  void dispose() {
+    NatsuyumeCore.instance.scanState.removeListener(_onScanStateChanged);
+    super.dispose();
+  }
+
+  void _onScanStateChanged() {
+    if (!NatsuyumeCore.instance.scanState.isScanning) {
+      _loadArtists();
+    }
+  }
+
+  void _loadArtists() {
+    final artists = NatsuyumeCore.instance.getArtists();
+    setState(() => _artists = artists);
+  }
 
   List<ArtistData> get _filteredArtists {
-    if (_searchQuery.isEmpty) return _placeholderArtists;
+    if (_searchQuery.isEmpty) return _artists;
     final q = _searchQuery.toLowerCase();
-    return _placeholderArtists
-        .where((a) => a.name.toLowerCase().contains(q))
-        .toList();
+    return _artists.where((a) => a.name.toLowerCase().contains(q)).toList();
   }
 
   void _openArtist(ArtistData artist) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => ArtistDetailScreen(
-          artist: artist,
-          isArtistPlaying:
-              _placeholderArtists.indexOf(artist) == _playingArtistIndex,
-        ),
+        builder: (_) =>
+            ArtistDetailScreen(artist: artist, isArtistPlaying: false),
       ),
     );
   }
@@ -94,8 +95,6 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
     );
   }
 
-  // We reuse AlbumData shape for the grid/list widgets
-  // mapping artist fields to the expected fields
   AlbumData _toAlbumData(ArtistData artist) => AlbumData(
     title: artist.name,
     artist: '${artist.albumCount} albums',
@@ -123,7 +122,14 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
               onMoreTap: () => _showMoreSheet(context, colors),
             ),
             Expanded(
-              child: _layout == LibraryLayout.grid
+              child: artists.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No artists found',
+                        style: TextStyle(color: colors.onSurfaceVariant),
+                      ),
+                    )
+                  : _layout == LibraryLayout.grid
                   ? _buildGrid(artists, colors)
                   : _buildList(artists, colors),
             ),
@@ -146,9 +152,7 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
       itemBuilder: (context, index) {
         return AlbumGridItem(
           album: _toAlbumData(artists[index]),
-          isPlaying:
-              _placeholderArtists.indexOf(artists[index]) ==
-              _playingArtistIndex,
+          isPlaying: false,
           onTap: () => _openArtist(artists[index]),
           onLongPress: () => ArtistTabContextMenu.show(
             context,
@@ -171,9 +175,7 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
       itemBuilder: (context, index) {
         return AlbumListItem(
           album: _toAlbumData(artists[index]),
-          isPlaying:
-              _placeholderArtists.indexOf(artists[index]) ==
-              _playingArtistIndex,
+          isPlaying: false,
           onTap: () => _openArtist(artists[index]),
           onMoreTap: () {},
           onLongPress: () => ArtistTabContextMenu.show(

@@ -3,26 +3,11 @@ import '../../theme/natsuyume_theme.dart';
 import '../../widgets/library_top_bar.dart';
 import '../../widgets/album_grid_item.dart';
 import '../../widgets/album_list_item.dart';
+import '../../core/library_types.dart';
+import '../../core/natsuyume_core.dart';
 import 'album_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
 import 'context_menus/album_tab_context_menu.dart';
-
-// Placeholder albums — will be wired to LibraryManager in 0.8.x
-final _placeholderAlbums = [
-  AlbumData(
-    title: 'Summer Challenger',
-    artist: '水瀬いのり',
-    year: 2026,
-    songCount: 3,
-  ),
-  AlbumData(title: 'Turquoise', artist: '水瀬いのり', year: 2025, songCount: 8),
-  AlbumData(title: 'Travel Record', artist: '水瀬いのり', year: 2025, songCount: 23),
-  AlbumData(title: 'heart bookmark', artist: '水瀬いのり', year: 2024, songCount: 7),
-  AlbumData(title: 'スクラップアート', artist: '水瀬いのり', year: 2023, songCount: 3),
-  AlbumData(title: 'アイオライト', artist: '水瀬いのり', year: 2023, songCount: 3),
-  AlbumData(title: 'glow', artist: '水瀬いのり', year: 2022, songCount: 14),
-  AlbumData(title: 'HELLO HORIZON', artist: '水瀬いのり', year: 2021, songCount: 3),
-];
 
 class AlbumsScreen extends StatefulWidget {
   const AlbumsScreen({super.key});
@@ -34,12 +19,36 @@ class AlbumsScreen extends StatefulWidget {
 class _AlbumsScreenState extends State<AlbumsScreen> {
   LibraryLayout _layout = LibraryLayout.grid;
   String _searchQuery = '';
-  final int _playingAlbumIndex = 0;
+  List<AlbumData> _albums = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAlbums();
+    NatsuyumeCore.instance.scanState.addListener(_onScanStateChanged);
+  }
+
+  @override
+  void dispose() {
+    NatsuyumeCore.instance.scanState.removeListener(_onScanStateChanged);
+    super.dispose();
+  }
+
+  void _onScanStateChanged() {
+    if (!NatsuyumeCore.instance.scanState.isScanning) {
+      _loadAlbums();
+    }
+  }
+
+  void _loadAlbums() {
+    final albums = NatsuyumeCore.instance.getAlbums();
+    setState(() => _albums = albums);
+  }
 
   List<AlbumData> get _filteredAlbums {
-    if (_searchQuery.isEmpty) return _placeholderAlbums;
+    if (_searchQuery.isEmpty) return _albums;
     final q = _searchQuery.toLowerCase();
-    return _placeholderAlbums.where((a) {
+    return _albums.where((a) {
       return a.title.toLowerCase().contains(q) ||
           a.artist.toLowerCase().contains(q);
     }).toList();
@@ -48,11 +57,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
   void _openAlbum(AlbumData album) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AlbumDetailScreen(
-          album: album,
-          isAlbumPlaying:
-              _placeholderAlbums.indexOf(album) == _playingAlbumIndex,
-        ),
+        builder: (_) => AlbumDetailScreen(album: album, isAlbumPlaying: false),
       ),
     );
   }
@@ -111,7 +116,14 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
               onMoreTap: () => _showMoreSheet(context, colors),
             ),
             Expanded(
-              child: _layout == LibraryLayout.grid
+              child: albums.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No albums found',
+                        style: TextStyle(color: colors.onSurfaceVariant),
+                      ),
+                    )
+                  : _layout == LibraryLayout.grid
                   ? _buildGrid(albums, colors)
                   : _buildList(albums, colors),
             ),
@@ -134,8 +146,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
       itemBuilder: (context, index) {
         return AlbumGridItem(
           album: albums[index],
-          isPlaying:
-              _placeholderAlbums.indexOf(albums[index]) == _playingAlbumIndex,
+          isPlaying: false,
           onTap: () => _openAlbum(albums[index]),
           onLongPress: () => AlbumTabContextMenu.show(
             context,
@@ -158,8 +169,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
       itemBuilder: (context, index) {
         return AlbumListItem(
           album: albums[index],
-          isPlaying:
-              _placeholderAlbums.indexOf(albums[index]) == _playingAlbumIndex,
+          isPlaying: false,
           onTap: () => _openAlbum(albums[index]),
           onMoreTap: () {},
           onLongPress: () => AlbumTabContextMenu.show(

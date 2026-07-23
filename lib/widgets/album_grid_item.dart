@@ -1,26 +1,9 @@
 import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
-
-class AlbumData {
-  final String title;
-  final String artist;
-  final int year;
-  final int songCount;
-  final ImageProvider? coverArt;
-
-  const AlbumData({
-    required this.title,
-    required this.artist,
-    required this.year,
-    required this.songCount,
-    this.coverArt,
-  });
-
-  String get subtitle => '$artist · $year · $songCount songs';
-}
+import '../core/library_types.dart';
 
 class AlbumGridItem extends StatelessWidget {
-  final AlbumData album;
+  final AlbumData album; // add this line
   final bool isPlaying;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;

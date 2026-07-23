@@ -1,19 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
-
-class CollectionTrack {
-  final String title;
-  final String artist;
-  final String duration;
-  final ImageProvider? albumArt;
-
-  const CollectionTrack({
-    required this.title,
-    required this.artist,
-    required this.duration,
-    this.albumArt,
-  });
-}
+import '../core/library_types.dart';
 
 class AlbumTrackList extends StatelessWidget {
   final List<CollectionTrack> tracks;

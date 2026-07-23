@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'library_types.dart';
 
 class NatsuyumeCore {
   NatsuyumeCore._();
@@ -224,6 +225,88 @@ class NatsuyumeCore {
       }).toList();
     } finally {
       _bindings.ncoreFreeString(ptr);
+    }
+  }
+
+  List<AlbumData> getAlbums() {
+    final ptr = _bindings.ncoreGetAlbumsJson(_core);
+    try {
+      final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
+      return list.map((e) {
+        final m = e as Map<String, dynamic>;
+        return AlbumData(
+          title: m['title'] as String,
+          artist: m['artist'] as String,
+          year: m['year'] as int,
+          songCount: m['songCount'] as int,
+        );
+      }).toList();
+    } finally {
+      _bindings.ncoreFreeString(ptr);
+    }
+  }
+
+  List<ArtistData> getArtists() {
+    final ptr = _bindings.ncoreGetArtistsJson(_core);
+    try {
+      final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
+      return list.map((e) {
+        final m = e as Map<String, dynamic>;
+        return ArtistData(
+          name: m['name'] as String,
+          albumCount: m['albumCount'] as int,
+        );
+      }).toList();
+    } finally {
+      _bindings.ncoreFreeString(ptr);
+    }
+  }
+
+  List<CollectionTrack> getAlbumTracks(String albumName) {
+    final namePtr = albumName.toNativeUtf8();
+    try {
+      final ptr = _bindings.ncoreGetAlbumTracksJson(_core, namePtr);
+      try {
+        final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
+        return list.map((e) {
+          final m = e as Map<String, dynamic>;
+          final ms = m['durationMs'] as int;
+          final totalSec = ms ~/ 1000;
+          final min = totalSec ~/ 60;
+          final sec = totalSec % 60;
+          return CollectionTrack(
+            title: m['title'] as String,
+            artist: m['artist'] as String,
+            duration: '$min:${sec.toString().padLeft(2, '0')}',
+          );
+        }).toList();
+      } finally {
+        _bindings.ncoreFreeString(ptr);
+      }
+    } finally {
+      calloc.free(namePtr);
+    }
+  }
+
+  List<ArtistAlbumEntry> getArtistAlbums(String artistName) {
+    final namePtr = artistName.toNativeUtf8();
+    try {
+      final ptr = _bindings.ncoreGetArtistAlbumsJson(_core, namePtr);
+      try {
+        final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
+        return list.map((e) {
+          final m = e as Map<String, dynamic>;
+          return ArtistAlbumEntry(
+            title: m['title'] as String,
+            year: m['year'] as int,
+            songCount: m['songCount'] as int,
+          );
+        }).toList();
+      } finally {
+        _bindings.ncoreFreeString(ptr);
+      }
+    } finally {
+      calloc.free(namePtr);
     }
   }
 }

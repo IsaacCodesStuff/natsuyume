@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
 import 'album_grid_item.dart';
+import '../core/library_types.dart';
 
 class AlbumListItem extends StatelessWidget {
-  final AlbumData album;
+  final AlbumData album; // add this line
   final bool isPlaying;
   final VoidCallback onTap;
   final VoidCallback onMoreTap;

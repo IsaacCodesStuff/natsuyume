@@ -158,6 +158,26 @@ typedef NcoreCancelScan = void Function(Pointer<Void>);
 typedef _NcoreGetQueueJsonNative = Pointer<Utf8> Function(Pointer<Void>);
 typedef NcoreGetQueueJson = Pointer<Utf8> Function(Pointer<Void>);
 
+// char* ncore_get_albums_json(NatsuyumeCore*)
+typedef _NcoreGetAlbumsJsonNative = Pointer<Utf8> Function(Pointer<Void>);
+typedef NcoreGetAlbumsJson = Pointer<Utf8> Function(Pointer<Void>);
+
+// char* ncore_get_artists_json(NatsuyumeCore*)
+typedef _NcoreGetArtistsJsonNative = Pointer<Utf8> Function(Pointer<Void>);
+typedef NcoreGetArtistsJson = Pointer<Utf8> Function(Pointer<Void>);
+
+// char* ncore_get_album_tracks_json(NatsuyumeCore*, const char*)
+typedef _NcoreGetAlbumTracksJsonNative =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreGetAlbumTracksJson =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+
+// char* ncore_get_artist_albums_json(NatsuyumeCore*, const char*)
+typedef _NcoreGetArtistAlbumsJsonNative =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreGetArtistAlbumsJson =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -198,6 +218,10 @@ class NatsuyumeBindings {
   late final NcoreScanLibrary ncoreScanLibrary;
 
   late final NcoreGetQueueJson ncoreGetQueueJson;
+  late final NcoreGetAlbumsJson ncoreGetAlbumsJson;
+  late final NcoreGetArtistsJson ncoreGetArtistsJson;
+  late final NcoreGetAlbumTracksJson ncoreGetAlbumTracksJson;
+  late final NcoreGetArtistAlbumsJson ncoreGetArtistAlbumsJson;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -329,6 +353,30 @@ class NatsuyumeBindings {
     ncoreGetQueueJson = _lib
         .lookup<NativeFunction<_NcoreGetQueueJsonNative>>(
           'ncore_get_queue_json',
+        )
+        .asFunction();
+
+    ncoreGetAlbumsJson = _lib
+        .lookup<NativeFunction<_NcoreGetAlbumsJsonNative>>(
+          'ncore_get_albums_json',
+        )
+        .asFunction();
+
+    ncoreGetArtistsJson = _lib
+        .lookup<NativeFunction<_NcoreGetArtistsJsonNative>>(
+          'ncore_get_artists_json',
+        )
+        .asFunction();
+
+    ncoreGetAlbumTracksJson = _lib
+        .lookup<NativeFunction<_NcoreGetAlbumTracksJsonNative>>(
+          'ncore_get_album_tracks_json',
+        )
+        .asFunction();
+
+    ncoreGetArtistAlbumsJson = _lib
+        .lookup<NativeFunction<_NcoreGetArtistAlbumsJsonNative>>(
+          'ncore_get_artist_albums_json',
         )
         .asFunction();
   }

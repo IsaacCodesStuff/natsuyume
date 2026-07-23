@@ -6,6 +6,7 @@ import '../../widgets/album_list_item.dart';
 import 'playlist_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
 import 'context_menus/playlist_tab_context_menu.dart';
+import '../../core/library_types.dart';
 
 class PlaylistData {
   final String name;
