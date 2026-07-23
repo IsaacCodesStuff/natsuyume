@@ -207,6 +207,9 @@ public:
     void                     setPlayCountThreshold(int percent);
     void                     saveSettings();
 
+    // --- Drain ---
+    void drainLibraryCallbacks();
+
     // --- A-B repeat ---
     bool    abRepeatActive() const;
     int64_t pointA()         const;

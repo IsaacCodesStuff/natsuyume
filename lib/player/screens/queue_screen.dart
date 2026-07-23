@@ -3,11 +3,13 @@ import '../../theme/natsuyume_theme.dart';
 import '../../widgets/queue_fab.dart';
 import '../../widgets/sort_dialog.dart';
 import '../../widgets/queue_dialog.dart';
+import '../../core/natsuyume_core.dart';
 import 'context_menus/queue_context_menu.dart';
 import 'context_menus/queue_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
 
 class QueueTrack {
+  final String path;
   final String title;
   final String artist;
   final String album;
@@ -15,12 +17,28 @@ class QueueTrack {
   final ImageProvider? albumArt;
 
   const QueueTrack({
+    required this.path,
     required this.title,
     required this.artist,
     required this.album,
     required this.duration,
     this.albumArt,
   });
+
+  static QueueTrack fromCoreTrack(CoreTrack t) {
+    final ms = t.durationMs;
+    final totalSec = ms ~/ 1000;
+    final minutes = totalSec ~/ 60;
+    final seconds = totalSec % 60;
+    final duration = '$minutes:${seconds.toString().padLeft(2, '0')}';
+    return QueueTrack(
+      path: t.path,
+      title: t.title.isEmpty ? 'Unknown Title' : t.title,
+      artist: t.artist.isEmpty ? 'Unknown Artist' : t.artist,
+      album: t.album.isEmpty ? 'Unknown Album' : t.album,
+      duration: duration,
+    );
+  }
 }
 
 class QueueScreen extends StatefulWidget {
@@ -31,41 +49,59 @@ class QueueScreen extends StatefulWidget {
 }
 
 class _QueueScreenState extends State<QueueScreen> {
-  int _currentTrackIndex = 1;
+  int _currentTrackIndex = -1;
   int _currentQueueIndex = 0;
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
 
-  List<String> _queueNames = ['Queue A', 'Queue B', 'Queue C'];
+  List<String> _queueNames = ['Queue A'];
+  List<QueueTrack> _tracks = [];
 
-  final List<QueueTrack> _tracks = [
-    const QueueTrack(
-      title: 'Calling Blue (overture)',
-      artist: 'Turquoise',
-      album: '水瀬いのり',
-      duration: '1:11',
-    ),
-    const QueueTrack(
-      title: 'Turquoise',
-      artist: 'Turquoise',
-      album: '水瀬いのり',
-      duration: '3:32',
-    ),
-    const QueueTrack(
-      title: '八月のスーベニア',
-      artist: 'glow',
-      album: '水瀬いのり',
-      duration: '5:11',
-    ),
-    const QueueTrack(
-      title: '夏夢',
-      artist: 'アイマイモコ',
-      album: '水瀬いのり',
-      duration: '4:59',
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _refreshTracks();
+    NatsuyumeCore.instance.playerState.addListener(_onPlayerStateChanged);
+  }
 
-  String get _totalDuration => '14:55';
+  @override
+  void dispose() {
+    NatsuyumeCore.instance.playerState.removeListener(_onPlayerStateChanged);
+    super.dispose();
+  }
+
+  void _onPlayerStateChanged() {
+    _refreshTracks();
+  }
+
+  void _refreshTracks() {
+    final core = NatsuyumeCore.instance;
+    final coreTracks = core.getQueueTracks();
+    final currentPath = core.playerState.currentTrack.path;
+
+    setState(() {
+      _tracks = coreTracks.map(QueueTrack.fromCoreTrack).toList();
+      _currentTrackIndex = coreTracks.indexWhere((t) => t.path == currentPath);
+    });
+  }
+
+  String get _totalDuration {
+    final totalMs = _tracks.fold<int>(0, (sum, t) {
+      final parts = t.duration.split(':');
+      if (parts.length != 2) return sum;
+      final min = int.tryParse(parts[0]) ?? 0;
+      final sec = int.tryParse(parts[1]) ?? 0;
+      return sum + min * 60000 + sec * 1000;
+    });
+    final totalSec = totalMs ~/ 1000;
+    final h = totalSec ~/ 3600;
+    final m = (totalSec % 3600) ~/ 60;
+    final s = totalSec % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
 
   void _enterSelectMode(int index) {
     setState(() {
@@ -191,69 +227,88 @@ class _QueueScreenState extends State<QueueScreen> {
             _buildTopBar(colors),
             const SizedBox(height: 8),
             Expanded(
-              child: Stack(
-                children: [
-                  _buildTrackList(colors),
-                  if (!_isSelecting)
-                    Positioned(
-                      right: 16,
-                      bottom: 16,
-                      child: QueueFab(
-                        actions: [
-                          QueueFabAction(
-                            icon: Icons.checklist,
-                            label: 'Select multiple',
-                            onTap: () => setState(() => _isSelecting = true),
-                          ),
-                          QueueFabAction(
-                            icon: Icons.file_upload_outlined,
-                            label: 'Export as .M3U',
-                            onTap: () {},
-                          ),
-                          QueueFabAction(
-                            icon: Icons.share_outlined,
-                            label: 'Share songs',
-                            onTap: () {},
-                          ),
-                          QueueFabAction(
-                            icon: Icons.save_outlined,
-                            label: 'Save as playlist',
-                            onTap: () {},
-                          ),
-                          QueueFabAction(
-                            icon: Icons.sort,
-                            label: 'Sort',
-                            onTap: () => showDialog(
-                              context: context,
-                              builder: (_) => TrackSortDialog(
-                                selectedField: TrackSortField.title,
-                                direction: SortDirection.ascending,
-                                specialOptions: [
-                                  SpecialTrackSort.randomize,
-                                  SpecialTrackSort.reverse,
-                                  SpecialTrackSort.mostPlayedFirst,
-                                  SpecialTrackSort.leastPlayedFirst,
-                                ],
-                                onNormalChanged: (field, direction) {},
-                                onSpecialChanged: (special) {},
-                              ),
+              child: _tracks.isEmpty
+                  ? _buildEmptyState(colors)
+                  : Stack(
+                      children: [
+                        _buildTrackList(colors),
+                        if (!_isSelecting)
+                          Positioned(
+                            right: 16,
+                            bottom: 16,
+                            child: QueueFab(
+                              actions: [
+                                QueueFabAction(
+                                  icon: Icons.checklist,
+                                  label: 'Select multiple',
+                                  onTap: () =>
+                                      setState(() => _isSelecting = true),
+                                ),
+                                QueueFabAction(
+                                  icon: Icons.file_upload_outlined,
+                                  label: 'Export as .M3U',
+                                  onTap: () {},
+                                ),
+                                QueueFabAction(
+                                  icon: Icons.share_outlined,
+                                  label: 'Share songs',
+                                  onTap: () {},
+                                ),
+                                QueueFabAction(
+                                  icon: Icons.save_outlined,
+                                  label: 'Save as playlist',
+                                  onTap: () {},
+                                ),
+                                QueueFabAction(
+                                  icon: Icons.sort,
+                                  label: 'Sort',
+                                  onTap: () => showDialog(
+                                    context: context,
+                                    builder: (_) => TrackSortDialog(
+                                      selectedField: TrackSortField.title,
+                                      direction: SortDirection.ascending,
+                                      specialOptions: [
+                                        SpecialTrackSort.randomize,
+                                        SpecialTrackSort.reverse,
+                                        SpecialTrackSort.mostPlayedFirst,
+                                        SpecialTrackSort.leastPlayedFirst,
+                                      ],
+                                      onNormalChanged: (field, direction) {},
+                                      onSpecialChanged: (special) {},
+                                    ),
+                                  ),
+                                ),
+                                QueueFabAction(
+                                  icon: Icons.add,
+                                  label: 'Add song',
+                                  onTap: () {},
+                                ),
+                              ],
                             ),
                           ),
-                          QueueFabAction(
-                            icon: Icons.add,
-                            label: 'Add song',
-                            onTap: () {},
-                          ),
-                        ],
-                      ),
+                      ],
                     ),
-                ],
-              ),
             ),
             if (_isSelecting) _buildMultiSelectBar(colors),
             _buildQueueInfoBar(colors),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(NatsuyumeColorScheme colors) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.queue_music, size: 48, color: colors.onSurfaceVariant),
+          const SizedBox(height: 12),
+          Text(
+            'No tracks in queue',
+            style: TextStyle(fontSize: 15, color: colors.onSurfaceVariant),
+          ),
+        ],
       ),
     );
   }
@@ -346,7 +401,6 @@ class _QueueScreenState extends State<QueueScreen> {
             ),
             child: Row(
               children: [
-                // Checkbox or drag handle + index
                 if (_isSelecting)
                   SizedBox(
                     width: 32,
@@ -379,7 +433,6 @@ class _QueueScreenState extends State<QueueScreen> {
                     ],
                   ),
                 const SizedBox(width: 10),
-                // Album art
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
                   child: track.albumArt != null
@@ -403,7 +456,6 @@ class _QueueScreenState extends State<QueueScreen> {
                         ),
                 ),
                 const SizedBox(width: 12),
-                // Track info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,7 +493,6 @@ class _QueueScreenState extends State<QueueScreen> {
                     ],
                   ),
                 ),
-                // Duration + more (hidden in select mode)
                 if (!_isSelecting) ...[
                   Text(
                     track.duration,
@@ -515,11 +566,15 @@ class _QueueScreenState extends State<QueueScreen> {
   }
 
   Widget _buildQueueInfoBar(NatsuyumeColorScheme colors) {
+    final trackDisplay = _tracks.isEmpty
+        ? '0 / 0'
+        : '${(_currentTrackIndex + 1).clamp(1, _tracks.length)} / ${_tracks.length}';
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 6),
       color: colors.surface,
       child: Text(
-        '${_currentTrackIndex + 1} / ${_tracks.length}    $_totalDuration',
+        '$trackDisplay    $_totalDuration',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
       ),

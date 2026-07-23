@@ -615,4 +615,9 @@ void    NatsuyumeCore::setPointA()            { m_impl->playbackManager->setPoin
 void    NatsuyumeCore::setPointB()            { m_impl->playbackManager->setPointB(); }
 void    NatsuyumeCore::clearAbRepeat()        { m_impl->playbackManager->clearAbRepeat(); }
 
+void NatsuyumeCore::drainLibraryCallbacks()
+{
+    m_impl->libraryManager->drainCallbacks();
+}
+
 } // namespace Natsuyume

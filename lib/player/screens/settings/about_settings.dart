@@ -42,7 +42,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
       ..showSnackBar(
         SnackBar(
           content: Text(
-            '$remaining more tap${remaining == 1 ? '' : 's'} to unlock developer options.',
+            '$remaining more tap${remaining == 1 ? '' : 's'} to unlock a secret.',
             style: TextStyle(color: colors.onSurface),
           ),
           backgroundColor: colors.surface,
@@ -187,7 +187,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                     vertical: 16,
                   ),
                   child: Text(
-                    '"May God\'s will be done."',
+                    '"Sicut autem fuerit voluntas in cælo, sic fiat."',
                     style: TextStyle(
                       fontSize: 15,
                       fontStyle: FontStyle.italic,

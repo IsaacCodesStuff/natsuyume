@@ -194,4 +194,82 @@ void ncore_set_track_changed_callback(NatsuyumeCore* core,
     };
 }
 
+// ---------------------------------------------------------------------------
+// Library drain + scan state
+// ---------------------------------------------------------------------------
+
+void ncore_drain_library_callbacks(NatsuyumeCore* core) {
+    if (core) core->drainLibraryCallbacks();
+}
+
+int ncore_is_scanning(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->isScanning() ? 1 : 0;
+}
+
+int ncore_scan_progress(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->scanProgress();
+}
+
+int ncore_scan_total(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->scanTotal();
+}
+
+void ncore_remove_scan_folder(NatsuyumeCore* core, const char* path) {
+    if (core && path) core->removeScanFolder(std::string(path));
+}
+
+void ncore_cancel_scan(NatsuyumeCore* core) {
+    if (core) core->cancelScan();
+}
+
+// Returns JSON array of tracks in the current viewed queue.
+// Caller must free with ncore_free_string().
+char* ncore_get_queue_json(NatsuyumeCore* core) {
+    if (!core) {
+        char* empty = static_cast<char*>(malloc(3));
+        strcpy(empty, "[]");
+        return empty;
+    }
+
+    std::vector<Natsuyume::CoreTrack> tracks = core->trackList();
+
+    std::string json = "[";
+    for (size_t i = 0; i < tracks.size(); i++) {
+        const auto& t = tracks[i];
+        if (i > 0) json += ",";
+
+        auto escape = [](const std::string& s) {
+            std::string out;
+            for (char c : s) {
+                if (c == '"')  out += "\\\"";
+                else if (c == '\\') out += "\\\\";
+                else if (c == '\n') out += "\\n";
+                else if (c == '\r') out += "\\r";
+                else if (c == '\t') out += "\\t";
+                else out += c;
+            }
+            return out;
+        };
+
+        json += "{";
+        json += "\"path\":\"" + escape(t.path) + "\",";
+        json += "\"title\":\"" + escape(t.title) + "\",";
+        json += "\"artist\":\"" + escape(t.artist) + "\",";
+        json += "\"album\":\"" + escape(t.album) + "\",";
+        json += "\"albumArtist\":\"" + escape(t.albumArtist) + "\",";
+        json += "\"trackNumber\":" + std::to_string(t.trackNumber) + ",";
+        json += "\"durationMs\":" + std::to_string(t.duration) + ",";
+        json += "\"isFavorite\":" + std::string(t.isFavorite ? "true" : "false");
+        json += "}";
+    }
+    json += "]";
+
+    char* out = static_cast<char*>(malloc(json.size() + 1));
+    memcpy(out, json.c_str(), json.size() + 1);
+    return out;
+}
+
 } // extern "C"

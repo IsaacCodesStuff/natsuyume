@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "com.isaaccodesstuff.natsuyume"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "28.2.13676358"  // Pin explicitly — don't use flutter.ndkVersion
 
     packaging {

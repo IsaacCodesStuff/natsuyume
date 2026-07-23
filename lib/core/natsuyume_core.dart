@@ -5,6 +5,7 @@ import 'natsuyume_bindings.dart';
 import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 
 class NatsuyumeCore {
   NatsuyumeCore._();
@@ -15,6 +16,7 @@ class NatsuyumeCore {
   bool _initialized = false;
 
   final CorePlayerState playerState = CorePlayerState();
+  final CoreScanState scanState = CoreScanState();
   String _lastTrackPath = '';
   Timer? _pollTimer;
 
@@ -141,6 +143,10 @@ class NatsuyumeCore {
   void startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      // Drain LibraryManager's callback queue first
+      _bindings.ncoreDrainLibraryCallbacks(_core);
+
+      // Playback state
       final isPlaying = _bindings.ncoreIsPlaying(_core) == 1;
       final posMs = _bindings.ncoreGetPosition(_core);
       final durMs = _bindings.ncoreGetDuration(_core);
@@ -149,12 +155,18 @@ class NatsuyumeCore {
       playerState.updatePosition(posMs);
       playerState.updateDuration(durMs);
 
-      // Only fetch full track info when track changes
+      // Track change detection
       final track = currentTrack;
       if (track.path != _lastTrackPath) {
         _lastTrackPath = track.path;
         playerState.updateTrack(track);
       }
+
+      // Scan state
+      final scanning = _bindings.ncoreIsScanning(_core) == 1;
+      final progress = _bindings.ncoreScanProgress(_core);
+      final total = _bindings.ncoreScanTotal(_core);
+      scanState.update(scanning, progress, total);
     });
   }
 
@@ -167,6 +179,53 @@ class NatsuyumeCore {
   void pause() => _bindings.ncorePause(_core);
   void next() => _bindings.ncoreNext(_core);
   void previous() => _bindings.ncorePrevious(_core);
+
+  void addScanFolder(String path) {
+    final ptr = path.toNativeUtf8();
+    try {
+      _bindings.ncoreAddScanFolder(_core, ptr);
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  void removeScanFolder(String path) {
+    final ptr = path.toNativeUtf8();
+    try {
+      _bindings.ncoreRemoveScanFolder(_core, ptr);
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  void rescanAllFolders() => _bindings.ncoreScanLibrary(_core);
+  void cancelScan() => _bindings.ncoreCancelScan(_core);
+
+  List<CoreTrack> getQueueTracks() {
+    final ptr = _bindings.ncoreGetQueueJson(_core);
+    try {
+      final jsonStr = ptr.toDartString();
+      final list = jsonDecode(jsonStr) as List<dynamic>;
+      return list.map((e) {
+        final m = e as Map<String, dynamic>;
+        return CoreTrack(
+          path: m['path'] as String,
+          title: m['title'] as String,
+          artist: m['artist'] as String,
+          album: m['album'] as String,
+          albumArtist: m['albumArtist'] as String,
+          genre: '',
+          trackNumber: m['trackNumber'] as int,
+          year: 0,
+          durationMs: m['durationMs'] as int,
+          playCount: 0,
+          isFavorite: m['isFavorite'] as bool,
+        );
+      }).toList();
+    } finally {
+      _bindings.ncoreFreeString(ptr);
+    }
+  }
 }
 
 class CoreTrack {
@@ -243,6 +302,23 @@ class CorePlayerState extends ChangeNotifier {
 
   void updateTrack(CoreTrack track) {
     _currentTrack = track;
+    notifyListeners();
+  }
+}
+
+class CoreScanState extends ChangeNotifier {
+  bool _isScanning = false;
+  int _progress = 0;
+  int _total = 0;
+
+  bool get isScanning => _isScanning;
+  int get progress => _progress;
+  int get total => _total;
+
+  void update(bool isScanning, int progress, int total) {
+    _isScanning = isScanning;
+    _progress = progress;
+    _total = total;
     notifyListeners();
   }
 }

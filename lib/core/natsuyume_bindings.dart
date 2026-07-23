@@ -121,6 +121,43 @@ typedef _NcoreSetTrackChangedCallbackNative =
 typedef NcoreSetTrackChangedCallback =
     void Function(Pointer<Void>, Pointer<NativeFunction<Void Function()>>);
 
+// void ncore_drain_library_callbacks(NatsuyumeCore*)
+typedef _NcoreDrainLibraryCallbacksNative = Void Function(Pointer<Void>);
+typedef NcoreDrainLibraryCallbacks = void Function(Pointer<Void>);
+
+// int ncore_is_scanning(NatsuyumeCore*)
+typedef _NcoreIsScanningNative = Int32 Function(Pointer<Void>);
+typedef NcoreIsScanning = int Function(Pointer<Void>);
+
+// int ncore_scan_progress(NatsuyumeCore*)
+typedef _NcoreScanProgressNative = Int32 Function(Pointer<Void>);
+typedef NcoreScanProgress = int Function(Pointer<Void>);
+
+// int ncore_scan_total(NatsuyumeCore*)
+typedef _NcoreScanTotalNative = Int32 Function(Pointer<Void>);
+typedef NcoreScanTotal = int Function(Pointer<Void>);
+
+// void ncore_add_scan_folder(NatsuyumeCore*, const char*)
+typedef _NcoreAddScanFolderNative = Void Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreAddScanFolder = void Function(Pointer<Void>, Pointer<Utf8>);
+
+// void ncore_scan_library(NatsuyumeCore*)
+typedef _NcoreScanLibraryNative = Void Function(Pointer<Void>);
+typedef NcoreScanLibrary = void Function(Pointer<Void>);
+
+// void ncore_remove_scan_folder(NatsuyumeCore*, const char*)
+typedef _NcoreRemoveScanFolderNative =
+    Void Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreRemoveScanFolder = void Function(Pointer<Void>, Pointer<Utf8>);
+
+// void ncore_cancel_scan(NatsuyumeCore*)
+typedef _NcoreCancelScanNative = Void Function(Pointer<Void>);
+typedef NcoreCancelScan = void Function(Pointer<Void>);
+
+// char* ncore_get_queue_json(NatsuyumeCore*)
+typedef _NcoreGetQueueJsonNative = Pointer<Utf8> Function(Pointer<Void>);
+typedef NcoreGetQueueJson = Pointer<Utf8> Function(Pointer<Void>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -150,6 +187,17 @@ class NatsuyumeBindings {
   late final NcoreSetPositionCallback ncoreSetPositionCallback;
   late final NcoreSetDurationCallback ncoreSetDurationCallback;
   late final NcoreSetTrackChangedCallback ncoreSetTrackChangedCallback;
+
+  late final NcoreDrainLibraryCallbacks ncoreDrainLibraryCallbacks;
+  late final NcoreIsScanning ncoreIsScanning;
+  late final NcoreScanProgress ncoreScanProgress;
+  late final NcoreScanTotal ncoreScanTotal;
+  late final NcoreRemoveScanFolder ncoreRemoveScanFolder;
+  late final NcoreCancelScan ncoreCancelScan;
+  late final NcoreAddScanFolder ncoreAddScanFolder;
+  late final NcoreScanLibrary ncoreScanLibrary;
+
+  late final NcoreGetQueueJson ncoreGetQueueJson;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -237,6 +285,50 @@ class NatsuyumeBindings {
     ncoreSetTrackChangedCallback = _lib
         .lookup<NativeFunction<_NcoreSetTrackChangedCallbackNative>>(
           'ncore_set_track_changed_callback',
+        )
+        .asFunction();
+
+    ncoreDrainLibraryCallbacks = _lib
+        .lookup<NativeFunction<_NcoreDrainLibraryCallbacksNative>>(
+          'ncore_drain_library_callbacks',
+        )
+        .asFunction();
+
+    ncoreIsScanning = _lib
+        .lookup<NativeFunction<_NcoreIsScanningNative>>('ncore_is_scanning')
+        .asFunction();
+
+    ncoreScanProgress = _lib
+        .lookup<NativeFunction<_NcoreScanProgressNative>>('ncore_scan_progress')
+        .asFunction();
+
+    ncoreScanTotal = _lib
+        .lookup<NativeFunction<_NcoreScanTotalNative>>('ncore_scan_total')
+        .asFunction();
+
+    ncoreRemoveScanFolder = _lib
+        .lookup<NativeFunction<_NcoreRemoveScanFolderNative>>(
+          'ncore_remove_scan_folder',
+        )
+        .asFunction();
+
+    ncoreCancelScan = _lib
+        .lookup<NativeFunction<_NcoreCancelScanNative>>('ncore_cancel_scan')
+        .asFunction();
+
+    ncoreAddScanFolder = _lib
+        .lookup<NativeFunction<_NcoreAddScanFolderNative>>(
+          'ncore_add_scan_folder',
+        )
+        .asFunction();
+
+    ncoreScanLibrary = _lib
+        .lookup<NativeFunction<_NcoreScanLibraryNative>>('ncore_scan_library')
+        .asFunction();
+
+    ncoreGetQueueJson = _lib
+        .lookup<NativeFunction<_NcoreGetQueueJsonNative>>(
+          'ncore_get_queue_json',
         )
         .asFunction();
   }
