@@ -8,6 +8,8 @@ import 'context_menus/album_detail_context_menu.dart';
 import 'context_menus/album_track_context_menu.dart';
 import 'context_menus/album_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
+import 'dart:typed_data';
+import '../../core/cover_service.dart';
 
 class AlbumDetailScreen extends StatefulWidget {
   final AlbumData album;
@@ -30,6 +32,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
   List<CollectionTrack> _tracks = [];
+  Future<Uint8List?>? _albumCoverFuture;
 
   static const double _coverThreshold = 260.0;
 
@@ -38,11 +41,14 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _loadTracks();
+    _albumCoverFuture = CoverService.instance.getCoverForAlbumAsync(
+      widget.album.title,
+    );
   }
 
   void _loadTracks() {
-    final tracks = NatsuyumeCore.instance.getAlbumTracks(widget.album.title);
-    setState(() => _tracks = tracks);
+    final raw = NatsuyumeCore.instance.getAlbumTracks(widget.album.title);
+    setState(() => _tracks = raw);
   }
 
   void _onScroll() {
@@ -213,16 +219,25 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             borderRadius: BorderRadius.circular(16),
             child: AspectRatio(
               aspectRatio: 1,
-              child: widget.album.coverArt != null
-                  ? Image(image: widget.album.coverArt!, fit: BoxFit.cover)
-                  : Container(
-                      color: colors.surfaceVariant,
-                      child: Icon(
-                        Icons.album,
-                        size: 80,
-                        color: colors.onSurfaceVariant,
-                      ),
+              child: FutureBuilder<Uint8List?>(
+                future: _albumCoverFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.hasData && snapshot.data != null) {
+                    return Image(
+                      image: MemoryImage(snapshot.data!),
+                      fit: BoxFit.cover,
+                    );
+                  }
+                  return Container(
+                    color: colors.surfaceVariant,
+                    child: Icon(
+                      Icons.album,
+                      size: 80,
+                      color: colors.onSurfaceVariant,
                     ),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -367,23 +382,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                 const SizedBox(width: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: track.albumArt != null
-                      ? Image(
-                          image: track.albumArt!,
-                          width: 44,
-                          height: 44,
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          width: 44,
-                          height: 44,
-                          color: colors.surfaceVariant,
-                          child: Icon(
-                            Icons.music_note,
-                            size: 20,
-                            color: colors.onSurfaceVariant,
-                          ),
-                        ),
+                  child: _TrackCover(path: track.path, colors: colors),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -608,6 +607,53 @@ class _Bar extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(2),
       ),
+    );
+  }
+}
+
+class _TrackCover extends StatefulWidget {
+  final String path;
+  final NatsuyumeColorScheme colors;
+
+  const _TrackCover({required this.path, required this.colors});
+
+  @override
+  State<_TrackCover> createState() => _TrackCoverState();
+}
+
+class _TrackCoverState extends State<_TrackCover> {
+  late Future<Uint8List?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = CoverService.instance.getCoverForTrackAsync(widget.path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Uint8List?>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          return Image(
+            image: MemoryImage(snapshot.data!),
+            width: 44,
+            height: 44,
+            fit: BoxFit.cover,
+          );
+        }
+        return Container(
+          width: 44,
+          height: 44,
+          color: widget.colors.surfaceVariant,
+          child: Icon(
+            Icons.music_note,
+            size: 20,
+            color: widget.colors.onSurfaceVariant,
+          ),
+        );
+      },
     );
   }
 }

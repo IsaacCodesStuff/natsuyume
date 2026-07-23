@@ -188,6 +188,50 @@ typedef NcoreOpenPathsInNewQueue =
 typedef _NcoreSeekNative = Void Function(Pointer<Void>, Double);
 typedef NcoreSeek = void Function(Pointer<Void>, double);
 
+// uint8_t* ncore_get_cover_bytes(NatsuyumeCore*, const char*, int*, char**)
+typedef _NcoreGetCoverBytesNative =
+    Pointer<Uint8> Function(
+      Pointer<Void>,
+      Pointer<Utf8>,
+      Pointer<Int32>,
+      Pointer<Pointer<Utf8>>,
+    );
+typedef NcoreGetCoverBytes =
+    Pointer<Uint8> Function(
+      Pointer<Void>,
+      Pointer<Utf8>,
+      Pointer<Int32>,
+      Pointer<Pointer<Utf8>>,
+    );
+
+// void ncore_free_cover_bytes(uint8_t*)
+typedef _NcoreFreeCoverBytesNative = Void Function(Pointer<Uint8>);
+typedef NcoreFreeCoverBytes = void Function(Pointer<Uint8>);
+
+// uint8_t* ncore_get_cover_bytes_for_album(NatsuyumeCore*, const char*, int*, char**)
+typedef _NcoreGetCoverBytesForAlbumNative =
+    Pointer<Uint8> Function(
+      Pointer<Void>,
+      Pointer<Utf8>,
+      Pointer<Int32>,
+      Pointer<Pointer<Utf8>>,
+    );
+typedef NcoreGetCoverBytesForAlbum =
+    Pointer<Uint8> Function(
+      Pointer<Void>,
+      Pointer<Utf8>,
+      Pointer<Int32>,
+      Pointer<Pointer<Utf8>>,
+    );
+
+// char* ncore_get_lyrics(NatsuyumeCore*, const char*)
+typedef _NcoreGetLyricsNative =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreGetLyrics = Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+
+typedef _NcoreJumpToTrackNative = Void Function(Pointer<Void>, Int32);
+typedef NcoreJumpToTrack = void Function(Pointer<Void>, int);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -235,6 +279,11 @@ class NatsuyumeBindings {
   late final NcoreOpenPathsInNewQueue ncoreOpenPathsInNewQueue;
 
   late final NcoreSeek ncoreSeek;
+  late final NcoreGetCoverBytes ncoreGetCoverBytes;
+  late final NcoreFreeCoverBytes ncoreFreeCoverBytes;
+  late final NcoreGetCoverBytesForAlbum ncoreGetCoverBytesForAlbum;
+  late final NcoreGetLyrics ncoreGetLyrics;
+  late final NcoreJumpToTrack ncoreJumpToTrack;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -401,6 +450,32 @@ class NatsuyumeBindings {
 
     ncoreSeek = _lib
         .lookup<NativeFunction<_NcoreSeekNative>>('ncore_seek')
+        .asFunction();
+
+    ncoreGetCoverBytes = _lib
+        .lookup<NativeFunction<_NcoreGetCoverBytesNative>>(
+          'ncore_get_cover_bytes',
+        )
+        .asFunction();
+
+    ncoreFreeCoverBytes = _lib
+        .lookup<NativeFunction<_NcoreFreeCoverBytesNative>>(
+          'ncore_free_cover_bytes',
+        )
+        .asFunction();
+
+    ncoreGetCoverBytesForAlbum = _lib
+        .lookup<NativeFunction<_NcoreGetCoverBytesForAlbumNative>>(
+          'ncore_get_cover_bytes_for_album',
+        )
+        .asFunction();
+
+    ncoreGetLyrics = _lib
+        .lookup<NativeFunction<_NcoreGetLyricsNative>>('ncore_get_lyrics')
+        .asFunction();
+
+    ncoreJumpToTrack = _lib
+        .lookup<NativeFunction<_NcoreJumpToTrackNative>>('ncore_jump_to_track')
         .asFunction();
   }
 }

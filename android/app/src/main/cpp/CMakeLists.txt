@@ -44,7 +44,10 @@ add_library(natsuyume_bridge SHARED
 target_include_directories(natsuyume_bridge PRIVATE
     ${CORE_ROOT}/src
     ${CORE_ROOT}/src/core
+    ${CORE_ROOT}/src/domain
+    ${CORE_ROOT}/src/library
     ${JNI_INCLUDE}
+    ${JNI_INCLUDE}/taglib
 )
 
 target_link_libraries(natsuyume_bridge PRIVATE

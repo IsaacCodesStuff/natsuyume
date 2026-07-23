@@ -7,6 +7,8 @@ import '../../core/natsuyume_core.dart';
 import 'context_menus/queue_context_menu.dart';
 import 'context_menus/queue_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
+import 'dart:typed_data';
+import '../../core/cover_service.dart';
 
 class QueueTrack {
   final String path;
@@ -14,7 +16,6 @@ class QueueTrack {
   final String artist;
   final String album;
   final String duration;
-  final ImageProvider? albumArt;
 
   const QueueTrack({
     required this.path,
@@ -22,7 +23,6 @@ class QueueTrack {
     required this.artist,
     required this.album,
     required this.duration,
-    this.albumArt,
   });
 
   static QueueTrack fromCoreTrack(CoreTrack t) {
@@ -30,13 +30,12 @@ class QueueTrack {
     final totalSec = ms ~/ 1000;
     final minutes = totalSec ~/ 60;
     final seconds = totalSec % 60;
-    final duration = '$minutes:${seconds.toString().padLeft(2, '0')}';
     return QueueTrack(
       path: t.path,
       title: t.title.isEmpty ? 'Unknown Title' : t.title,
       artist: t.artist.isEmpty ? 'Unknown Artist' : t.artist,
       album: t.album.isEmpty ? 'Unknown Album' : t.album,
-      duration: duration,
+      duration: '$minutes:${seconds.toString().padLeft(2, '0')}',
     );
   }
 }
@@ -78,11 +77,24 @@ class _QueueScreenState extends State<QueueScreen> {
     final core = NatsuyumeCore.instance;
     final coreTracks = core.getQueueTracks();
     final currentPath = core.playerState.currentTrack.path;
+    final newIndex = coreTracks.indexWhere((t) => t.path == currentPath);
 
-    setState(() {
-      _tracks = coreTracks.map(QueueTrack.fromCoreTrack).toList();
-      _currentTrackIndex = coreTracks.indexWhere((t) => t.path == currentPath);
-    });
+    // Only rebuild if the track list or playing index changed.
+    // Avoids resetting _TrackCover futures on every 250ms poll.
+    final newTracks = coreTracks.map(QueueTrack.fromCoreTrack).toList();
+    final trackListChanged =
+        newTracks.length != _tracks.length ||
+        !List.generate(
+          newTracks.length,
+          (i) => newTracks[i].path == _tracks[i].path,
+        ).every((e) => e);
+
+    if (trackListChanged || newIndex != _currentTrackIndex) {
+      setState(() {
+        _tracks = newTracks;
+        _currentTrackIndex = newIndex;
+      });
+    }
   }
 
   String get _totalDuration {
@@ -375,6 +387,7 @@ class _QueueScreenState extends State<QueueScreen> {
             if (_isSelecting) {
               _toggleSelection(index);
             } else {
+              NatsuyumeCore.instance.jumpToTrack(index);
               setState(() => _currentTrackIndex = index);
             }
           },
@@ -435,25 +448,12 @@ class _QueueScreenState extends State<QueueScreen> {
                 const SizedBox(width: 10),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: track.albumArt != null
-                      ? Image(
-                          image: track.albumArt!,
-                          width: 52,
-                          height: 52,
-                          fit: BoxFit.cover,
-                        )
-                      : Container(
-                          width: 52,
-                          height: 52,
-                          color: colors.surfaceVariant,
-                          child: isPlaying && !_isSelecting
-                              ? _EqualizerIcon(color: colors.accent)
-                              : Icon(
-                                  Icons.music_note,
-                                  color: colors.onSurfaceVariant,
-                                  size: 24,
-                                ),
-                        ),
+                  child: _TrackCover(
+                    path: track.path,
+                    isPlaying: isPlaying,
+                    isSel: _isSelecting,
+                    colors: colors,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -646,6 +646,62 @@ class _Bar extends StatelessWidget {
         color: color,
         borderRadius: BorderRadius.circular(2),
       ),
+    );
+  }
+}
+
+class _TrackCover extends StatefulWidget {
+  final String path;
+  final bool isPlaying;
+  final bool isSel;
+  final NatsuyumeColorScheme colors;
+
+  const _TrackCover({
+    required this.path,
+    required this.isPlaying,
+    required this.isSel,
+    required this.colors,
+  });
+
+  @override
+  State<_TrackCover> createState() => _TrackCoverState();
+}
+
+class _TrackCoverState extends State<_TrackCover> {
+  late Future<Uint8List?> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = CoverService.instance.getCoverForTrackAsync(widget.path);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Uint8List?>(
+      future: _future,
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          return Image(
+            image: MemoryImage(snapshot.data!),
+            width: 52,
+            height: 52,
+            fit: BoxFit.cover,
+          );
+        }
+        return Container(
+          width: 52,
+          height: 52,
+          color: widget.colors.surfaceVariant,
+          child: widget.isPlaying && !widget.isSel
+              ? _EqualizerIcon(color: widget.colors.accent)
+              : Icon(
+                  Icons.music_note,
+                  color: widget.colors.onSurfaceVariant,
+                  size: 24,
+                ),
+        );
+      },
     );
   }
 }

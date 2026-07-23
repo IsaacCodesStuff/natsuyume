@@ -1,4 +1,6 @@
 #include "natsuyumecore.h"
+#include "metadata.h"
+#include "track.h"
 #include <cstring>
 #include <cstdlib>
 #include <thread>
@@ -434,6 +436,103 @@ void ncore_open_paths_in_new_queue(NatsuyumeCore* core,
 
     if (startIndex > 0 && startIndex < (int)paths.size())
         core->jumpToTrack(startIndex);
+}
+
+// ---------------------------------------------------------------------------
+// Cover art
+// ---------------------------------------------------------------------------
+
+// Returns heap-allocated raw image bytes for the given track path.
+// If path matches the currently playing track, uses already-loaded bytes.
+// Otherwise re-reads via Metadata::read(). Returns nullptr if no art.
+// out_size  → byte count
+// out_mime  → heap-allocated MIME string, free with ncore_free_string()
+// Caller frees returned bytes with ncore_free_cover_bytes().
+uint8_t* ncore_get_cover_bytes(NatsuyumeCore* core,
+                                const char*    path,
+                                int*           out_size,
+                                char**         out_mime)
+{
+    if (!core || !path || !out_size || !out_mime) return nullptr;
+    *out_size = 0;
+    *out_mime = nullptr;
+
+    const std::vector<uint8_t>* dataPtr  = nullptr;
+    const std::string*          mimePtr  = nullptr;
+
+    // Fast path: currently playing track already has bytes loaded
+    Natsuyume::CoreTrack current = core->currentTrack();
+    std::string requestedPath(path);
+
+    Track tempTrack("");
+    if (requestedPath == current.path && !current.coverArtData.empty()) {
+        dataPtr = &current.coverArtData;
+        mimePtr = &current.coverArtMimeType;
+    } else {
+        // Slow path: re-read via TagLib
+        tempTrack = Metadata::read(requestedPath, true);
+        if (tempTrack.coverArtData.empty()) return nullptr;
+        dataPtr = &tempTrack.coverArtData;
+        mimePtr = &tempTrack.coverArtMimeType;
+    }
+
+    if (!dataPtr || dataPtr->empty()) return nullptr;
+
+    uint8_t* out = static_cast<uint8_t*>(malloc(dataPtr->size()));
+    memcpy(out, dataPtr->data(), dataPtr->size());
+    *out_size = static_cast<int>(dataPtr->size());
+    *out_mime = static_cast<char*>(malloc(mimePtr->size() + 1));
+    memcpy(*out_mime, mimePtr->c_str(), mimePtr->size() + 1);
+    return out;
+}
+
+void ncore_free_cover_bytes(uint8_t* data) {
+    free(data);
+}
+
+// Returns cover art for the first track of the named album.
+// Dart doesn't need to know track paths — core handles the lookup.
+uint8_t* ncore_get_cover_bytes_for_album(NatsuyumeCore* core,
+                                          const char*    albumName,
+                                          int*           out_size,
+                                          char**         out_mime)
+{
+    if (!core || !albumName || !out_size || !out_mime) return nullptr;
+    *out_size = 0;
+    *out_mime = nullptr;
+
+    auto tracks = core->tracksForAlbum(std::string(albumName));
+    if (tracks.empty()) return nullptr;
+
+    return ncore_get_cover_bytes(core,
+                                  tracks.front().path.c_str(),
+                                  out_size,
+                                  out_mime);
+}
+
+// ---------------------------------------------------------------------------
+// Lyrics
+// ---------------------------------------------------------------------------
+
+// Returns heap-allocated lyrics string for the given track path.
+// Free with ncore_free_string().
+// Returns an empty string (not nullptr) if no lyrics are found.
+char* ncore_get_lyrics(NatsuyumeCore* core, const char* path)
+{
+    if (!core || !path) return mallocStr("");
+
+    // Fast path: currently playing track
+    Natsuyume::CoreTrack current = core->currentTrack();
+    if (std::string(path) == current.path)
+        return mallocStr(current.lyrics);
+
+    // Slow path: re-read. includeCoverArt=false — we only want lyrics.
+    Track t = Metadata::read(std::string(path), false);
+    return mallocStr(t.lyrics);
+}
+
+void ncore_jump_to_track(NatsuyumeCore* core, int index) {
+    if (core) core->jumpToTrack(index);
 }
 
 } // extern "C"

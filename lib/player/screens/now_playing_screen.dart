@@ -5,6 +5,8 @@ import '../../widgets/now_playing_bar.dart';
 import '../../widgets/squiggly_slider.dart';
 import 'lyrics_editor_screen.dart';
 import 'dart:ui';
+import 'dart:typed_data';
+import '../../core/cover_service.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
@@ -183,6 +185,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 
   Widget _buildNormalView(NatsuyumeColorScheme colors, CoreTrack track) {
+    final Uint8List? coverBytes = track.isEmpty
+        ? null
+        : CoverService.instance.getCoverForTrack(track.path);
+
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
@@ -193,14 +199,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             aspectRatio: 1,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(20),
-              child: Container(
-                color: colors.surfaceVariant,
-                child: Icon(
-                  Icons.album,
-                  size: 80,
-                  color: colors.onSurfaceVariant,
-                ),
-              ),
+              child: coverBytes != null
+                  ? Image(image: MemoryImage(coverBytes), fit: BoxFit.cover)
+                  : Container(
+                      color: colors.surfaceVariant,
+                      child: Icon(
+                        Icons.album,
+                        size: 80,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
             ),
           ),
         ),

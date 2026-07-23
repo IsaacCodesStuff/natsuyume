@@ -7,6 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'library_types.dart';
+import 'dart:typed_data';
 
 class NatsuyumeCore {
   NatsuyumeCore._();
@@ -324,6 +325,72 @@ class NatsuyumeCore {
     } finally {
       calloc.free(ptr);
     }
+  }
+
+  Uint8List? getCoverBytes(String path) {
+    final pathPtr = path.toNativeUtf8();
+    final sizePtr = calloc<Int32>();
+    final mimePtr = calloc<Pointer<Utf8>>();
+    try {
+      final result = _bindings.ncoreGetCoverBytes(
+        _core,
+        pathPtr,
+        sizePtr,
+        mimePtr,
+      );
+      if (result == nullptr || sizePtr.value == 0) return null;
+      final bytes = Uint8List.fromList(result.asTypedList(sizePtr.value));
+      _bindings.ncoreFreeCoverBytes(result);
+      if (mimePtr.value != nullptr) {
+        _bindings.ncoreFreeString(mimePtr.value);
+      }
+      return bytes;
+    } finally {
+      calloc.free(pathPtr);
+      calloc.free(sizePtr);
+      calloc.free(mimePtr);
+    }
+  }
+
+  Uint8List? getCoverBytesForAlbum(String albumName) {
+    final namePtr = albumName.toNativeUtf8();
+    final sizePtr = calloc<Int32>();
+    final mimePtr = calloc<Pointer<Utf8>>();
+    try {
+      final result = _bindings.ncoreGetCoverBytesForAlbum(
+        _core,
+        namePtr,
+        sizePtr,
+        mimePtr,
+      );
+      if (result == nullptr || sizePtr.value == 0) return null;
+      final bytes = Uint8List.fromList(result.asTypedList(sizePtr.value));
+      _bindings.ncoreFreeCoverBytes(result);
+      if (mimePtr.value != nullptr) {
+        _bindings.ncoreFreeString(mimePtr.value);
+      }
+      return bytes;
+    } finally {
+      calloc.free(namePtr);
+      calloc.free(sizePtr);
+      calloc.free(mimePtr);
+    }
+  }
+
+  String getLyrics(String path) {
+    final pathPtr = path.toNativeUtf8();
+    try {
+      final ptr = _bindings.ncoreGetLyrics(_core, pathPtr);
+      final lyrics = ptr.toDartString();
+      _bindings.ncoreFreeString(ptr);
+      return lyrics;
+    } finally {
+      calloc.free(pathPtr);
+    }
+  }
+
+  void jumpToTrack(int index) {
+    _bindings.ncoreJumpToTrack(_core, index);
   }
 }
 
