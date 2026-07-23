@@ -382,4 +382,58 @@ char* ncore_get_artist_albums_json(NatsuyumeCore* core, const char* artistName) 
     return mallocStr(json);
 }
 
+// ---------------------------------------------------------------------------
+// Queue loading
+// ---------------------------------------------------------------------------
+
+void ncore_open_paths_in_new_queue(NatsuyumeCore* core,
+                                   const char* pathsJson,
+                                   int startIndex) {
+    if (!core || !pathsJson) return;
+
+    // Parse JSON array of strings: ["path1","path2",...]
+    std::vector<std::string> paths;
+    std::string json(pathsJson);
+
+    // Simple parser — no dependencies, handles our own escaped output
+    size_t pos = 0;
+    while ((pos = json.find('"', pos)) != std::string::npos) {
+        size_t start = pos + 1;
+        size_t end = start;
+        while (end < json.size()) {
+            if (json[end] == '\\') { end += 2; continue; }
+            if (json[end] == '"') break;
+            end++;
+        }
+        if (end < json.size()) {
+            // Unescape
+            std::string raw = json.substr(start, end - start);
+            std::string path;
+            for (size_t i = 0; i < raw.size(); i++) {
+                if (raw[i] == '\\' && i + 1 < raw.size()) {
+                    switch (raw[i+1]) {
+                        case '"':  path += '"';  i++; break;
+                        case '\\': path += '\\'; i++; break;
+                        case 'n':  path += '\n'; i++; break;
+                        case 'r':  path += '\r'; i++; break;
+                        case 't':  path += '\t'; i++; break;
+                        default:   path += raw[i]; break;
+                    }
+                } else {
+                    path += raw[i];
+                }
+            }
+            paths.push_back(path);
+        }
+        pos = end + 1;
+    }
+
+    if (paths.empty()) return;
+
+    core->openFilesInNewQueue(paths, "", false);
+
+    if (startIndex > 0 && startIndex < (int)paths.size())
+        core->jumpToTrack(startIndex);
+}
+
 } // extern "C"

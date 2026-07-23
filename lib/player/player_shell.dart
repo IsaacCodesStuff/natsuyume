@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/mini_player.dart';
+import '../core/natsuyume_core.dart';
 import 'screens/queue_screen.dart';
 import 'screens/albums_screen.dart';
 import 'screens/artists_screen.dart';
@@ -19,18 +20,6 @@ class PlayerShell extends StatefulWidget {
 class _PlayerShellState extends State<PlayerShell> {
   PlayerTab _currentTab = PlayerTab.queues;
 
-  // Placeholder player state — will be wired to core in 0.8.x
-  bool _isPlaying = false;
-  bool _isFavorite = false;
-
-  final MiniPlayerData _currentTrack = const MiniPlayerData(
-    title: 'Turquoise',
-    artist: 'Turquoise',
-    album: '水瀬いのり',
-    isPlaying: false,
-    isFavorite: false,
-  );
-
   Widget _buildCurrentScreen() {
     switch (_currentTab) {
       case PlayerTab.queues:
@@ -46,42 +35,53 @@ class _PlayerShellState extends State<PlayerShell> {
     }
   }
 
+  void _openNowPlaying() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const FractionallySizedBox(
+        heightFactor: 1.0,
+        child: NowPlayingScreen(),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
+    final core = NatsuyumeCore.instance;
 
     return Scaffold(
       backgroundColor: colors.background,
       body: Column(
         children: [
           Expanded(child: _buildCurrentScreen()),
-          MiniPlayer(
-            data: MiniPlayerData(
-              title: _currentTrack.title,
-              artist: _currentTrack.artist,
-              album: _currentTrack.album,
-              albumArt: _currentTrack.albumArt,
-              isPlaying: _isPlaying,
-              isFavorite: _isFavorite,
-            ),
-            onTap: () {
-              showModalBottomSheet(
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => const FractionallySizedBox(
-                  heightFactor: 1.0,
-                  child: NowPlayingScreen(),
+          ListenableBuilder(
+            listenable: core.playerState,
+            builder: (context, _) {
+              final track = core.playerState.currentTrack;
+              final isPlaying = core.playerState.isPlaying;
+              return MiniPlayer(
+                data: MiniPlayerData(
+                  title: track.isEmpty ? 'Not playing' : track.title,
+                  artist: track.isEmpty ? '' : track.artist,
+                  album: track.isEmpty ? '' : track.album,
+                  isPlaying: isPlaying,
+                  isFavorite: track.isFavorite,
                 ),
+                onTap: _openNowPlaying,
+                onPlayPause: () {
+                  if (isPlaying) {
+                    core.pause();
+                  } else {
+                    core.play();
+                  }
+                },
+                onPrevious: core.previous,
+                onNext: core.next,
+                onFavorite: () {},
               );
-            },
-            onPlayPause: () {
-              setState(() => _isPlaying = !_isPlaying);
-            },
-            onPrevious: () {},
-            onNext: () {},
-            onFavorite: () {
-              setState(() => _isFavorite = !_isFavorite);
             },
           ),
           NatsuyumeBottomNavBar(

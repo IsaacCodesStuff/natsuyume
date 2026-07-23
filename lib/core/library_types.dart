@@ -29,12 +29,14 @@ class ArtistData {
 }
 
 class CollectionTrack {
+  final String path;
   final String title;
   final String artist;
   final String duration;
   final ImageProvider? albumArt;
 
   const CollectionTrack({
+    required this.path,
     required this.title,
     required this.artist,
     required this.duration,

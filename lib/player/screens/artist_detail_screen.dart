@@ -302,7 +302,16 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       allSongsCount: _totalTrackCount,
       albums: _albums,
       currentAlbumIndex: _isSelecting ? null : _currentAlbumIndex,
-      onAllSongsTap: () {},
+      onAllSongsTap: () {
+        final allPaths = <String>[];
+        for (final album in _albums) {
+          final tracks = NatsuyumeCore.instance.getAlbumTracks(album.title);
+          allPaths.addAll(tracks.map((t) => t.path));
+        }
+        if (allPaths.isNotEmpty) {
+          NatsuyumeCore.instance.openPathsInNewQueue(allPaths);
+        }
+      },
       onAlbumTap: (i) {
         if (_isSelecting) {
           _toggleSelection(i);

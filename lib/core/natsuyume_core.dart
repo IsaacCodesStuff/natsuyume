@@ -181,6 +181,10 @@ class NatsuyumeCore {
   void next() => _bindings.ncoreNext(_core);
   void previous() => _bindings.ncorePrevious(_core);
 
+  void seekTo(int positionMs) {
+    _bindings.ncoreSeek(_core, positionMs / 1000.0);
+  }
+
   void addScanFolder(String path) {
     final ptr = path.toNativeUtf8();
     try {
@@ -275,6 +279,7 @@ class NatsuyumeCore {
           final min = totalSec ~/ 60;
           final sec = totalSec % 60;
           return CollectionTrack(
+            path: m['path'] as String,
             title: m['title'] as String,
             artist: m['artist'] as String,
             duration: '$min:${sec.toString().padLeft(2, '0')}',
@@ -307,6 +312,17 @@ class NatsuyumeCore {
       }
     } finally {
       calloc.free(namePtr);
+    }
+  }
+
+  void openPathsInNewQueue(List<String> paths, {int startIndex = 0}) {
+    final jsonStr =
+        '[${paths.map((p) => '"${p.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"').join(',')}]';
+    final ptr = jsonStr.toNativeUtf8();
+    try {
+      _bindings.ncoreOpenPathsInNewQueue(_core, ptr, startIndex);
+    } finally {
+      calloc.free(ptr);
     }
   }
 }

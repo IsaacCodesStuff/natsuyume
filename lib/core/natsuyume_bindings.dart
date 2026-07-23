@@ -178,6 +178,16 @@ typedef _NcoreGetArtistAlbumsJsonNative =
 typedef NcoreGetArtistAlbumsJson =
     Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
 
+// void ncore_open_paths_in_new_queue(NatsuyumeCore*, const char*, int)
+typedef _NcoreOpenPathsInNewQueueNative =
+    Void Function(Pointer<Void>, Pointer<Utf8>, Int32);
+typedef NcoreOpenPathsInNewQueue =
+    void Function(Pointer<Void>, Pointer<Utf8>, int);
+
+// void ncore_seek(NatsuyumeCore*, double position_seconds)
+typedef _NcoreSeekNative = Void Function(Pointer<Void>, Double);
+typedef NcoreSeek = void Function(Pointer<Void>, double);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -222,6 +232,9 @@ class NatsuyumeBindings {
   late final NcoreGetArtistsJson ncoreGetArtistsJson;
   late final NcoreGetAlbumTracksJson ncoreGetAlbumTracksJson;
   late final NcoreGetArtistAlbumsJson ncoreGetArtistAlbumsJson;
+  late final NcoreOpenPathsInNewQueue ncoreOpenPathsInNewQueue;
+
+  late final NcoreSeek ncoreSeek;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -378,6 +391,16 @@ class NatsuyumeBindings {
         .lookup<NativeFunction<_NcoreGetArtistAlbumsJsonNative>>(
           'ncore_get_artist_albums_json',
         )
+        .asFunction();
+
+    ncoreOpenPathsInNewQueue = _lib
+        .lookup<NativeFunction<_NcoreOpenPathsInNewQueueNative>>(
+          'ncore_open_paths_in_new_queue',
+        )
+        .asFunction();
+
+    ncoreSeek = _lib
+        .lookup<NativeFunction<_NcoreSeekNative>>('ncore_seek')
         .asFunction();
   }
 }

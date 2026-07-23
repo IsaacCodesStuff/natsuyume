@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/natsuyume_theme.dart';
+import '../../core/natsuyume_core.dart';
 import '../../widgets/now_playing_bar.dart';
 import '../../widgets/squiggly_slider.dart';
 import 'lyrics_editor_screen.dart';
@@ -14,90 +15,67 @@ class NowPlayingScreen extends StatefulWidget {
 
 class _NowPlayingScreenState extends State<NowPlayingScreen> {
   bool _showLyrics = false;
-  bool _isPlaying = true;
-  bool _isFavorite = false;
-  bool _isShuffle = false;
-  bool _isRepeat = false;
-  double _seekValue = 0.5;
-
-  // Placeholder lyrics
-  final List<_LyricLine> _lyrics = const [
-    _LyricLine(text: 'パパパパパラアドレナレナ', isCurrent: false, isPast: true),
-    _LyricLine(text: 'パパパララパラアドレナレナ', isCurrent: false, isPast: true),
-    _LyricLine(
-      text: 'さあ何回でも imagine, imagine',
-      isCurrent: false,
-      isPast: false,
-    ),
-    _LyricLine(
-      text: '君に伝えたいのは？Loving you, もう答えは出でる',
-      isCurrent: false,
-      isPast: false,
-    ),
-    _LyricLine(
-      text: 'そう恋も愛も liberty, liberty',
-      isCurrent: false,
-      isPast: false,
-    ),
-    _LyricLine(
-      text: '今にも溢れそうな love in me, 白黒つけるの',
-      isCurrent: false,
-      isPast: false,
-    ),
-    _LyricLine(
-      text: 'Yes or no, don\'t stop the heart',
-      isCurrent: true,
-      isPast: false,
-    ),
-    _LyricLine(
-      text: 'Yes or no, don\'t stop the feeling',
-      isCurrent: false,
-      isPast: false,
-    ),
-    _LyricLine(
-      text: 'Yes or no, don\'t stop the rush',
-      isCurrent: false,
-      isPast: false,
-    ),
-    _LyricLine(
-      text: 'Yes or no, don\'t stop the love',
-      isCurrent: false,
-      isPast: false,
-    ),
-    _LyricLine(text: 'そう 曖昧で未完成な', isCurrent: false, isPast: false),
-    _LyricLine(text: 'この想いは 難解で未解明', isCurrent: false, isPast: false),
-  ];
+  bool _isSeeking = false;
+  double _seekValue = 0.0;
 
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
+    final core = NatsuyumeCore.instance;
 
-    return Scaffold(
-      backgroundColor: colors.background,
-      body: Stack(
-        children: [
-          // Blurred background (always present, more visible in lyrics mode)
-          _buildBackground(colors),
-          // Main content
-          SafeArea(
-            child: Column(
-              children: [
-                _buildTopBar(colors),
-                Expanded(
-                  child: _showLyrics
-                      ? _buildLyricsView(colors)
-                      : _buildNormalView(colors),
+    return ListenableBuilder(
+      listenable: core.playerState,
+      builder: (context, _) {
+        final track = core.playerState.currentTrack;
+        final isPlaying = core.playerState.isPlaying;
+        final posMs = core.playerState.positionMs;
+        final durMs = core.playerState.durationMs;
+
+        final seekValue = _isSeeking
+            ? _seekValue
+            : (durMs > 0 ? (posMs / durMs).clamp(0.0, 1.0) : 0.0);
+
+        String formatMs(int ms) {
+          final totalSec = ms ~/ 1000;
+          final m = totalSec ~/ 60;
+          final s = totalSec % 60;
+          return '$m:${s.toString().padLeft(2, '0')}';
+        }
+
+        return Scaffold(
+          backgroundColor: colors.background,
+          body: Stack(
+            children: [
+              _buildBackground(colors),
+              SafeArea(
+                child: Column(
+                  children: [
+                    _buildTopBar(colors, track),
+                    Expanded(
+                      child: _showLyrics
+                          ? _buildLyricsView(colors)
+                          : _buildNormalView(colors, track),
+                    ),
+                    _buildControlRow(colors, core, track, isPlaying),
+                    _buildSeekBar(
+                      colors,
+                      core,
+                      seekValue,
+                      posMs,
+                      durMs,
+                      isPlaying,
+                      formatMs,
+                    ),
+                    _buildPlaybackButtons(colors, core, isPlaying),
+                    _buildUpNextPill(colors, isPlaying),
+                    const SizedBox(height: 16),
+                  ],
                 ),
-                _buildControlRow(colors),
-                _buildSeekBar(colors),
-                _buildPlaybackButtons(colors),
-                _buildUpNextPill(colors),
-                const SizedBox(height: 16),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -113,7 +91,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  Widget _buildTopBar(NatsuyumeColorScheme colors) {
+  Widget _buildTopBar(NatsuyumeColorScheme colors, CoreTrack track) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(
@@ -138,11 +116,13 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   ),
                 ),
                 Text(
-                  'From THE BOOK for,',
+                  track.album.isEmpty ? '—' : track.album,
                   style: TextStyle(
                     fontSize: 12,
                     color: colors.onSurfaceVariant,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -202,12 +182,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  Widget _buildNormalView(NatsuyumeColorScheme colors) {
+  Widget _buildNormalView(NatsuyumeColorScheme colors, CoreTrack track) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         const SizedBox(height: 24),
-        // Album art
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: AspectRatio(
@@ -226,11 +205,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           ),
         ),
         const SizedBox(height: 28),
-        // Track title
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Text(
-            'アドレナ',
+            track.isEmpty ? 'Not playing' : track.title,
             style: TextStyle(
               fontSize: 28,
               fontWeight: FontWeight.w700,
@@ -243,12 +221,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         ),
         const SizedBox(height: 6),
         Text(
-          'THE BOOK for,',
+          track.album.isEmpty ? '—' : track.album,
           style: TextStyle(fontSize: 15, color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 2),
         Text(
-          'YOASOBI',
+          track.artist.isEmpty ? '—' : track.artist,
           style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 24),
@@ -257,72 +235,51 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 
   Widget _buildLyricsView(NatsuyumeColorScheme colors) {
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
-      itemCount: _lyrics.length,
-      itemBuilder: (context, index) {
-        final line = _lyrics[index];
-        final double fontSize = line.isCurrent ? 22 : 15;
-        final Color textColor = line.isCurrent
-            ? colors.onBackground
-            : line.isPast
-            ? colors.onSurfaceVariant.withValues(alpha: 0.5)
-            : colors.onSurfaceVariant.withValues(alpha: 0.75);
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            line.text,
-            style: TextStyle(
-              fontSize: fontSize,
-              fontWeight: line.isCurrent ? FontWeight.w700 : FontWeight.w400,
-              color: textColor,
-              height: 1.4,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        );
-      },
+    return Center(
+      child: Text(
+        'Lyrics not yet wired',
+        style: TextStyle(color: colors.onSurfaceVariant),
+      ),
     );
   }
 
-  Widget _buildControlRow(NatsuyumeColorScheme colors) {
+  Widget _buildControlRow(
+    NatsuyumeColorScheme colors,
+    NatsuyumeCore core,
+    CoreTrack track,
+    bool isPlaying,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Shuffle
           _ControlIcon(
             icon: Icons.shuffle,
-            active: _isShuffle,
+            active: false,
             colors: colors,
-            onTap: () => setState(() => _isShuffle = !_isShuffle),
+            onTap: () {},
           ),
-          // Repeat
           _ControlIcon(
             icon: Icons.repeat,
-            active: _isRepeat,
+            active: false,
             colors: colors,
-            onTap: () => setState(() => _isRepeat = !_isRepeat),
+            onTap: () {},
           ),
-          // Favorite (larger)
           GestureDetector(
-            onTap: () => setState(() => _isFavorite = !_isFavorite),
+            onTap: () {},
             child: Icon(
-              _isFavorite ? Icons.favorite : Icons.favorite_border,
+              Icons.favorite_border,
               size: 32,
-              color: _isFavorite ? colors.accent : colors.onSurface,
+              color: colors.onSurface,
             ),
           ),
-          // Add to playlist
           _ControlIcon(
             icon: Icons.playlist_add,
             active: false,
             colors: colors,
             onTap: () {},
           ),
-          // Equalizer
           _ControlIcon(
             icon: Icons.equalizer,
             active: false,
@@ -334,17 +291,32 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  Widget _buildSeekBar(NatsuyumeColorScheme colors) {
+  Widget _buildSeekBar(
+    NatsuyumeColorScheme colors,
+    NatsuyumeCore core,
+    double seekValue,
+    int posMs,
+    int durMs,
+    bool isPlaying,
+    String Function(int) formatMs,
+  ) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
         children: [
           M3ESquigglySlider(
-            value: _seekValue,
-            isPlaying: _isPlaying,
-            onChanged: (v) => setState(() => _seekValue = v),
-            onChangeStart: (_) {},
-            onChangeEnd: (_) {},
+            value: seekValue,
+            isPlaying: isPlaying,
+            onChanged: (v) => setState(() {
+              _isSeeking = true;
+              _seekValue = v;
+            }),
+            onChangeStart: (_) => setState(() => _isSeeking = true),
+            onChangeEnd: (v) {
+              final seekMs = (v * durMs).round();
+              NatsuyumeCore.instance.seekTo(seekMs);
+              setState(() => _isSeeking = false);
+            },
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -352,14 +324,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  '1:34',
+                  formatMs(posMs),
                   style: TextStyle(
                     fontSize: 12,
                     color: colors.onSurfaceVariant,
                   ),
                 ),
                 Text(
-                  '3:07',
+                  formatMs(durMs),
                   style: TextStyle(
                     fontSize: 12,
                     color: colors.onSurfaceVariant,
@@ -373,7 +345,11 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  Widget _buildPlaybackButtons(NatsuyumeColorScheme colors) {
+  Widget _buildPlaybackButtons(
+    NatsuyumeColorScheme colors,
+    NatsuyumeCore core,
+    bool isPlaying,
+  ) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       child: Row(
@@ -382,36 +358,49 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           _PlaybackButton(
             icon: Icons.skip_previous,
             colors: colors,
-            onTap: () {},
+            onTap: core.previous,
           ),
           _PlaybackButton(
             icon: Icons.fast_rewind,
             colors: colors,
-            onTap: () {},
+            onTap: () => core.seekTo(
+              (core.playerState.positionMs - 10000).clamp(
+                0,
+                core.playerState.durationMs,
+              ),
+            ),
           ),
           _PlaybackButton(
-            icon: _isPlaying ? Icons.pause : Icons.play_arrow,
+            icon: isPlaying ? Icons.pause : Icons.play_arrow,
             colors: colors,
             large: true,
-            onTap: () => setState(() => _isPlaying = !_isPlaying),
+            onTap: () => isPlaying ? core.pause() : core.play(),
           ),
           _PlaybackButton(
             icon: Icons.fast_forward,
             colors: colors,
-            onTap: () {},
+            onTap: () => core.seekTo(
+              (core.playerState.positionMs + 10000).clamp(
+                0,
+                core.playerState.durationMs,
+              ),
+            ),
           ),
-          _PlaybackButton(icon: Icons.skip_next, colors: colors, onTap: () {}),
+          _PlaybackButton(
+            icon: Icons.skip_next,
+            colors: colors,
+            onTap: core.next,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildUpNextPill(NatsuyumeColorScheme colors) {
+  Widget _buildUpNextPill(NatsuyumeColorScheme colors, bool isPlaying) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          // Up next info pill
           Expanded(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -427,7 +416,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          'Up next in THE BOOK for,:',
+                          'Up next',
                           style: TextStyle(
                             fontSize: 11,
                             color: colors.onSurfaceVariant,
@@ -435,7 +424,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          'UNDEAD - YOASOBI',
+                          '—',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
@@ -448,7 +437,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                   const SizedBox(width: 12),
                   NowPlayingBars(
                     color: colors.accent,
-                    isPlaying: _isPlaying,
+                    isPlaying: isPlaying,
                     barWidth: 3,
                     maxHeight: 18,
                   ),
@@ -457,7 +446,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          // Info button
           Container(
             width: 48,
             height: 48,
@@ -477,6 +465,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 }
 
+// Unchanged widget classes below — keep your existing ones
 class _BlurredBackground extends StatelessWidget {
   final NatsuyumeColorScheme colors;
 

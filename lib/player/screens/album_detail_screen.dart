@@ -307,6 +307,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             if (_isSelecting) {
               _toggleSelection(index);
             } else {
+              final paths = _tracks.map((t) => t.path).toList();
+              NatsuyumeCore.instance.openPathsInNewQueue(
+                paths,
+                startIndex: index,
+              );
               setState(() => _currentTrackIndex = index);
             }
           },
