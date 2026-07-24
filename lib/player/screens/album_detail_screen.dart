@@ -33,6 +33,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   final Set<int> _selectedIndices = {};
   List<CollectionTrack> _tracks = [];
   Future<Uint8List?>? _albumCoverFuture;
+  Uint8List? _resolvedCoverBytes;
 
   static const double _coverThreshold = 260.0;
 
@@ -41,9 +42,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _loadTracks();
-    _albumCoverFuture = CoverService.instance.getCoverForAlbumAsync(
-      widget.album.title,
-    );
+    _albumCoverFuture =
+        CoverService.instance.getCoverForAlbumAsync(widget.album.title)
+          ..then((bytes) {
+            if (mounted) setState(() => _resolvedCoverBytes = bytes);
+          });
   }
 
   void _loadTracks() {
@@ -205,7 +208,15 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
             builder: (_) => FractionallySizedBox(
               heightFactor: 1.0,
               child: AlbumInfoOverlay(
-                album: widget.album,
+                album: AlbumData(
+                  title: widget.album.title,
+                  artist: widget.album.artist,
+                  year: widget.album.year,
+                  songCount: widget.album.songCount,
+                  coverArt: _resolvedCoverBytes != null
+                      ? MemoryImage(_resolvedCoverBytes!)
+                      : null,
+                ),
                 artistName: widget.album.artist,
                 albumArtist: widget.album.artist,
                 duration: _totalDuration,

@@ -55,7 +55,12 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                     _buildTopBar(colors, track),
                     Expanded(
                       child: _showLyrics
-                          ? _buildLyricsView(colors)
+                          ? LyricsView(
+                              key: ValueKey(track.path),
+                              trackPath: track.path,
+                              positionMs: posMs,
+                              colors: colors,
+                            )
                           : _buildNormalView(colors, track),
                     ),
                     _buildControlRow(colors, core, track, isPlaying),
@@ -242,15 +247,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     );
   }
 
-  Widget _buildLyricsView(NatsuyumeColorScheme colors) {
-    return Center(
-      child: Text(
-        'Lyrics not yet wired',
-        style: TextStyle(color: colors.onSurfaceVariant),
-      ),
-    );
-  }
-
   Widget _buildControlRow(
     NatsuyumeColorScheme colors,
     NatsuyumeCore core,
@@ -315,12 +311,16 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
           M3ESquigglySlider(
             value: seekValue,
             isPlaying: isPlaying,
-            onChanged: (v) => setState(() {
-              _isSeeking = true;
-              _seekValue = v;
-            }),
+            onChanged: (v) {
+              // Update displayed time while dragging without notifying core
+              setState(() {
+                _isSeeking = true;
+                _seekValue = v;
+              });
+            },
             onChangeStart: (_) => setState(() => _isSeeking = true),
             onChangeEnd: (v) {
+              // v is now the actual final drag position from the slider
               final seekMs = (v * durMs).round();
               NatsuyumeCore.instance.seekTo(seekMs);
               setState(() => _isSeeking = false);
@@ -332,7 +332,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  formatMs(posMs),
+                  // Show scrub position while dragging
+                  _isSeeking
+                      ? formatMs((_seekValue * durMs).round())
+                      : formatMs(posMs),
                   style: TextStyle(
                     fontSize: 12,
                     color: colors.onSurfaceVariant,
@@ -473,7 +476,284 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   }
 }
 
-// Unchanged widget classes below — keep your existing ones
+// ---------------------------------------------------------------------------
+// LyricsView — self-contained widget, manages its own scroll and active line
+// ---------------------------------------------------------------------------
+
+class LyricsView extends StatefulWidget {
+  final String trackPath;
+  final int positionMs;
+  final NatsuyumeColorScheme colors;
+
+  const LyricsView({
+    super.key,
+    required this.trackPath,
+    required this.positionMs,
+    required this.colors,
+  });
+
+  @override
+  State<LyricsView> createState() => _LyricsViewState();
+}
+
+class _LyricsViewState extends State<LyricsView> {
+  final ScrollController _scrollController = ScrollController();
+  List<_LrcLine> _lines = [];
+  int _activeIndex = -1;
+  bool _userScrolling = false;
+  String _plainLyrics = '';
+  bool _isSynced = false;
+
+  // Height per lyric line — used to compute scroll offset
+  static const double _lineHeight = 56.0;
+  // How long to wait after user scroll before resuming auto-scroll
+  static const Duration _resumeDelay = Duration(seconds: 3);
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLyrics();
+  }
+
+  void _loadLyrics() {
+    if (widget.trackPath.isEmpty) return;
+    final raw = NatsuyumeCore.instance.getLyrics(widget.trackPath);
+    if (raw.isEmpty) {
+      setState(() {
+        _lines = [];
+        _plainLyrics = '';
+        _isSynced = false;
+      });
+      return;
+    }
+
+    // Detect synced vs unsynced
+    final hasTimestamp = RegExp(r'\[\d{1,3}:\d{2}').hasMatch(raw);
+    if (hasTimestamp) {
+      setState(() {
+        _lines = _parseLrc(raw);
+        _plainLyrics = '';
+        _isSynced = true;
+      });
+    } else {
+      setState(() {
+        _lines = [];
+        _plainLyrics = raw.trim();
+        _isSynced = false;
+      });
+    }
+  }
+
+  // Dart-side LRC parser — mirrors the C++ LrcParser logic
+  List<_LrcLine> _parseLrc(String lrc) {
+    final timestampRe = RegExp(r'\[(\d{1,3}):(\d{2})[.:](\d{1,3})\]');
+    final metaRe = RegExp(r'\[[a-z]+:.*?\]');
+    final result = <_LrcLine>[];
+
+    for (final rawLine in lrc.split('\n')) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+
+      final matches = timestampRe.allMatches(line).toList();
+      if (matches.isEmpty) continue;
+
+      // Strip timestamps and meta tags to get lyric text
+      String text = line
+          .replaceAll(timestampRe, '')
+          .replaceAll(metaRe, '')
+          .trim();
+
+      for (final m in matches) {
+        final mins = int.parse(m.group(1)!);
+        final secs = int.parse(m.group(2)!);
+        final csStr = m.group(3)!;
+        int ms = int.parse(csStr);
+        if (csStr.length <= 2) ms *= 10; // centiseconds → ms
+        final timestamp = mins * 60000 + secs * 1000 + ms;
+        result.add(_LrcLine(timestamp: timestamp, text: text));
+      }
+    }
+
+    result.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+    return result;
+  }
+
+  int _findActiveIndex(int posMs) {
+    if (_lines.isEmpty) return -1;
+    int lo = 0, hi = _lines.length - 1, result = -1;
+    while (lo <= hi) {
+      final mid = (lo + hi) ~/ 2;
+      if (_lines[mid].timestamp <= posMs) {
+        result = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return result;
+  }
+
+  void _scrollToActive(int index) {
+    if (!_scrollController.hasClients) return;
+    if (_userScrolling) return;
+    if (index < 0) return;
+
+    final viewportHeight = _scrollController.position.viewportDimension;
+    // Target: active line centered in viewport
+    final targetOffset =
+        (index * _lineHeight) - (viewportHeight / 2) + (_lineHeight / 2);
+    final clampedOffset = targetOffset.clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+
+    _scrollController.animateTo(
+      clampedOffset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeInOut,
+    );
+  }
+
+  @override
+  void didUpdateWidget(LyricsView old) {
+    super.didUpdateWidget(old);
+
+    // Track changed — reload lyrics
+    if (old.trackPath != widget.trackPath) {
+      _loadLyrics();
+      _activeIndex = -1;
+      return;
+    }
+
+    // Position changed — find active line and scroll
+    final newIndex = _findActiveIndex(widget.positionMs);
+    if (newIndex != _activeIndex) {
+      setState(() => _activeIndex = newIndex);
+      _scrollToActive(newIndex);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = widget.colors;
+
+    // No lyrics at all
+    if (_lines.isEmpty && _plainLyrics.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.lyrics_outlined,
+              size: 48,
+              color: colors.onSurfaceVariant,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'No lyrics available',
+              style: TextStyle(fontSize: 15, color: colors.onSurfaceVariant),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Add an .lrc file or embed lyrics in the track',
+              style: TextStyle(
+                fontSize: 12,
+                color: colors.onSurfaceVariant.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Unsynced plain text
+    if (!_isSynced && _plainLyrics.isNotEmpty) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 24),
+        child: Text(
+          _plainLyrics,
+          style: TextStyle(
+            fontSize: 16,
+            color: colors.onSurfaceVariant,
+            height: 1.8,
+          ),
+        ),
+      );
+    }
+
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        if (notification is ScrollStartNotification &&
+            notification.dragDetails != null) {
+          // User initiated scroll — pause auto-scroll
+          _userScrolling = true;
+        } else if (notification is ScrollEndNotification) {
+          // Resume auto-scroll after delay
+          Future.delayed(_resumeDelay, () {
+            if (mounted) _userScrolling = false;
+          });
+        }
+        return false;
+      },
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 24),
+        itemCount: _lines.length,
+        itemExtent: _lineHeight,
+        itemBuilder: (context, index) {
+          final line = _lines[index];
+          final isActive = index == _activeIndex;
+          final isPast = index < _activeIndex;
+
+          return GestureDetector(
+            onTap: () {
+              NatsuyumeCore.instance.seekTo(line.timestamp);
+            },
+            child: Container(
+              height: _lineHeight,
+              alignment: Alignment.centerLeft,
+              child: AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 200),
+                style: TextStyle(
+                  fontSize: isActive ? 20 : 16,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                  color: isActive
+                      ? colors.onBackground
+                      : isPast
+                      ? colors.onSurfaceVariant.withValues(alpha: 0.5)
+                      : colors.onSurfaceVariant,
+                  height: 1.3,
+                ),
+                child: Text(
+                  line.text.isEmpty ? '♪' : line.text,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Data + private widgets
+// ---------------------------------------------------------------------------
+
+class _LrcLine {
+  final int timestamp;
+  final String text;
+  const _LrcLine({required this.timestamp, required this.text});
+}
+
 class _BlurredBackground extends StatelessWidget {
   final NatsuyumeColorScheme colors;
 
@@ -505,18 +785,6 @@ class _BlurredBackground extends StatelessWidget {
       ),
     );
   }
-}
-
-class _LyricLine {
-  final String text;
-  final bool isCurrent;
-  final bool isPast;
-
-  const _LyricLine({
-    required this.text,
-    required this.isCurrent,
-    required this.isPast,
-  });
 }
 
 class _ControlIcon extends StatelessWidget {

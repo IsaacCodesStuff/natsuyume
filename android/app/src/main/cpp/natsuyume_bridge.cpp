@@ -535,4 +535,33 @@ void ncore_jump_to_track(NatsuyumeCore* core, int index) {
     if (core) core->jumpToTrack(index);
 }
 
+char* ncore_get_queue_names_json(NatsuyumeCore* core) {
+    if (!core) return mallocStr("[]");
+    auto names = core->queueNames();
+    std::string json = "[";
+    for (size_t i = 0; i < names.size(); i++) {
+        if (i > 0) json += ",";
+        json += "\"" + escapeJson(names[i]) + "\"";
+    }
+    json += "]";
+    return mallocStr(json);
+}
+
+int ncore_get_active_queue_index(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->activeQueueIndex();
+}
+
+void ncore_view_queue(NatsuyumeCore* core, int index) {
+    if (core) core->viewQueue(index);
+}
+
+void ncore_close_queue(NatsuyumeCore* core, int index) {
+    if (core) core->closeQueue(index);
+}
+
+void ncore_remove_track_at(NatsuyumeCore* core, int index) {
+    if (core) core->removeTrackAt(index);
+}
+
 } // extern "C"

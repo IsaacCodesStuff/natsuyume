@@ -1,9 +1,10 @@
+// lib/widgets/squiggly_slider.dart — full replacement
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
 
 class M3ESquigglySlider extends StatefulWidget {
-  final double value; // From 0.0 to 1.0
+  final double value;
   final ValueChanged<double> onChanged;
   final ValueChanged<double>? onChangeStart;
   final ValueChanged<double>? onChangeEnd;
@@ -26,23 +27,23 @@ class _M3ESquigglySliderState extends State<M3ESquigglySlider>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   bool _isDragging = false;
+  double _dragValue = 0.0; // Track drag position independently
 
   @override
   void initState() {
     super.initState();
+    _dragValue = widget.value;
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
-
-    if (widget.isPlaying) {
-      _animationController.repeat();
-    }
+    if (widget.isPlaying) _animationController.repeat();
   }
 
   @override
   void didUpdateWidget(covariant M3ESquigglySlider oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!_isDragging) _dragValue = widget.value;
     if (widget.isPlaying && !_animationController.isAnimating) {
       _animationController.repeat();
     } else if (!widget.isPlaying && _animationController.isAnimating) {
@@ -56,6 +57,18 @@ class _M3ESquigglySliderState extends State<M3ESquigglySlider>
     super.dispose();
   }
 
+  void _handleDragStart(DragStartDetails details, BoxConstraints constraints) {
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final localPosition = renderBox.globalToLocal(details.globalPosition);
+    final percent = (localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
+    setState(() {
+      _isDragging = true;
+      _dragValue = percent;
+    });
+    widget.onChangeStart?.call(percent);
+    widget.onChanged(percent);
+  }
+
   void _handleDragUpdate(
     DragUpdateDetails details,
     BoxConstraints constraints,
@@ -63,43 +76,40 @@ class _M3ESquigglySliderState extends State<M3ESquigglySlider>
     final RenderBox renderBox = context.findRenderObject() as RenderBox;
     final localPosition = renderBox.globalToLocal(details.globalPosition);
     final percent = (localPosition.dx / constraints.maxWidth).clamp(0.0, 1.0);
+    setState(() => _dragValue = percent);
     widget.onChanged(percent);
+  }
+
+  void _handleDragEnd(DragEndDetails details) {
+    // Capture dragValue before setState clears _isDragging
+    final finalValue = _dragValue;
+    setState(() => _isDragging = false);
+    widget.onChangeEnd?.call(finalValue); // pass actual drag position
   }
 
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
-    final activeColor = colors.onSurface;
-    final inactiveColor = colors.surfaceVariant;
 
     return LayoutBuilder(
       builder: (context, constraints) {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
-          onHorizontalDragStart: (details) {
-            setState(() => _isDragging = true);
-            widget.onChangeStart?.call(widget.value);
-          },
-          onHorizontalDragUpdate: (details) =>
-              _handleDragUpdate(details, constraints),
-          onHorizontalDragEnd: (details) {
-            setState(() => _isDragging = false);
-            widget.onChangeEnd?.call(widget.value);
-          },
+          onHorizontalDragStart: (d) => _handleDragStart(d, constraints),
+          onHorizontalDragUpdate: (d) => _handleDragUpdate(d, constraints),
+          onHorizontalDragEnd: _handleDragEnd,
           child: AnimatedBuilder(
             animation: _animationController,
             builder: (context, child) {
+              final displayValue = _isDragging ? _dragValue : widget.value;
               return CustomPaint(
-                size: Size(
-                  constraints.maxWidth,
-                  48,
-                ), // Large 48dp M3 touch target
+                size: Size(constraints.maxWidth, 48),
                 painter: _SquigglySliderPainter(
-                  progress: widget.value,
+                  progress: displayValue,
                   phase: _animationController.value * 2 * math.pi,
                   isDragging: _isDragging,
-                  activeColor: activeColor,
-                  inactiveColor: inactiveColor,
+                  activeColor: colors.onSurface,
+                  inactiveColor: colors.surfaceVariant,
                 ),
               );
             },
@@ -134,20 +144,20 @@ class _SquigglySliderPainter extends CustomPainter {
     final paintActive = Paint()
       ..color = activeColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0
+      ..strokeWidth = 3.5
       ..strokeCap = StrokeCap.round;
 
     final paintInactive = Paint()
       ..color = inactiveColor
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0
+      ..strokeWidth = 3.5
       ..strokeCap = StrokeCap.round;
 
     final paintThumb = Paint()
       ..color = activeColor
       ..style = PaintingStyle.fill;
 
-    // 1. Draw Inactive Track (The remaining unplayed flat line)
+    // Inactive track — flat line from thumb to end
     if (activeWidth < totalWidth) {
       canvas.drawLine(
         Offset(activeWidth, yCenter),
@@ -156,23 +166,17 @@ class _SquigglySliderPainter extends CustomPainter {
       );
     }
 
-    // 2. Draw Active Track (The squiggly line)
+    // Active track — squiggly when playing, flat when dragging or paused
     final activePath = Path();
+    activePath.moveTo(0, yCenter);
 
-    if (isDragging || activeWidth == 0) {
-      // Flatten the line if the user is scrubbing (M3 Design Rule)
-      activePath.moveTo(0, yCenter);
+    if (isDragging || activeWidth == 0 || !isDragging && progress >= 1.0) {
       activePath.lineTo(activeWidth, yCenter);
     } else {
-      // Draw sine wave path
-      activePath.moveTo(0, yCenter);
-
-      const waveLength = 40.0; // Horizontal width of a full single wave loop
-      const amplitude = 6.0; // Height of the ripple waves
-
-      for (double x = 0; x <= activeWidth; x++) {
-        // Calculate the sine coordinate relative to the animated phase
-        final double y =
+      const waveLength = 36.0;
+      const amplitude = 5.0;
+      for (double x = 0; x <= activeWidth; x += 1.0) {
+        final y =
             yCenter +
             math.sin((x / waveLength) * 2 * math.pi - phase) * amplitude;
         activePath.lineTo(x, y);
@@ -180,9 +184,9 @@ class _SquigglySliderPainter extends CustomPainter {
     }
     canvas.drawPath(activePath, paintActive);
 
-    // 3. Draw The Handle (Material 3 vertical "Pill" scrubber)
-    const thumbWidth = 4.0;
-    const thumbHeight = 20.0;
+    // Thumb — vertical pill at the boundary
+    const thumbWidth = 3.5;
+    const thumbHeight = 22.0;
     final thumbRect = RRect.fromRectAndRadius(
       Rect.fromCenter(
         center: Offset(activeWidth, yCenter),

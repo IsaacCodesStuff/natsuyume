@@ -145,26 +145,25 @@ class NatsuyumeCore {
   void startPolling() {
     _pollTimer?.cancel();
     _pollTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      // Drain LibraryManager's callback queue first
       _bindings.ncoreDrainLibraryCallbacks(_core);
 
-      // Playback state
       final isPlaying = _bindings.ncoreIsPlaying(_core) == 1;
       final posMs = _bindings.ncoreGetPosition(_core);
       final durMs = _bindings.ncoreGetDuration(_core);
-
-      playerState.updatePlaybackState(isPlaying);
-      playerState.updatePosition(posMs);
-      playerState.updateDuration(durMs);
-
-      // Track change detection
       final track = currentTrack;
-      if (track.path != _lastTrackPath) {
-        _lastTrackPath = track.path;
-        playerState.updateTrack(track);
-      }
+      final trackChanged =
+          track.path.isNotEmpty && track.path != _lastTrackPath;
 
-      // Scan state
+      if (trackChanged) _lastTrackPath = track.path;
+
+      // Single setState-equivalent — one notifyListeners() for the whole tick
+      playerState.updateAll(
+        isPlaying: isPlaying,
+        positionMs: posMs,
+        durationMs: durMs,
+        track: trackChanged ? track : null,
+      );
+
       final scanning = _bindings.ncoreIsScanning(_core) == 1;
       final progress = _bindings.ncoreScanProgress(_core);
       final total = _bindings.ncoreScanTotal(_core);
@@ -392,6 +391,32 @@ class NatsuyumeCore {
   void jumpToTrack(int index) {
     _bindings.ncoreJumpToTrack(_core, index);
   }
+
+  List<String> getQueueNames() {
+    final ptr = _bindings.ncoreGetQueueNamesJson(_core);
+    try {
+      final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
+      return list.cast<String>();
+    } finally {
+      _bindings.ncoreFreeString(ptr);
+    }
+  }
+
+  int getActiveQueueIndex() {
+    return _bindings.ncoreGetActiveQueueIndex(_core);
+  }
+
+  void viewQueue(int index) {
+    _bindings.ncoreViewQueue(_core, index);
+  }
+
+  void closeQueue(int index) {
+    _bindings.ncoreCloseQueue(_core, index);
+  }
+
+  void removeTrackAt(int index) {
+    _bindings.ncoreRemoveTrackAt(_core, index);
+  }
 }
 
 class CoreTrack {
@@ -451,21 +476,21 @@ class CorePlayerState extends ChangeNotifier {
   Duration get position => Duration(milliseconds: _positionMs);
   Duration get duration => Duration(milliseconds: _durationMs);
 
-  void updatePlaybackState(bool isPlaying) {
+  // Single notification per poll tick — no intermediate states visible to UI
+  void updateAll({
+    required bool isPlaying,
+    required int positionMs,
+    required int durationMs,
+    CoreTrack? track,
+  }) {
     _isPlaying = isPlaying;
-    notifyListeners();
-  }
-
-  void updatePosition(int positionMs) {
     _positionMs = positionMs;
-    notifyListeners();
-  }
-
-  void updateDuration(int durationMs) {
     _durationMs = durationMs;
+    if (track != null) _currentTrack = track;
     notifyListeners();
   }
 
+  // Keep these for any callers that still use them directly
   void updateTrack(CoreTrack track) {
     _currentTrack = track;
     notifyListeners();

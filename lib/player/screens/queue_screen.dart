@@ -53,7 +53,7 @@ class _QueueScreenState extends State<QueueScreen> {
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
 
-  List<String> _queueNames = ['Queue A'];
+  List<String> _queueNames = [];
   List<QueueTrack> _tracks = [];
 
   @override
@@ -78,9 +78,11 @@ class _QueueScreenState extends State<QueueScreen> {
     final coreTracks = core.getQueueTracks();
     final currentPath = core.playerState.currentTrack.path;
     final newIndex = coreTracks.indexWhere((t) => t.path == currentPath);
+    final newNames = core.getQueueNames();
+    final newActiveQueue = newNames.isEmpty
+        ? 0
+        : core.getActiveQueueIndex().clamp(0, newNames.length - 1);
 
-    // Only rebuild if the track list or playing index changed.
-    // Avoids resetting _TrackCover futures on every 250ms poll.
     final newTracks = coreTracks.map(QueueTrack.fromCoreTrack).toList();
     final trackListChanged =
         newTracks.length != _tracks.length ||
@@ -89,10 +91,15 @@ class _QueueScreenState extends State<QueueScreen> {
           (i) => newTracks[i].path == _tracks[i].path,
         ).every((e) => e);
 
-    if (trackListChanged || newIndex != _currentTrackIndex) {
+    if (trackListChanged ||
+        newIndex != _currentTrackIndex ||
+        newNames.length != _queueNames.length ||
+        newActiveQueue != _currentQueueIndex) {
       setState(() {
         _tracks = newTracks;
         _currentTrackIndex = newIndex;
+        _queueNames = newNames.isEmpty ? ['Queue'] : newNames;
+        _currentQueueIndex = newActiveQueue;
       });
     }
   }
@@ -186,18 +193,17 @@ class _QueueScreenState extends State<QueueScreen> {
             ),
           )
           .toList(),
-      onQueueSelected: (index) => setState(() => _currentQueueIndex = index),
+      onQueueSelected: (index) {
+        NatsuyumeCore.instance.viewQueue(index);
+        // _refreshTracks will pick up the change on next poll
+      },
       onQueueRenamed: (index) {},
       onQueueDeleted: (index) {
-        setState(() {
-          _queueNames.removeAt(index);
-          if (_currentQueueIndex >= _queueNames.length) {
-            _currentQueueIndex = _queueNames.length - 1;
-          }
-        });
+        NatsuyumeCore.instance.closeQueue(index);
+        // _refreshTracks will pick up the change on next poll
       },
       onReordered: (reordered) {
-        setState(() => _queueNames = reordered.map((q) => q.name).toList());
+        // Queue reorder not yet wired to core — deferred
       },
     );
   }
@@ -214,11 +220,8 @@ class _QueueScreenState extends State<QueueScreen> {
       onFavoriteTap: () {},
       onSongInfo: () {},
       onRemoveFromQueue: () {
-        setState(() {
-          if (_tracks.length > 1) {
-            _tracks.removeAt(index);
-          }
-        });
+        NatsuyumeCore.instance.removeTrackAt(index);
+        // _refreshTracks will pick up the change on next poll
       },
       onPlayAfterCurrent: () {},
       onAddToQueue: () {},
@@ -326,6 +329,13 @@ class _QueueScreenState extends State<QueueScreen> {
   }
 
   Widget _buildTopBar(NatsuyumeColorScheme colors) {
+    final queueIndex = _queueNames.isEmpty
+        ? 0
+        : _currentQueueIndex.clamp(0, _queueNames.length - 1);
+    final displayName = _queueNames.isEmpty
+        ? 'No queues'
+        : '${queueIndex + 1}. ${_queueNames[queueIndex]}';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: Row(
@@ -346,7 +356,7 @@ class _QueueScreenState extends State<QueueScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '${_currentQueueIndex + 1}. ${_queueNames[_currentQueueIndex]}',
+                        displayName,
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w500,

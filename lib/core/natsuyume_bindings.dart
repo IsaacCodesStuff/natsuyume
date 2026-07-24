@@ -232,6 +232,21 @@ typedef NcoreGetLyrics = Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
 typedef _NcoreJumpToTrackNative = Void Function(Pointer<Void>, Int32);
 typedef NcoreJumpToTrack = void Function(Pointer<Void>, int);
 
+typedef _NcoreGetQueueNamesJsonNative = Pointer<Utf8> Function(Pointer<Void>);
+typedef NcoreGetQueueNamesJson = Pointer<Utf8> Function(Pointer<Void>);
+
+typedef _NcoreGetActiveQueueIndexNative = Int32 Function(Pointer<Void>);
+typedef NcoreGetActiveQueueIndex = int Function(Pointer<Void>);
+
+typedef _NcoreViewQueueNative = Void Function(Pointer<Void>, Int32);
+typedef NcoreViewQueue = void Function(Pointer<Void>, int);
+
+typedef _NcoreCloseQueueNative = Void Function(Pointer<Void>, Int32);
+typedef NcoreCloseQueue = void Function(Pointer<Void>, int);
+
+typedef _NcoreRemoveTrackAtNative = Void Function(Pointer<Void>, Int32);
+typedef NcoreRemoveTrackAt = void Function(Pointer<Void>, int);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -284,6 +299,13 @@ class NatsuyumeBindings {
   late final NcoreGetCoverBytesForAlbum ncoreGetCoverBytesForAlbum;
   late final NcoreGetLyrics ncoreGetLyrics;
   late final NcoreJumpToTrack ncoreJumpToTrack;
+
+  late final NcoreGetQueueNamesJson ncoreGetQueueNamesJson;
+  late final NcoreGetActiveQueueIndex ncoreGetActiveQueueIndex;
+
+  late final NcoreViewQueue ncoreViewQueue;
+  late final NcoreCloseQueue ncoreCloseQueue;
+  late final NcoreRemoveTrackAt ncoreRemoveTrackAt;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -476,6 +498,32 @@ class NatsuyumeBindings {
 
     ncoreJumpToTrack = _lib
         .lookup<NativeFunction<_NcoreJumpToTrackNative>>('ncore_jump_to_track')
+        .asFunction();
+
+    ncoreGetQueueNamesJson = _lib
+        .lookup<NativeFunction<_NcoreGetQueueNamesJsonNative>>(
+          'ncore_get_queue_names_json',
+        )
+        .asFunction();
+
+    ncoreGetActiveQueueIndex = _lib
+        .lookup<NativeFunction<_NcoreGetActiveQueueIndexNative>>(
+          'ncore_get_active_queue_index',
+        )
+        .asFunction();
+
+    ncoreViewQueue = _lib
+        .lookup<NativeFunction<_NcoreViewQueueNative>>('ncore_view_queue')
+        .asFunction();
+
+    ncoreCloseQueue = _lib
+        .lookup<NativeFunction<_NcoreCloseQueueNative>>('ncore_close_queue')
+        .asFunction();
+
+    ncoreRemoveTrackAt = _lib
+        .lookup<NativeFunction<_NcoreRemoveTrackAtNative>>(
+          'ncore_remove_track_at',
+        )
         .asFunction();
   }
 }
