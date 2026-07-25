@@ -623,8 +623,12 @@ class _QueueScreenState extends State<QueueScreen> {
         : '${(_currentTrackIndex + 1).clamp(1, _tracks.length)} / ${_tracks.length}';
 
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      color: colors.surface,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Text(
         '$trackDisplay    $_totalDuration',
         textAlign: TextAlign.center,

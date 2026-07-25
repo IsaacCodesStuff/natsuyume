@@ -10,6 +10,7 @@ import 'context_menus/album_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
 import 'dart:typed_data';
 import '../../core/cover_service.dart';
+import '../../widgets/floating_mini_player.dart';
 
 class AlbumDetailScreen extends StatefulWidget {
   final AlbumData album;
@@ -139,45 +140,44 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            CustomScrollView(
-              controller: _scrollController,
-              slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 56)),
-                SliverToBoxAdapter(child: _buildCoverHero(colors)),
-                SliverToBoxAdapter(child: _buildAlbumInfo(colors)),
-                _buildTrackList(colors),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
-              ],
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 56)),
+              SliverToBoxAdapter(child: _buildCoverHero(colors)),
+              SliverToBoxAdapter(child: _buildAlbumInfo(colors)),
+              _buildTrackList(colors),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: CollectionDetailBar(
+              title: widget.album.title,
+              showTitle: _showTitleInBar,
+              onBack: () => Navigator.of(context).pop(),
+              onMoreTap: () => _showAlbumMenu(context, colors),
             ),
+          ),
+          if (_showTitleInBar && !_isSelecting)
             Positioned(
-              top: 0,
+              right: 16,
+              bottom: 16,
+              child: _buildActionButtons(colors, small: true),
+            ),
+          if (_isSelecting)
+            Positioned(
               left: 0,
               right: 0,
-              child: CollectionDetailBar(
-                title: widget.album.title,
-                showTitle: _showTitleInBar,
-                onBack: () => Navigator.of(context).pop(),
-                onMoreTap: () => _showAlbumMenu(context, colors),
-              ),
+              bottom: 0,
+              child: _buildMultiSelectBar(colors),
             ),
-            if (_showTitleInBar && !_isSelecting)
-              Positioned(
-                right: 16,
-                bottom: 16,
-                child: _buildActionButtons(colors, small: true),
-              ),
-            if (_isSelecting)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildMultiSelectBar(colors),
-              ),
-          ],
-        ),
+          const FloatingMiniPlayer(),
+        ],
       ),
     );
   }

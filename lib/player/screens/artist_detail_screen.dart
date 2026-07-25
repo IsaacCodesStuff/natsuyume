@@ -11,6 +11,7 @@ import 'context_menus/artist_detail_context_menu.dart';
 import 'context_menus/artist_track_context_menu.dart';
 import 'context_menus/artist_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
+import '../../widgets/floating_mini_player.dart';
 
 class ArtistDetailScreen extends StatefulWidget {
   final ArtistData artist;
@@ -131,64 +132,63 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            CustomScrollView(
-              controller: _scrollController,
-              slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 56)),
-                SliverToBoxAdapter(child: _buildPhotoHero(colors)),
-                SliverToBoxAdapter(child: _buildArtistInfo(colors)),
-                _buildAlbumList(colors),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 56)),
+              SliverToBoxAdapter(child: _buildPhotoHero(colors)),
+              SliverToBoxAdapter(child: _buildArtistInfo(colors)),
+              _buildAlbumList(colors),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: CollectionDetailBar(
+              title: widget.artist.name,
+              showTitle: _showTitleInBar,
+              onBack: () => Navigator.of(context).pop(),
+              onMoreTap: () => _showArtistMenu(context, colors),
+              extraActions: [
+                _BarButton(
+                  icon: Icons.edit_outlined,
+                  colors: colors,
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => FractionallySizedBox(
+                        heightFactor: 1.0,
+                        child: ArtistEditorScreen(
+                          initialName: widget.artist.name,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
+          ),
+          if (_showTitleInBar && !_isSelecting)
             Positioned(
-              top: 0,
+              right: 16,
+              bottom: 16,
+              child: _buildActionButtons(colors),
+            ),
+          if (_isSelecting)
+            Positioned(
               left: 0,
               right: 0,
-              child: CollectionDetailBar(
-                title: widget.artist.name,
-                showTitle: _showTitleInBar,
-                onBack: () => Navigator.of(context).pop(),
-                onMoreTap: () => _showArtistMenu(context, colors),
-                extraActions: [
-                  _BarButton(
-                    icon: Icons.edit_outlined,
-                    colors: colors,
-                    onTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => FractionallySizedBox(
-                          heightFactor: 1.0,
-                          child: ArtistEditorScreen(
-                            initialName: widget.artist.name,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+              bottom: 0,
+              child: _buildMultiSelectBar(colors),
             ),
-            if (_showTitleInBar && !_isSelecting)
-              Positioned(
-                right: 16,
-                bottom: 16,
-                child: _buildActionButtons(colors),
-              ),
-            if (_isSelecting)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildMultiSelectBar(colors),
-              ),
-          ],
-        ),
+          const FloatingMiniPlayer(),
+        ],
       ),
     );
   }

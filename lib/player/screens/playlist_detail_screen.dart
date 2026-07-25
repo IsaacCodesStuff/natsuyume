@@ -10,6 +10,7 @@ import 'context_menus/playlist_detail_context_menu.dart';
 import 'context_menus/playlist_track_context_menu.dart';
 import 'context_menus/playlist_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
+import '../../widgets/floating_mini_player.dart';
 
 final _placeholderPlaylistTracks = [
   PlaylistTrack(
@@ -173,67 +174,63 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
 
     return Scaffold(
       backgroundColor: colors.background,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            CustomScrollView(
-              controller: _scrollController,
-              slivers: [
-                const SliverToBoxAdapter(child: SizedBox(height: 56)),
-                SliverToBoxAdapter(child: _buildCoverHero(colors)),
-                SliverToBoxAdapter(child: _buildPlaylistInfo(colors)),
-                _buildTrackList(colors),
-                const SliverToBoxAdapter(child: SizedBox(height: 24)),
+      body: Stack(
+        children: [
+          CustomScrollView(
+            controller: _scrollController,
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 56)),
+              SliverToBoxAdapter(child: _buildCoverHero(colors)),
+              SliverToBoxAdapter(child: _buildPlaylistInfo(colors)),
+              _buildTrackList(colors),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: CollectionDetailBar(
+              title: widget.playlist.name,
+              showTitle: _showTitleInBar,
+              onBack: () => Navigator.of(context).pop(),
+              onMoreTap: () => _showPlaylistMenu(context, colors),
+              extraActions: [
+                _BarButton(
+                  icon: Icons.edit_outlined,
+                  colors: colors,
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (_) => FractionallySizedBox(
+                        heightFactor: 1.0,
+                        child: PlaylistEditorScreen(
+                          initialName: widget.playlist.name,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
-            // Floating top bar
+          ),
+          if (_showTitleInBar && !_isSelecting)
             Positioned(
-              top: 0,
+              right: 16,
+              bottom: 16,
+              child: _buildActionButtons(colors),
+            ),
+          if (_isSelecting)
+            Positioned(
               left: 0,
               right: 0,
-              child: CollectionDetailBar(
-                title: widget.playlist.name,
-                showTitle: _showTitleInBar,
-                onBack: () => Navigator.of(context).pop(),
-                onMoreTap: () => _showPlaylistMenu(context, colors),
-                extraActions: [
-                  _BarButton(
-                    icon: Icons.edit_outlined,
-                    colors: colors,
-                    onTap: () {
-                      showModalBottomSheet(
-                        context: context,
-                        isScrollControlled: true,
-                        backgroundColor: Colors.transparent,
-                        builder: (_) => FractionallySizedBox(
-                          heightFactor: 1.0,
-                          child: PlaylistEditorScreen(
-                            initialName: widget.playlist.name,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
+              bottom: 0,
+              child: _buildMultiSelectBar(colors),
             ),
-            // Pinned shuffle + play
-            if (_showTitleInBar && !_isSelecting)
-              Positioned(
-                right: 16,
-                bottom: 16,
-                child: _buildActionButtons(colors),
-              ),
-            // Multi-select bar
-            if (_isSelecting)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: _buildMultiSelectBar(colors),
-              ),
-          ],
-        ),
+          const FloatingMiniPlayer(),
+        ],
       ),
     );
   }

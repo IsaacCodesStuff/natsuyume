@@ -2,14 +2,13 @@ import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
 import '../theme/theme_registry.dart';
 import '../widgets/bottom_nav_bar.dart';
-import '../widgets/mini_player.dart';
+import '../widgets/floating_mini_player.dart';
 import '../core/natsuyume_core.dart';
 import '../core/cover_service.dart';
 import 'screens/queue_screen.dart';
 import 'screens/albums_screen.dart';
 import 'screens/artists_screen.dart';
 import 'screens/playlists_screen.dart';
-import 'screens/now_playing_screen.dart';
 import 'screens/more_screen.dart';
 
 class PlayerShell extends StatefulWidget {
@@ -38,18 +37,6 @@ class _PlayerShellState extends State<PlayerShell> {
     }
   }
 
-  void _openNowPlaying() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => const FractionallySizedBox(
-        heightFactor: 1.0,
-        child: NowPlayingScreen(),
-      ),
-    );
-  }
-
   Future<void> _updateDynamicColor(String trackPath) async {
     if (trackPath.isEmpty) return;
     if (trackPath == _lastDynamicPath) return;
@@ -74,56 +61,46 @@ class _PlayerShellState extends State<PlayerShell> {
     final colors = NatsuyumeTheme.of(context).colors;
     final core = NatsuyumeCore.instance;
 
+    // Update dynamic color when track changes
+    final track = core.playerState.currentTrack;
+    if (!track.isEmpty) _updateDynamicColor(track.path);
+
     return Scaffold(
       backgroundColor: colors.background,
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(child: _buildCurrentScreen()),
-          ListenableBuilder(
-            listenable: core.playerState,
-            builder: (context, _) {
-              final track = core.playerState.currentTrack;
-              debugPrint('MiniPlayer rebuild: track=${track.title}');
-              final isPlaying = core.playerState.isPlaying;
-
-              if (!track.isEmpty) {
-                _updateDynamicColor(track.path);
-              }
-
-              ImageProvider? albumArt;
-              if (!track.isEmpty) {
-                final bytes = CoverService.instance.getCoverForTrack(
-                  track.path,
-                );
-                if (bytes != null) albumArt = MemoryImage(bytes);
-              }
-
-              return MiniPlayer(
-                data: MiniPlayerData(
-                  title: track.isEmpty ? 'Not playing' : track.title,
-                  artist: track.isEmpty ? '' : track.artist,
-                  album: track.isEmpty ? '' : track.album,
-                  albumArt: albumArt,
-                  isPlaying: isPlaying,
-                  isFavorite: track.isFavorite,
+          // Main content + nav bar
+          Column(
+            children: [
+              Expanded(
+                child: ListenableBuilder(
+                  listenable: core.playerState,
+                  builder: (context, _) {
+                    final hasTrack = !core.playerState.currentTrack.isEmpty;
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: hasTrack
+                            ? FloatingMiniPlayer.height +
+                                  FloatingMiniPlayer.gap * 2
+                            : 0,
+                      ),
+                      child: _buildCurrentScreen(),
+                    );
+                  },
                 ),
-                onTap: _openNowPlaying,
-                onPlayPause: () {
-                  if (isPlaying) {
-                    core.pause();
-                  } else {
-                    core.play();
-                  }
-                },
-                onPrevious: core.previous,
-                onNext: core.next,
-                onFavorite: () {},
-              );
-            },
+              ),
+              NatsuyumeBottomNavBar(
+                currentTab: _currentTab,
+                onTabSelected: (tab) => setState(() => _currentTab = tab),
+              ),
+            ],
           ),
-          NatsuyumeBottomNavBar(
-            currentTab: _currentTab,
-            onTabSelected: (tab) => setState(() => _currentTab = tab),
+
+          // Floating mini player — above nav bar
+          FloatingMiniPlayer(
+            bottomOffset:
+                MediaQuery.of(context).padding.bottom +
+                kBottomNavigationBarHeight,
           ),
         ],
       ),
