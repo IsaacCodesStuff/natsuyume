@@ -7,6 +7,7 @@ import 'lyrics_editor_screen.dart';
 import 'dart:ui';
 import 'dart:typed_data';
 import '../../core/cover_service.dart';
+import 'dart:async';
 
 class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
@@ -19,6 +20,14 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   bool _showLyrics = false;
   bool _isSeeking = false;
   double _seekValue = 0.0;
+  String _lastKnownPath = '';
+  Timer? _seekingTimeout; // ← class field, not inside any method
+
+  @override
+  void dispose() {
+    _seekingTimeout?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -28,10 +37,31 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     return ListenableBuilder(
       listenable: core.playerState,
       builder: (context, _) {
+        // Inside NowPlayingScreen build method:
         final track = core.playerState.currentTrack;
         final isPlaying = core.playerState.isPlaying;
         final posMs = core.playerState.positionMs;
         final durMs = core.playerState.durationMs;
+        final awaitingDuration = core.playerState.awaitingDuration;
+
+        debugPrint(
+          'BUILD: _isSeeking=$_isSeeking _seekValue=$_seekValue posMs=$posMs durMs=$durMs',
+        );
+
+        // Automatically clear _isSeeking once position reaches the target location
+        if (_isSeeking && durMs > 0) {
+          final targetMs = (_seekValue * durMs).round();
+          final diff = (posMs - targetMs).abs();
+          // Within 1.5 seconds of target means C++ has finished seeking
+          if (diff < 1500) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted && _isSeeking) {
+                _seekingTimeout?.cancel();
+                setState(() => _isSeeking = false);
+              }
+            });
+          }
+        }
 
         final seekValue = _isSeeking
             ? _seekValue
@@ -71,6 +101,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
                       posMs,
                       durMs,
                       isPlaying,
+                      awaitingDuration, // ← add this
                       formatMs,
                     ),
                     _buildPlaybackButtons(colors, core, isPlaying),
@@ -302,6 +333,7 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     int posMs,
     int durMs,
     bool isPlaying,
+    bool awaitingDuration,
     String Function(int) formatMs,
   ) {
     return Padding(
@@ -309,21 +341,34 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
       child: Column(
         children: [
           M3ESquigglySlider(
-            value: seekValue,
-            isPlaying: isPlaying,
-            onChanged: (v) {
-              // Update displayed time while dragging without notifying core
+            value: awaitingDuration ? 0.0 : seekValue,
+            isPlaying: isPlaying && !awaitingDuration,
+            onChangeStart: (v) {
+              _seekingTimeout?.cancel();
               setState(() {
                 _isSeeking = true;
                 _seekValue = v;
               });
             },
-            onChangeStart: (_) => setState(() => _isSeeking = true),
+            onChanged: (v) {
+              setState(() {
+                _isSeeking = true;
+                _seekValue = v;
+              });
+            },
             onChangeEnd: (v) {
-              // v is now the actual final drag position from the slider
               final seekMs = (v * durMs).round();
               NatsuyumeCore.instance.seekTo(seekMs);
-              setState(() => _isSeeking = false);
+
+              // Maintain _isSeeking = true until C++ reports back or timeout hits!
+              _seekingTimeout?.cancel();
+              _seekingTimeout = Timer(const Duration(seconds: 2), () {
+                if (mounted) setState(() => _isSeeking = false);
+              });
+
+              setState(() {
+                _seekValue = v;
+              });
             },
           ),
           Padding(
@@ -332,7 +377,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  // Show scrub position while dragging
                   _isSeeking
                       ? formatMs((_seekValue * durMs).round())
                       : formatMs(posMs),
@@ -631,12 +675,6 @@ class _LyricsViewState extends State<LyricsView> {
       setState(() => _activeIndex = newIndex);
       _scrollToActive(newIndex);
     }
-  }
-
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
   }
 
   @override

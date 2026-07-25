@@ -29,7 +29,7 @@ class _UnlockedThemesScreenState extends State<UnlockedThemesScreen> {
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
-    final unlocked = ThemeRegistry.instance.unlockedThemes;
+    final unlocked = ThemeRegistry.instance.unlockedPalettes;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -61,7 +61,7 @@ class _UnlockedThemesScreenState extends State<UnlockedThemesScreen> {
               child: unlocked.isEmpty
                   ? Center(
                       child: Text(
-                        'No themes unlocked yet.\nTry entering a secret code in ???.',
+                        'No themes unlocked yet.\nTry entering a secret code in About.',
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 14,
@@ -73,12 +73,12 @@ class _UnlockedThemesScreenState extends State<UnlockedThemesScreen> {
                       padding: EdgeInsets.zero,
                       children: [
                         SettingsSection(
-                          children: unlocked.map((theme) {
+                          children: unlocked.map((palette) {
                             return SettingsToggleTile(
-                              title: theme.label,
-                              value: ThemeRegistry.instance.isEnabled(theme.id),
+                              title: palette.label,
+                              value: ThemeRegistry.instance.isEnabled(palette),
                               onChanged: (v) {
-                                ThemeRegistry.instance.setEnabled(theme.id, v);
+                                ThemeRegistry.instance.setEnabled(palette, v);
                               },
                             );
                           }).toList(),

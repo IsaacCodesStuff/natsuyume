@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
 import '../theme/natsuyume_theme.dart';
+import '../theme/theme_registry.dart';
 import '../widgets/bottom_nav_bar.dart';
 import '../widgets/mini_player.dart';
 import '../core/natsuyume_core.dart';
@@ -21,6 +21,7 @@ class PlayerShell extends StatefulWidget {
 
 class _PlayerShellState extends State<PlayerShell> {
   PlayerTab _currentTab = PlayerTab.queues;
+  String _lastDynamicPath = '';
 
   Widget _buildCurrentScreen() {
     switch (_currentTab) {
@@ -49,6 +50,25 @@ class _PlayerShellState extends State<PlayerShell> {
     );
   }
 
+  Future<void> _updateDynamicColor(String trackPath) async {
+    if (trackPath.isEmpty) return;
+    if (trackPath == _lastDynamicPath) return;
+    if (ThemeRegistry.instance.selectedMode != NatsuyumeMode.dynamic) return;
+    _lastDynamicPath = trackPath;
+
+    final bytes = CoverService.instance.getCoverForTrack(trackPath);
+    if (bytes == null) return;
+
+    final color = await CoverService.instance.extractDominantColor(bytes);
+    if (color == null) return;
+    if (!mounted) return;
+
+    ThemeRegistry.instance.setDynamicSeedColor(color);
+    NatsuyumeTheme.of(
+      context,
+    ).onThemeChange(ThemeRegistry.instance.currentScheme);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
@@ -63,7 +83,12 @@ class _PlayerShellState extends State<PlayerShell> {
             listenable: core.playerState,
             builder: (context, _) {
               final track = core.playerState.currentTrack;
+              debugPrint('MiniPlayer rebuild: track=${track.title}');
               final isPlaying = core.playerState.isPlaying;
+
+              if (!track.isEmpty) {
+                _updateDynamicColor(track.path);
+              }
 
               ImageProvider? albumArt;
               if (!track.isEmpty) {

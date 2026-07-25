@@ -1,146 +1,147 @@
 import 'package:flutter/material.dart';
+import 'natsuyume_theme.dart';
 
-/// Represents a named theme entry — either a built-in or an unlocked secret theme.
-class NatsuyumeThemeEntry {
-  final String id;
-  final String label;
-  final bool isSecret;
-
-  const NatsuyumeThemeEntry({
-    required this.id,
-    required this.label,
-    this.isSecret = false,
-  });
-}
-
-/// Central registry for all available themes.
-/// Built-in themes are always present.
-/// Secret themes appear only when unlocked and enabled.
 class ThemeRegistry extends ChangeNotifier {
   ThemeRegistry._();
   static final ThemeRegistry instance = ThemeRegistry._();
 
-  // Built-in themes — always available
-  static const List<NatsuyumeThemeEntry> builtInThemes = [
-    NatsuyumeThemeEntry(id: 'light', label: 'Light'),
-    NatsuyumeThemeEntry(id: 'dark', label: 'Dark'),
-    NatsuyumeThemeEntry(id: 'dynamic', label: 'Dynamic'),
-    NatsuyumeThemeEntry(id: 'manual', label: 'Manual'),
-  ];
+  NatsuyumeMode _mode = NatsuyumeMode.dark;
+  NatsuyumePalette _palette = NatsuyumePalette.default_;
+  Color? _dynamicSeedColor;
+  ThemeStyle _themeStyle = ThemeStyle.vibrant;
+  ThemeStyle get selectedThemeStyle => _themeStyle;
 
-  // All secret themes — only visible when unlocked AND enabled
-  static const List<NatsuyumeThemeEntry> _allSecretThemes = [
-    NatsuyumeThemeEntry(id: 'natsuyume', label: 'Natsuyume', isSecret: true),
-    NatsuyumeThemeEntry(id: 'rem', label: 'Rem', isSecret: true),
-    NatsuyumeThemeEntry(id: 'misaki', label: 'Misaki', isSecret: true),
-    NatsuyumeThemeEntry(id: 'hestia', label: 'Hestia', isSecret: true),
-    NatsuyumeThemeEntry(id: 'akane', label: 'Akane', isSecret: true),
-    NatsuyumeThemeEntry(id: 'syalis', label: 'Syalis', isSecret: true),
-    NatsuyumeThemeEntry(id: 'liscia', label: 'Liscia', isSecret: true),
-    NatsuyumeThemeEntry(id: 'itsuki', label: 'Itsuki', isSecret: true),
-    NatsuyumeThemeEntry(id: 'misumi', label: 'Misumi', isSecret: true),
-    NatsuyumeThemeEntry(
-      id: 'berryblossom',
-      label: 'Berry Blossom',
-      isSecret: true,
-    ),
-    NatsuyumeThemeEntry(id: 'jeanne', label: 'Jeanne', isSecret: true),
-    NatsuyumeThemeEntry(id: 'yoshino', label: 'Yoshino', isSecret: true),
-    NatsuyumeThemeEntry(id: 'erna', label: 'Erna', isSecret: true),
-    NatsuyumeThemeEntry(id: 'beta', label: 'Beta', isSecret: true),
-  ];
+  NatsuyumeMode get selectedMode => _mode;
+  NatsuyumePalette get selectedPalette => _palette;
+  Color? get dynamicSeedColor => _dynamicSeedColor;
 
-  // Tracks which secret themes have been unlocked
-  final Set<String> _unlockedIds = {};
+  // Unlocked secret palettes
+  final Set<NatsuyumePalette> _unlockedPalettes = {};
+  final Set<NatsuyumePalette> _enabledPalettes = {};
 
-  // Tracks which unlocked themes are enabled
-  final Set<String> _enabledIds = {};
-
-  // Currently selected theme id
-  String _selectedThemeId = 'dark';
-  String get selectedThemeId => _selectedThemeId;
-
-  /// All secret themes that have been unlocked
-  List<NatsuyumeThemeEntry> get unlockedThemes =>
-      _allSecretThemes.where((t) => _unlockedIds.contains(t.id)).toList();
-
-  /// Unlocked themes that are also enabled — these appear in the theme picker
-  List<NatsuyumeThemeEntry> get enabledSecretThemes => _allSecretThemes
-      .where((t) => _unlockedIds.contains(t.id) && _enabledIds.contains(t.id))
-      .toList();
-
-  /// Full list shown in the theme picker dialog
-  List<NatsuyumeThemeEntry> get availableThemes => [
-    ...builtInThemes,
-    ...enabledSecretThemes,
-  ];
-
-  bool isUnlocked(String id) => _unlockedIds.contains(id);
-  bool isEnabled(String id) => _enabledIds.contains(id);
-
-  /// Unlock a secret theme by id — called when a valid code is entered
-  void unlock(String id) {
-    if (_unlockedIds.contains(id)) return;
-    _unlockedIds.add(id);
-    notifyListeners();
-  }
-
-  /// Toggle whether an unlocked theme is enabled in the picker
-  void setEnabled(String id, bool enabled) {
-    if (!_unlockedIds.contains(id)) return;
-    if (enabled) {
-      _enabledIds.add(id);
-    } else {
-      _enabledIds.remove(id);
-      // If the disabled theme was selected, fall back to dark
-      if (_selectedThemeId == id) {
-        _selectedThemeId = 'dark';
-      }
+  // -------------------------------------------------------------------------
+  // Mode selection
+  // -------------------------------------------------------------------------
+  void selectMode(NatsuyumeMode mode) {
+    _mode = mode;
+    // Reset palette when switching to dynamic or manual
+    if (mode == NatsuyumeMode.dynamic || mode == NatsuyumeMode.manual) {
+      _palette = NatsuyumePalette.default_;
     }
     notifyListeners();
   }
 
-  /// Select a theme
-  void selectTheme(String id) {
-    _selectedThemeId = id;
+  void selectThemeStyle(ThemeStyle style) {
+    _themeStyle = style;
+    if (_mode == NatsuyumeMode.dynamic) notifyListeners();
+  }
+
+  // -------------------------------------------------------------------------
+  // Palette selection
+  // -------------------------------------------------------------------------
+  void selectPalette(NatsuyumePalette palette) {
+    if (palette != NatsuyumePalette.default_ &&
+        !_unlockedPalettes.contains(palette))
+      return;
+    _palette = palette;
     notifyListeners();
   }
 
-  /// Unlock by secret code — returns the theme name if valid, null if not
+  // -------------------------------------------------------------------------
+  // Dynamic seed color — set by PlayerShell on track change
+  // -------------------------------------------------------------------------
+  void setDynamicSeedColor(Color color) {
+    _dynamicSeedColor = color;
+    if (_mode == NatsuyumeMode.dynamic) notifyListeners();
+  }
+
+  // -------------------------------------------------------------------------
+  // Current resolved scheme
+  // -------------------------------------------------------------------------
+  NatsuyumeColorScheme get currentScheme => NatsuyumeColorScheme.resolve(
+    mode: _mode,
+    palette: _palette,
+    seedColor: _dynamicSeedColor,
+    themeStyle: _themeStyle,
+  );
+
+  // -------------------------------------------------------------------------
+  // Secret palette unlock system — mirrors old ThemeRegistry API
+  // -------------------------------------------------------------------------
+  bool isUnlocked(NatsuyumePalette palette) =>
+      _unlockedPalettes.contains(palette);
+
+  bool isEnabled(NatsuyumePalette palette) =>
+      _enabledPalettes.contains(palette);
+
+  List<NatsuyumePalette> get unlockedPalettes => NatsuyumePalette.values
+      .where((p) => p.isSecret && _unlockedPalettes.contains(p))
+      .toList();
+
+  List<NatsuyumePalette> get enabledPalettes => NatsuyumePalette.values
+      .where(
+        (p) =>
+            p.isSecret &&
+            _unlockedPalettes.contains(p) &&
+            _enabledPalettes.contains(p),
+      )
+      .toList();
+
+  void unlock(NatsuyumePalette palette) {
+    _unlockedPalettes.add(palette);
+    _enabledPalettes.add(palette); // auto-enable on first unlock
+    notifyListeners();
+  }
+
+  void setEnabled(NatsuyumePalette palette, bool enabled) {
+    if (!_unlockedPalettes.contains(palette)) return;
+    if (enabled) {
+      _enabledPalettes.add(palette);
+    } else {
+      _enabledPalettes.remove(palette);
+      if (_palette == palette) _palette = NatsuyumePalette.default_;
+    }
+    notifyListeners();
+  }
+
+  // -------------------------------------------------------------------------
+  // Code unlock — maps secret codes to palettes
+  // -------------------------------------------------------------------------
   String? unlockByCode(String code) {
     const codeMap = {
-      'NATSUYUME': 'natsuyume',
-      'REMREM': 'rem',
-      'MISAKI': 'misaki',
-      'HESTIA': 'hestia',
-      'AKANE': 'akane',
-      'SYALIS': 'syalis',
-      'LISCIA': 'liscia',
-      'ITSUKI': 'itsuki',
-      'MISUMI': 'misumi',
-      'BERRYBLOSSOM': 'berryblossom',
-      'JEANNE': 'jeanne',
-      'YOSHINO': 'yoshino',
-      'ERNA': 'erna',
-      'BETA': 'beta',
+      'Fuck you Alphanox no dreamy theme for you': NatsuyumePalette.natsuyume,
+      'Rem': NatsuyumePalette.rem,
+      'Hestia': NatsuyumePalette.hestia,
+      'Misaki': NatsuyumePalette.misaki,
+      'Akane': NatsuyumePalette.akane,
+      'Syalis': NatsuyumePalette.syalis,
+      'Liscia': NatsuyumePalette.liscia,
+      'Itsuki': NatsuyumePalette.itsuki,
+      'Misumi': NatsuyumePalette.misumi,
+      'Berry Blossom': NatsuyumePalette.berryblossom,
+      'Jeanne': NatsuyumePalette.jeanne,
+      'Yoshino': NatsuyumePalette.yoshino,
+      'Erna': NatsuyumePalette.erna,
+      'Beta': NatsuyumePalette.beta,
     };
 
-    final id = codeMap[code.toUpperCase()];
-    if (id == null) return null;
-
-    unlock(id);
-    // Auto-enable when first unlocked
-    _enabledIds.add(id);
-    notifyListeners();
-
-    return _allSecretThemes.firstWhere((t) => t.id == id).label;
+    final palette = codeMap[code.toUpperCase()];
+    if (palette == null) return null;
+    unlock(palette);
+    return palette.label;
   }
 
-  /// Reset everything — called on factory reset
   void reset() {
-    _unlockedIds.clear();
-    _enabledIds.clear();
-    _selectedThemeId = 'dark';
+    _mode = NatsuyumeMode.dark;
+    _palette = NatsuyumePalette.default_;
+    _dynamicSeedColor = null;
+    _unlockedPalettes.clear();
+    _enabledPalettes.clear();
     notifyListeners();
   }
+
+  // -------------------------------------------------------------------------
+  // Legacy compat — old code used selectedThemeId string
+  // -------------------------------------------------------------------------
+  String get selectedThemeId => _mode.name;
 }

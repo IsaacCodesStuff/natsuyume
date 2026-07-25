@@ -46,10 +46,6 @@ void Queue::destroyPlayback()
 
 void Queue::connectPlaybackCallbacks()
 {
-    m_currentPlayback->onTrackAdvancedGapless = [this]() {
-        advancePlayback();
-    };
-
     m_currentPlayback->onTrackEnded = [this]() {
         if (m_stopAfterCurrent) {
             m_stopAfterCurrent = false;
@@ -83,6 +79,7 @@ void Queue::connectPlaybackCallbacks()
             return;
         }
         // NoRepeat + no next = natural stop
+        if (onQueueEnded) onQueueEnded();
     };
 }
 

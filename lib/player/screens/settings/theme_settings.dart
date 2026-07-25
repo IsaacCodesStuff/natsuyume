@@ -5,43 +5,6 @@ import '../../../widgets/settings_tile.dart';
 import '../../../widgets/settings_section.dart';
 import 'manual_theme_screen.dart';
 
-enum ThemeStyle {
-  tonalSpot,
-  vibrant,
-  expressive,
-  spritz,
-  rainbow,
-  fruitSalad,
-  neutral,
-  monochrome,
-  fidelity,
-}
-
-extension ThemeStyleLabel on ThemeStyle {
-  String get label {
-    switch (this) {
-      case ThemeStyle.tonalSpot:
-        return 'Tonal Spot';
-      case ThemeStyle.vibrant:
-        return 'Vibrant';
-      case ThemeStyle.expressive:
-        return 'Expressive';
-      case ThemeStyle.spritz:
-        return 'Spritz';
-      case ThemeStyle.rainbow:
-        return 'Rainbow';
-      case ThemeStyle.fruitSalad:
-        return 'Fruit Salad';
-      case ThemeStyle.neutral:
-        return 'Neutral';
-      case ThemeStyle.monochrome:
-        return 'Monochrome';
-      case ThemeStyle.fidelity:
-        return 'Fidelity';
-    }
-  }
-}
-
 class ThemeSettingsScreen extends StatefulWidget {
   const ThemeSettingsScreen({super.key});
 
@@ -50,13 +13,12 @@ class ThemeSettingsScreen extends StatefulWidget {
 }
 
 class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
-  ThemeStyle _themeStyle = ThemeStyle.tonalSpot;
-  late String _selectedThemeId;
+  ThemeStyle _themeStyle = ThemeStyle.vibrant;
 
   @override
   void initState() {
     super.initState();
-    _selectedThemeId = ThemeRegistry.instance.selectedThemeId;
+    _themeStyle = ThemeRegistry.instance.selectedThemeStyle;
     ThemeRegistry.instance.addListener(_onRegistryChanged);
   }
 
@@ -68,20 +30,26 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
 
   void _onRegistryChanged() {
     setState(() {
-      _selectedThemeId = ThemeRegistry.instance.selectedThemeId;
+      _themeStyle = ThemeRegistry.instance.selectedThemeStyle;
     });
   }
 
-  void _showPlayerThemeDialog(NatsuyumeColorScheme colors) {
-    final available = ThemeRegistry.instance.availableThemes;
+  void _applyCurrentScheme() {
+    final scheme = ThemeRegistry.instance.currentScheme;
+    NatsuyumeTheme.of(context).onThemeChange(scheme);
+  }
 
+  // -------------------------------------------------------------------------
+  // Mode picker
+  // -------------------------------------------------------------------------
+  void _showModePicker(NatsuyumeColorScheme colors) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          'Default player theme',
+          'Theme mode',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -90,25 +58,23 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: available.map((entry) {
+          children: NatsuyumeMode.values.map((mode) {
+            final selected = ThemeRegistry.instance.selectedMode == mode;
             return ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(
-                entry.label,
+                mode.label,
                 style: TextStyle(fontSize: 15, color: colors.onSurface),
               ),
-              trailing: _selectedThemeId == entry.id
+              subtitle: _modeDescription(mode, colors),
+              trailing: selected
                   ? Icon(Icons.check, color: colors.accent)
                   : null,
               onTap: () {
-                ThemeRegistry.instance.selectTheme(entry.id);
-                setState(() => _selectedThemeId = entry.id);
-                // Apply the theme
-                final newColors = NatsuyumeColorScheme.fromId(entry.id);
-                NatsuyumeTheme.of(context).onThemeChange(newColors);
+                ThemeRegistry.instance.selectMode(mode);
+                _applyCurrentScheme();
                 Navigator.pop(context);
-                // If manual, open the manual theme screen
-                if (entry.id == 'manual') {
+                if (mode == NatsuyumeMode.manual) {
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => const ManualThemeScreen(),
@@ -132,14 +98,100 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     );
   }
 
-  void _showThemeStyleDialog(NatsuyumeColorScheme colors) {
+  Widget? _modeDescription(NatsuyumeMode mode, NatsuyumeColorScheme colors) {
+    const descriptions = {
+      NatsuyumeMode.light: 'Soft paper-like light theme',
+      NatsuyumeMode.dark: 'Deep dark theme, easy on the eyes',
+      NatsuyumeMode.amoled: 'Pure black, saves battery on OLED screens',
+      NatsuyumeMode.dynamic: 'Colors generated from album art',
+      NatsuyumeMode.manual: 'You define every color',
+    };
+    final text = descriptions[mode];
+    if (text == null) return null;
+    return Text(
+      text,
+      style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Palette picker
+  // -------------------------------------------------------------------------
+  void _showPalettePicker(NatsuyumeColorScheme colors) {
+    final enabled = ThemeRegistry.instance.enabledPalettes;
+    final available = [NatsuyumePalette.default_, ...enabled];
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: colors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text(
-          'Theme style',
+          'Color palette',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: colors.onSurface,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: available.map((palette) {
+            final selected = ThemeRegistry.instance.selectedPalette == palette;
+            final accents = NatsuyumeColorScheme.resolve(
+              mode: ThemeRegistry.instance.selectedMode,
+              palette: palette,
+            );
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: accents.accent,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: colors.divider),
+                ),
+              ),
+              title: Text(
+                palette.label,
+                style: TextStyle(fontSize: 15, color: colors.onSurface),
+              ),
+              trailing: selected
+                  ? Icon(Icons.check, color: colors.accent)
+                  : null,
+              onTap: () {
+                ThemeRegistry.instance.selectPalette(palette);
+                _applyCurrentScheme();
+                Navigator.pop(context);
+              },
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Theme style picker — only relevant for Dynamic mode
+  // -------------------------------------------------------------------------
+  void _showStylePicker(NatsuyumeColorScheme colors) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text(
+          'Dynamic theme style',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w600,
@@ -160,6 +212,8 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
                   : null,
               onTap: () {
                 setState(() => _themeStyle = style);
+                ThemeRegistry.instance.selectThemeStyle(style);
+                _applyCurrentScheme();
                 Navigator.pop(context);
               },
             );
@@ -178,17 +232,14 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
     );
   }
 
-  String get _selectedThemeLabel => ThemeRegistry.instance.availableThemes
-      .firstWhere(
-        (e) => e.id == _selectedThemeId,
-        orElse: () => ThemeRegistry.builtInThemes.first,
-      )
-      .label;
-
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
-    final isManual = _selectedThemeId == 'manual';
+    final registry = ThemeRegistry.instance;
+    final mode = registry.selectedMode;
+    final isDynamic = mode == NatsuyumeMode.dynamic;
+    final isManual = mode == NatsuyumeMode.manual;
+    final paletteDisabled = isDynamic || isManual;
 
     return Scaffold(
       backgroundColor: colors.background,
@@ -216,31 +267,54 @@ class _ThemeSettingsScreenState extends State<ThemeSettingsScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            SettingsSection(
-              children: [
-                SettingsTile(
-                  title: 'Default player theme',
-                  subtitle: _selectedThemeLabel,
-                  onTap: () => _showPlayerThemeDialog(colors),
-                ),
-                SettingsTile(
-                  title: 'Theme style',
-                  subtitle: _themeStyle.label,
-                  onTap: () => _showThemeStyleDialog(colors),
-                ),
-                SettingsTile(
-                  title: 'Customize colors',
-                  subtitle: 'Manually define theme colors',
-                  enabled: isManual,
-                  onTap: isManual
-                      ? () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const ManualThemeScreen(),
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
+                children: [
+                  SettingsSection(
+                    title: 'MODE',
+                    children: [
+                      SettingsTile(
+                        title: 'Theme mode',
+                        subtitle: mode.label,
+                        onTap: () => _showModePicker(colors),
+                      ),
+                      if (isDynamic)
+                        SettingsTile(
+                          title: 'Dynamic style',
+                          subtitle: _themeStyle.label,
+                          onTap: () => _showStylePicker(colors),
+                        ),
+                      if (isManual)
+                        SettingsTile(
+                          title: 'Customize colors',
+                          subtitle: 'Manually define theme colors',
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ManualThemeScreen(),
+                            ),
                           ),
-                        )
-                      : null,
-                ),
-              ],
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  SettingsSection(
+                    title: 'PALETTE',
+                    children: [
+                      SettingsTile(
+                        title: 'Color palette',
+                        subtitle: paletteDisabled
+                            ? 'Not available in ${mode.label} mode'
+                            : registry.selectedPalette.label,
+                        enabled: !paletteDisabled,
+                        onTap: paletteDisabled
+                            ? null
+                            : () => _showPalettePicker(colors),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

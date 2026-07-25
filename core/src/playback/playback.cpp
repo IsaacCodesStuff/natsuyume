@@ -46,6 +46,9 @@ Playback::Playback()
     checkMpvError(mpv_set_option_string(m_mpv, "terminal",      "no"),   "terminal");
     checkMpvError(mpv_set_option_string(m_mpv, "gapless-audio", "yes"),  "gapless-audio");
     checkMpvError(mpv_set_option_string(m_mpv, "idle",          "yes"),  "idle");
+    checkMpvError(mpv_set_option_string(m_mpv, "keep-open", "yes"), "keep-open");
+    checkMpvError(mpv_set_option_string(m_mpv, "hr-seek", "yes"), "hr-seek");
+    checkMpvError(mpv_set_option_string(m_mpv, "audio-stream-silence", "yes"), "audio-stream-silence");
     checkMpvError(mpv_initialize(m_mpv), "mpv_initialize");
 
     mpv_set_wakeup_callback(m_mpv, mpvWakeupCallback, this);
@@ -114,7 +117,7 @@ void Playback::handleMpvEvent(mpv_event *event)
         if (strcmp(prop->name, "time-pos") == 0) {
             if (prop->format == MPV_FORMAT_DOUBLE) {
                 double secs = *reinterpret_cast<double *>(prop->data);
-                int64_t ms  = static_cast<int64_t>(secs * 1000.0);
+                int64_t ms = static_cast<int64_t>(secs * 1000.0);   
                 if (ms != m_position) {
                     m_position = ms;
                     if (onPositionChanged) onPositionChanged();
@@ -131,7 +134,7 @@ void Playback::handleMpvEvent(mpv_event *event)
             }
         } else if (strcmp(prop->name, "core-idle") == 0) {
             if (prop->format == MPV_FORMAT_FLAG) {
-                bool idle       = *reinterpret_cast<int *>(prop->data) != 0;
+                bool idle = *reinterpret_cast<int *>(prop->data) != 0;       
                 bool nowPlaying = !idle;
                 if (nowPlaying != m_isPlaying) {
                     m_isPlaying = nowPlaying;
@@ -140,7 +143,7 @@ void Playback::handleMpvEvent(mpv_event *event)
             }
         } else if (strcmp(prop->name, "pause") == 0) {
             if (prop->format == MPV_FORMAT_FLAG) {
-                bool paused     = *reinterpret_cast<int *>(prop->data) != 0;
+                bool paused = *reinterpret_cast<int *>(prop->data) != 0;
                 bool nowPlaying = !paused;
                 if (nowPlaying != m_isPlaying) {
                     m_isPlaying = nowPlaying;
@@ -153,14 +156,17 @@ void Playback::handleMpvEvent(mpv_event *event)
 
     case MPV_EVENT_FILE_LOADED: {
         if (m_gaplessAdvance) {
-            m_gaplessAdvance  = false;
-            m_pendingAutoPlay = false;
+            m_gaplessAdvance      = false;
+            m_pendingAutoPlay     = false;
+            m_gaplessJustAdvanced = true;
         } else if (m_pendingAutoPlay) {
-            m_pendingAutoPlay = false;
+            m_pendingAutoPlay     = false;
+            m_gaplessJustAdvanced = false;
             const char *args[] = { "set", "pause", "no", nullptr };
             mpv_command_async(m_mpv, 0, args);
         } else {
-            m_pendingAutoPlay = false;
+            m_pendingAutoPlay     = false;
+            m_gaplessJustAdvanced = false;
             const char *args[] = { "set", "pause", "yes", nullptr };
             mpv_command_async(m_mpv, 0, args);
         }
@@ -173,14 +179,22 @@ void Playback::handleMpvEvent(mpv_event *event)
         if (ef->reason == MPV_END_FILE_REASON_EOF) {
             m_position = 0;
             if (m_hasAppendedTrack && !m_repeatTrackPending) {
-                m_hasAppendedTrack = false;
-                m_gaplessAdvance   = true;
+                m_hasAppendedTrack    = false;
+                m_gaplessAdvance      = true;
+                m_gaplessJustAdvanced = false;
                 if (onTrackAdvancedGapless) onTrackAdvancedGapless();
-            } else {
-                m_hasAppendedTrack   = false;
-                m_repeatTrackPending = false;
-                m_isPlaying          = false;
+            } else if (!m_gaplessJustAdvanced) {
+                // Only fire onTrackEnded if gapless didn't already handle it
+                m_hasAppendedTrack    = false;
+                m_repeatTrackPending  = false;
+                m_gaplessJustAdvanced = false;
+                m_isPlaying           = false;
                 if (onTrackEnded) onTrackEnded();
+            } else {
+                // Gapless already advanced — just clear flags
+                m_hasAppendedTrack    = false;
+                m_repeatTrackPending  = false;
+                m_gaplessJustAdvanced = false;
             }
         }
         break;
@@ -189,6 +203,15 @@ void Playback::handleMpvEvent(mpv_event *event)
     default:
         break;
     }
+}
+
+void Playback::clearAppendedTrack()
+{
+    if (!m_mpv) return;
+    m_hasAppendedTrack    = false;
+    m_gaplessJustAdvanced = false; // add this
+    const char *args[] = { "playlist-clear", nullptr };
+    checkMpvError(mpv_command_async(m_mpv, 0, args), "playlist-clear");
 }
 
 // ---------------------------------------------------------------------------
@@ -229,7 +252,6 @@ void Playback::appendTrack(const Track &track)
     if (!track.isValid() || !m_mpv) return;
     m_hasAppendedTrack = true;
     m_gaplessAdvance   = false;
-
     const char *args[] = { "loadfile", track.path.c_str(), "append", nullptr };
     checkMpvError(mpv_command_async(m_mpv, 0, args), "appendTrack");
 }
@@ -239,7 +261,7 @@ void Playback::seekTo(int64_t positionMs)
     if (!m_mpv) return;
     char secsStr[32];
     snprintf(secsStr, sizeof(secsStr), "%.3f", positionMs / 1000.0);
-    const char *args[] = { "seek", secsStr, "absolute", nullptr };
+    const char *args[] = { "seek", secsStr, "absolute+exact", nullptr };
     checkMpvError(mpv_command_async(m_mpv, 0, args), "seek");
 }
 
@@ -251,14 +273,6 @@ void Playback::setVolume(float volume)
     checkMpvError(
         mpv_set_property_async(m_mpv, 0, "volume", MPV_FORMAT_DOUBLE, &mpvVolume),
         "setVolume");
-}
-
-void Playback::clearAppendedTrack()
-{
-    if (!m_mpv) return;
-    m_hasAppendedTrack = false;
-    const char *args[] = { "playlist-clear", nullptr };
-    checkMpvError(mpv_command_async(m_mpv, 0, args), "playlist-clear");
 }
 
 void Playback::startEventThread()

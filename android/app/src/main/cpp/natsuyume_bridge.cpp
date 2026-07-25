@@ -438,6 +438,53 @@ void ncore_open_paths_in_new_queue(NatsuyumeCore* core,
         core->jumpToTrack(startIndex);
 }
 
+void ncore_open_paths_in_new_queue_named(NatsuyumeCore* core,
+                                          const char* pathsJson,
+                                          const char* name,
+                                          int startIndex) {
+    if (!core || !pathsJson) return;
+
+    // Reuse the same JSON parser
+    std::vector<std::string> paths;
+    std::string json(pathsJson);
+    size_t pos = 0;
+    while ((pos = json.find('"', pos)) != std::string::npos) {
+        size_t start = pos + 1;
+        size_t end = start;
+        while (end < json.size()) {
+            if (json[end] == '\\') { end += 2; continue; }
+            if (json[end] == '"') break;
+            end++;
+        }
+        if (end < json.size()) {
+            std::string raw = json.substr(start, end - start);
+            std::string path;
+            for (size_t i = 0; i < raw.size(); i++) {
+                if (raw[i] == '\\' && i + 1 < raw.size()) {
+                    switch (raw[i+1]) {
+                        case '"':  path += '"';  i++; break;
+                        case '\\': path += '\\'; i++; break;
+                        case 'n':  path += '\n'; i++; break;
+                        case 'r':  path += '\r'; i++; break;
+                        case 't':  path += '\t'; i++; break;
+                        default:   path += raw[i]; break;
+                    }
+                } else {
+                    path += raw[i];
+                }
+            }
+            paths.push_back(path);
+        }
+        pos = end + 1;
+    }
+
+    if (paths.empty()) return;
+    std::string queueName = (name && name[0] != '\0') ? name : "Queue";
+    core->openFilesInNewQueue(paths, queueName, false);
+    if (startIndex > 0 && startIndex < (int)paths.size())
+        core->jumpToTrack(startIndex);
+}
+
 // ---------------------------------------------------------------------------
 // Cover art
 // ---------------------------------------------------------------------------
@@ -562,6 +609,14 @@ void ncore_close_queue(NatsuyumeCore* core, int index) {
 
 void ncore_remove_track_at(NatsuyumeCore* core, int index) {
     if (core) core->removeTrackAt(index);
+}
+
+void ncore_rename_queue(NatsuyumeCore* core, int index, const char* name) {
+    if (core && name) core->renameQueue(index, std::string(name));
+}
+
+void ncore_move_track(NatsuyumeCore* core, int from, int to) {
+    if (core) core->moveTrack(from, to);
 }
 
 } // extern "C"

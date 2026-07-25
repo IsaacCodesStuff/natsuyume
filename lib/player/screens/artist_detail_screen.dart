@@ -302,6 +302,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       allSongsCount: _totalTrackCount,
       albums: _albums,
       currentAlbumIndex: _isSelecting ? null : _currentAlbumIndex,
+      // onAllSongsTap in _buildAlbumList:
       onAllSongsTap: () {
         final allPaths = <String>[];
         for (final album in _albums) {
@@ -309,7 +310,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
           allPaths.addAll(tracks.map((t) => t.path));
         }
         if (allPaths.isNotEmpty) {
-          NatsuyumeCore.instance.openPathsInNewQueue(allPaths);
+          NatsuyumeCore.instance.openPathsInNewQueueNamed(
+            allPaths,
+            widget.artist.name,
+          );
         }
       },
       onAlbumTap: (i) {

@@ -369,6 +369,10 @@ void PlaybackManager::connectPlaybackCallbacks(Queue *queue)
         if (onDurationChanged)     onDurationChanged();
     };
 
+    queue->onQueueEnded = [this]() {
+        if (onPlayingTrackChanged) onPlayingTrackChanged();
+    };
+
     queue->onRestoreCompleted = [this]() {
         resetPlayCountState();
     };
@@ -477,7 +481,10 @@ void PlaybackManager::connectCurrentPlaybackCallbacks(Queue *queue)
         }
     };
 
-    pb->onTrackAdvancedGapless = [this]() {
+    pb->onTrackAdvancedGapless = [this, queue]() {
+        // First advance the queue index (what Queue's callback was doing)
+        queue->advancePlayback();
+        // Then set the pending flag for onReadyToPlay to append the next track
         m_pendingGaplessAdvance = true;
     };
 }

@@ -22,14 +22,12 @@ class NatsuyumeCore {
   String _lastTrackPath = '';
   Timer? _pollTimer;
 
-  // Phase 2A — load the library only, no core init yet
   void init() {
     if (_initialized) return;
     _bindings = NatsuyumeBindings();
     _initialized = true;
   }
 
-  // Phase 2B — create core instance and initialize with data dir
   Future<void> initCore() async {
     await Permission.audio.request();
     final dataDir = await getApplicationSupportDirectory();
@@ -43,7 +41,6 @@ class NatsuyumeCore {
     } finally {
       calloc.free(pathPtr);
     }
-    print('NatsuyumeCore initCore OK — dataDir: $dataDirPath');
   }
 
   void shutdown() {
@@ -68,12 +65,16 @@ class NatsuyumeCore {
   }
 
   bool get isPlaying => _bindings.ncoreIsPlaying(_core) == 1;
-
   int get positionMs => _bindings.ncoreGetPosition(_core);
   int get durationMs => _bindings.ncoreGetDuration(_core);
-
   Duration get position => Duration(milliseconds: positionMs);
   Duration get duration => Duration(milliseconds: durationMs);
+
+  // Resets track change detection — call before any manual playback command
+  // so the next poll tick always fires updateTrack regardless of path match.
+  void resetTrackDetection() {
+    _lastTrackPath = '';
+  }
 
   CoreTrack get currentTrack {
     final pathPtr = calloc<Pointer<Utf8>>();
@@ -118,7 +119,6 @@ class NatsuyumeCore {
         isFavorite: favPtr.value == 1,
       );
 
-      // Free the C strings
       _bindings.ncoreFreeString(pathPtr.value);
       _bindings.ncoreFreeString(titlePtr.value);
       _bindings.ncoreFreeString(artistPtr.value);
@@ -154,9 +154,15 @@ class NatsuyumeCore {
       final trackChanged =
           track.path.isNotEmpty && track.path != _lastTrackPath;
 
-      if (trackChanged) _lastTrackPath = track.path;
+      // Temporary debug
+      if (trackChanged || durMs == 0) {
+        debugPrint(
+          'POLL: path=${track.path.split('/').last} '
+          'pos=$posMs dur=$durMs changed=$trackChanged last=$_lastTrackPath',
+        );
+      }
 
-      // Single setState-equivalent — one notifyListeners() for the whole tick
+      if (trackChanged) _lastTrackPath = track.path;
       playerState.updateAll(
         isPlaying: isPlaying,
         positionMs: posMs,
@@ -209,8 +215,7 @@ class NatsuyumeCore {
   List<CoreTrack> getQueueTracks() {
     final ptr = _bindings.ncoreGetQueueJson(_core);
     try {
-      final jsonStr = ptr.toDartString();
-      final list = jsonDecode(jsonStr) as List<dynamic>;
+      final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
       return list.map((e) {
         final m = e as Map<String, dynamic>;
         return CoreTrack(
@@ -316,6 +321,7 @@ class NatsuyumeCore {
   }
 
   void openPathsInNewQueue(List<String> paths, {int startIndex = 0}) {
+    resetTrackDetection();
     final jsonStr =
         '[${paths.map((p) => '"${p.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"').join(',')}]';
     final ptr = jsonStr.toNativeUtf8();
@@ -323,6 +329,29 @@ class NatsuyumeCore {
       _bindings.ncoreOpenPathsInNewQueue(_core, ptr, startIndex);
     } finally {
       calloc.free(ptr);
+    }
+  }
+
+  void openPathsInNewQueueNamed(
+    List<String> paths,
+    String name, {
+    int startIndex = 0,
+  }) {
+    resetTrackDetection();
+    final jsonStr =
+        '[${paths.map((p) => '"${p.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"').join(',')}]';
+    final pathsPtr = jsonStr.toNativeUtf8();
+    final namePtr = name.toNativeUtf8();
+    try {
+      _bindings.ncoreOpenPathsInNewQueueNamed(
+        _core,
+        pathsPtr,
+        namePtr,
+        startIndex,
+      );
+    } finally {
+      calloc.free(pathsPtr);
+      calloc.free(namePtr);
     }
   }
 
@@ -340,9 +369,7 @@ class NatsuyumeCore {
       if (result == nullptr || sizePtr.value == 0) return null;
       final bytes = Uint8List.fromList(result.asTypedList(sizePtr.value));
       _bindings.ncoreFreeCoverBytes(result);
-      if (mimePtr.value != nullptr) {
-        _bindings.ncoreFreeString(mimePtr.value);
-      }
+      if (mimePtr.value != nullptr) _bindings.ncoreFreeString(mimePtr.value);
       return bytes;
     } finally {
       calloc.free(pathPtr);
@@ -365,9 +392,7 @@ class NatsuyumeCore {
       if (result == nullptr || sizePtr.value == 0) return null;
       final bytes = Uint8List.fromList(result.asTypedList(sizePtr.value));
       _bindings.ncoreFreeCoverBytes(result);
-      if (mimePtr.value != nullptr) {
-        _bindings.ncoreFreeString(mimePtr.value);
-      }
+      if (mimePtr.value != nullptr) _bindings.ncoreFreeString(mimePtr.value);
       return bytes;
     } finally {
       calloc.free(namePtr);
@@ -389,6 +414,7 @@ class NatsuyumeCore {
   }
 
   void jumpToTrack(int index) {
+    resetTrackDetection();
     _bindings.ncoreJumpToTrack(_core, index);
   }
 
@@ -416,6 +442,19 @@ class NatsuyumeCore {
 
   void removeTrackAt(int index) {
     _bindings.ncoreRemoveTrackAt(_core, index);
+  }
+
+  void renameQueue(int index, String name) {
+    final namePtr = name.toNativeUtf8();
+    try {
+      _bindings.ncoreRenameQueue(_core, index, namePtr);
+    } finally {
+      calloc.free(namePtr);
+    }
+  }
+
+  void moveTrackInQueue(int from, int to) {
+    _bindings.ncoreMoveTrack(_core, from, to);
   }
 }
 
@@ -472,11 +511,11 @@ class CorePlayerState extends ChangeNotifier {
   int get positionMs => _positionMs;
   int get durationMs => _durationMs;
   CoreTrack get currentTrack => _currentTrack;
-
   Duration get position => Duration(milliseconds: _positionMs);
   Duration get duration => Duration(milliseconds: _durationMs);
+  bool _awaitingDuration = false;
+  bool get awaitingDuration => _awaitingDuration;
 
-  // Single notification per poll tick — no intermediate states visible to UI
   void updateAll({
     required bool isPlaying,
     required int positionMs,
@@ -486,11 +525,20 @@ class CorePlayerState extends ChangeNotifier {
     _isPlaying = isPlaying;
     _positionMs = positionMs;
     _durationMs = durationMs;
-    if (track != null) _currentTrack = track;
+    if (track != null) {
+      debugPrint('CorePlayerState.updateAll: setting track to ${track.title}');
+      _currentTrack = track;
+      _awaitingDuration = true;
+    }
+    if (_awaitingDuration && durationMs > 0) {
+      _awaitingDuration = false;
+    }
+    debugPrint(
+      'CorePlayerState.notifyListeners: isPlaying=$_isPlaying track=${_currentTrack.title}',
+    );
     notifyListeners();
   }
 
-  // Keep these for any callers that still use them directly
   void updateTrack(CoreTrack track) {
     _currentTrack = track;
     notifyListeners();

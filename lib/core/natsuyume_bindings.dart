@@ -1,5 +1,4 @@
 import 'dart:ffi';
-import 'dart:io';
 import 'package:ffi/ffi.dart';
 
 // ---------------------------------------------------------------------------
@@ -246,6 +245,20 @@ typedef NcoreCloseQueue = void Function(Pointer<Void>, int);
 
 typedef _NcoreRemoveTrackAtNative = Void Function(Pointer<Void>, Int32);
 typedef NcoreRemoveTrackAt = void Function(Pointer<Void>, int);
+// void ncore_rename_queue(NatsuyumeCore*, int, const char*)
+typedef _NcoreRenameQueueNative =
+    Void Function(Pointer<Void>, Int32, Pointer<Utf8>);
+typedef NcoreRenameQueue = void Function(Pointer<Void>, int, Pointer<Utf8>);
+
+// void ncore_open_paths_in_new_queue_named(NatsuyumeCore*, const char*, const char*, int)
+typedef _NcoreOpenPathsInNewQueueNamedNative =
+    Void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Int32);
+typedef NcoreOpenPathsInNewQueueNamed =
+    void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, int);
+
+// void ncore_move_track(NatsuyumeCore*, int, int)
+typedef _NcoreMoveTrackNative = Void Function(Pointer<Void>, Int32, Int32);
+typedef NcoreMoveTrack = void Function(Pointer<Void>, int, int);
 
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
@@ -306,6 +319,10 @@ class NatsuyumeBindings {
   late final NcoreViewQueue ncoreViewQueue;
   late final NcoreCloseQueue ncoreCloseQueue;
   late final NcoreRemoveTrackAt ncoreRemoveTrackAt;
+
+  late final NcoreRenameQueue ncoreRenameQueue;
+  late final NcoreOpenPathsInNewQueueNamed ncoreOpenPathsInNewQueueNamed;
+  late final NcoreMoveTrack ncoreMoveTrack;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -524,6 +541,20 @@ class NatsuyumeBindings {
         .lookup<NativeFunction<_NcoreRemoveTrackAtNative>>(
           'ncore_remove_track_at',
         )
+        .asFunction();
+
+    ncoreRenameQueue = _lib
+        .lookup<NativeFunction<_NcoreRenameQueueNative>>('ncore_rename_queue')
+        .asFunction();
+
+    ncoreOpenPathsInNewQueueNamed = _lib
+        .lookup<NativeFunction<_NcoreOpenPathsInNewQueueNamedNative>>(
+          'ncore_open_paths_in_new_queue_named',
+        )
+        .asFunction();
+
+    ncoreMoveTrack = _lib
+        .lookup<NativeFunction<_NcoreMoveTrackNative>>('ncore_move_track')
         .asFunction();
   }
 }

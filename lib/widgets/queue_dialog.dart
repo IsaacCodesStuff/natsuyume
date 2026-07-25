@@ -11,7 +11,7 @@ class QueueItem {
 class QueueDialog extends StatefulWidget {
   final List<QueueItem> queues;
   final void Function(int index) onQueueSelected;
-  final void Function(int index) onQueueRenamed;
+  final void Function(int index, String newName) onQueueRenamed;
   final void Function(int index) onQueueDeleted;
   final void Function(List<QueueItem> reordered) onReordered;
 
@@ -28,7 +28,7 @@ class QueueDialog extends StatefulWidget {
     BuildContext context, {
     required List<QueueItem> queues,
     required void Function(int index) onQueueSelected,
-    required void Function(int index) onQueueRenamed,
+    required void Function(int index, String newName) onQueueRenamed,
     required void Function(int index) onQueueDeleted,
     required void Function(List<QueueItem> reordered) onReordered,
   }) {
@@ -96,7 +96,14 @@ class _QueueDialogState extends State<QueueDialog> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                setState(() => _queues[index].name = newName);
+                widget.onQueueRenamed(index, newName);
+              }
+              Navigator.pop(context);
+            },
             child: Text(
               'Cancel',
               style: TextStyle(color: colors.onSurfaceVariant),
@@ -107,7 +114,7 @@ class _QueueDialogState extends State<QueueDialog> {
               final newName = controller.text.trim();
               if (newName.isNotEmpty) {
                 setState(() => _queues[index].name = newName);
-                widget.onQueueRenamed(index);
+                widget.onQueueRenamed(index, newName);
               }
               Navigator.pop(context);
             },

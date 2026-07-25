@@ -29,6 +29,7 @@ public:
     std::function<void()> onShuffleChanged;
     std::function<void()> onStopAfterCurrentChanged;
     std::function<void()> onRestoreCompleted;
+    std::function<void()> onQueueEnded;
 
     // --- Track management ---
     void addTrack(const std::string &filePath, bool autoPlayFirst = false);

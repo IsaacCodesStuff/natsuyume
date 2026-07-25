@@ -43,6 +43,9 @@ class _M3ESquigglySliderState extends State<M3ESquigglySlider>
   @override
   void didUpdateWidget(covariant M3ESquigglySlider oldWidget) {
     super.didUpdateWidget(oldWidget);
+    debugPrint(
+      'SLIDER didUpdate: old=${oldWidget.value} new=${widget.value} isDragging=$_isDragging',
+    );
     if (!_isDragging) _dragValue = widget.value;
     if (widget.isPlaying && !_animationController.isAnimating) {
       _animationController.repeat();

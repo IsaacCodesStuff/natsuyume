@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../widgets/context_menu.dart';
-import '../artists_screen.dart';
 import '../artist_editor_screen.dart';
 import '../metadata_editor_screen.dart';
 import '../../../core/library_types.dart';

@@ -59,6 +59,7 @@ private:
     bool    m_hasAppendedTrack = false;
     bool    m_gaplessAdvance   = false;
     bool    m_repeatTrackPending = false;
+    bool    m_gaplessJustAdvanced = false;
     int64_t m_position = 0;
     int64_t m_duration = 0;
 

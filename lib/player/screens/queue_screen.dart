@@ -94,7 +94,12 @@ class _QueueScreenState extends State<QueueScreen> {
     if (trackListChanged ||
         newIndex != _currentTrackIndex ||
         newNames.length != _queueNames.length ||
-        newActiveQueue != _currentQueueIndex) {
+        newActiveQueue != _currentQueueIndex ||
+        !List.generate(
+          // ← add this
+          newNames.length,
+          (i) => newNames[i] == _queueNames[i],
+        ).every((e) => e)) {
       setState(() {
         _tracks = newTracks;
         _currentTrackIndex = newIndex;
@@ -197,7 +202,9 @@ class _QueueScreenState extends State<QueueScreen> {
         NatsuyumeCore.instance.viewQueue(index);
         // _refreshTracks will pick up the change on next poll
       },
-      onQueueRenamed: (index) {},
+      onQueueRenamed: (index, newName) {
+        NatsuyumeCore.instance.renameQueue(index, newName);
+      },
       onQueueDeleted: (index) {
         NatsuyumeCore.instance.closeQueue(index);
         // _refreshTracks will pick up the change on next poll
@@ -374,25 +381,57 @@ class _QueueScreenState extends State<QueueScreen> {
               ),
             ),
           ),
+          _TopBarButton(
+            icon: Icons.play_arrow,
+            colors: colors,
+            onTap: () {
+              final core = NatsuyumeCore.instance;
+              if (!core.playerState.isPlaying) {
+                core.play();
+              }
+            },
+          ),
           const SizedBox(width: 8),
-          _TopBarButton(icon: Icons.play_arrow, colors: colors, onTap: () {}),
-          const SizedBox(width: 8),
-          _TopBarButton(icon: Icons.close, colors: colors, onTap: () {}),
+          _TopBarButton(
+            icon: Icons.close,
+            colors: colors,
+            onTap: () {
+              final queueIndex = _currentQueueIndex;
+              NatsuyumeCore.instance.closeQueue(queueIndex);
+            },
+          ),
         ],
       ),
     );
   }
 
   Widget _buildTrackList(NatsuyumeColorScheme colors) {
-    return ListView.builder(
+    return ReorderableListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
       itemCount: _tracks.length,
+      onReorderItem: (oldIndex, newIndex) {
+        NatsuyumeCore.instance.moveTrackInQueue(oldIndex, newIndex);
+        setState(() {
+          final track = _tracks.removeAt(oldIndex);
+          _tracks.insert(newIndex, track);
+          if (_currentTrackIndex == oldIndex) {
+            _currentTrackIndex = newIndex;
+          } else if (oldIndex < _currentTrackIndex &&
+              newIndex >= _currentTrackIndex) {
+            _currentTrackIndex--;
+          } else if (oldIndex > _currentTrackIndex &&
+              newIndex <= _currentTrackIndex) {
+            _currentTrackIndex++;
+          }
+        });
+      },
       itemBuilder: (context, index) {
         final track = _tracks[index];
         final isPlaying = index == _currentTrackIndex;
         final isSelected = _selectedIndices.contains(index);
 
         return GestureDetector(
+          key: ValueKey(track.path + index.toString()),
           onTap: () {
             if (_isSelecting) {
               _toggleSelection(index);
@@ -437,23 +476,26 @@ class _QueueScreenState extends State<QueueScreen> {
                     ),
                   )
                 else
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.drag_handle,
-                        color: colors.onSurfaceVariant,
-                        size: 18,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${index + 1}',
-                        style: TextStyle(
-                          fontSize: 11,
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.drag_handle,
                           color: colors.onSurfaceVariant,
+                          size: 18,
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          '${index + 1}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 const SizedBox(width: 10),
                 ClipRRect(

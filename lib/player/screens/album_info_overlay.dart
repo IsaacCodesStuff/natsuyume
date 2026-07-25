@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../widgets/collection_info_overlay.dart';
-import '../../widgets/album_grid_item.dart';
 import 'metadata_editor_screen.dart';
 import '../../core/library_types.dart';
 
