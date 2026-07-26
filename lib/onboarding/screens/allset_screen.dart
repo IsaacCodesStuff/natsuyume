@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '/player/player_shell.dart';
+import '../../theme/natsuyume_theme.dart';
+import '../../player/player_shell.dart';
 
 class AllSetScreen extends StatelessWidget {
   const AllSetScreen({super.key});
@@ -8,60 +9,141 @@ class AllSetScreen extends StatelessWidget {
   Future<void> _finish(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboarding_complete', true);
-
-    if (context.mounted) {
-      Navigator.of(
-        context,
-      ).pushReplacement(MaterialPageRoute(builder: (_) => const PlayerShell()));
-    }
+    if (!context.mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PlayerShell()),
+      (_) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colors = NatsuyumeTheme.of(context).colors;
+
     return Scaffold(
+      backgroundColor: colors.background,
       body: SafeArea(
-        child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const Spacer(),
-              const Text(
-                'All set!',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w400,
-                  color: Color(0xFFD0C4E8),
+              // Icon
+              Container(
+                width: 88,
+                height: 88,
+                decoration: BoxDecoration(
+                  color: colors.accent.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.check_rounded,
+                  size: 44,
+                  color: colors.accent,
                 ),
               ),
-              const SizedBox(height: 48),
-              Image.asset(
-                'assets/images/welcome_logo.png',
-                width: 220,
-                height: 220,
+              const SizedBox(height: 28),
+              Text(
+                "You're all set.",
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w700,
+                  color: colors.onBackground,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Natsuyume is ready. Your library will finish\n'
+                'scanning in the background.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: colors.onSurfaceVariant,
+                  height: 1.6,
+                ),
               ),
               const Spacer(),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 40, right: 24),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton(
-                    onPressed: () => _finish(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF3A3850),
-                      foregroundColor: const Color(0xFFB0A4C8),
-                      minimumSize: const Size(56, 56),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
+              // Tips
+              _TipRow(
+                icon: Icons.queue_music,
+                text: 'Long press an album to add it to a queue',
+                colors: colors,
+              ),
+              const SizedBox(height: 12),
+              _TipRow(
+                icon: Icons.text_fields,
+                text: 'Tap the lyrics icon in Now Playing for synced lyrics',
+                colors: colors,
+              ),
+              const SizedBox(height: 12),
+              _TipRow(
+                icon: Icons.lock_outline,
+                text: 'There are secret themes hidden in the app',
+                colors: colors,
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => _finish(context),
+                child: Container(
+                  width: double.infinity,
+                  height: 54,
+                  decoration: BoxDecoration(
+                    color: colors.accent,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Center(
+                    child: Text(
+                      'Start listening',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: colors.background,
                       ),
                     ),
-                    child: const Icon(Icons.arrow_forward),
                   ),
                 ),
               ),
+              const SizedBox(height: 32),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+class _TipRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final NatsuyumeColorScheme colors;
+
+  const _TipRow({required this.icon, required this.text, required this.colors});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: colors.accent.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: colors.accent),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              color: colors.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

@@ -9,6 +9,7 @@ import 'context_menus/queue_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
 import 'dart:typed_data';
 import '../../core/cover_service.dart';
+import '../../widgets/floating_mini_player.dart';
 
 class QueueTrack {
   final String path;
@@ -244,75 +245,87 @@ class _QueueScreenState extends State<QueueScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            _buildTopBar(colors),
-            const SizedBox(height: 8),
-            Expanded(
-              child: _tracks.isEmpty
-                  ? _buildEmptyState(colors)
-                  : Stack(
-                      children: [
-                        _buildTrackList(colors),
-                        if (!_isSelecting)
-                          Positioned(
-                            right: 16,
-                            bottom: 16,
-                            child: QueueFab(
-                              actions: [
-                                QueueFabAction(
-                                  icon: Icons.checklist,
-                                  label: 'Select multiple',
-                                  onTap: () =>
-                                      setState(() => _isSelecting = true),
-                                ),
-                                QueueFabAction(
-                                  icon: Icons.file_upload_outlined,
-                                  label: 'Export as .M3U',
-                                  onTap: () {},
-                                ),
-                                QueueFabAction(
-                                  icon: Icons.share_outlined,
-                                  label: 'Share songs',
-                                  onTap: () {},
-                                ),
-                                QueueFabAction(
-                                  icon: Icons.save_outlined,
-                                  label: 'Save as playlist',
-                                  onTap: () {},
-                                ),
-                                QueueFabAction(
-                                  icon: Icons.sort,
-                                  label: 'Sort',
-                                  onTap: () => showDialog(
-                                    context: context,
-                                    builder: (_) => TrackSortDialog(
-                                      selectedField: TrackSortField.title,
-                                      direction: SortDirection.ascending,
-                                      specialOptions: [
-                                        SpecialTrackSort.randomize,
-                                        SpecialTrackSort.reverse,
-                                        SpecialTrackSort.mostPlayedFirst,
-                                        SpecialTrackSort.leastPlayedFirst,
-                                      ],
-                                      onNormalChanged: (field, direction) {},
-                                      onSpecialChanged: (special) {},
-                                    ),
-                                  ),
-                                ),
-                                QueueFabAction(
-                                  icon: Icons.add,
-                                  label: 'Add song',
-                                  onTap: () {},
-                                ),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
+            Column(
+              children: [
+                _buildTopBar(colors),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _tracks.isEmpty
+                      ? _buildEmptyState(colors)
+                      : _buildTrackList(colors),
+                ),
+                if (_isSelecting) _buildMultiSelectBar(colors),
+              ],
             ),
-            if (_isSelecting) _buildMultiSelectBar(colors),
-            _buildQueueInfoBar(colors),
+
+            // Queue info bar — floats above mini player
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: FloatingMiniPlayer.height + FloatingMiniPlayer.gap * 2,
+              child: _buildQueueInfoBar(colors),
+            ),
+
+            // FAB
+            if (!_isSelecting)
+              Positioned(
+                right: 16,
+                bottom:
+                    FloatingMiniPlayer.height +
+                    FloatingMiniPlayer.gap * 2 +
+                    48 +
+                    12,
+                child: QueueFab(
+                  actions: [
+                    QueueFabAction(
+                      icon: Icons.checklist,
+                      label: 'Select multiple',
+                      onTap: () => setState(() => _isSelecting = true),
+                    ),
+                    QueueFabAction(
+                      icon: Icons.file_upload_outlined,
+                      label: 'Export as .M3U',
+                      onTap: () {},
+                    ),
+                    QueueFabAction(
+                      icon: Icons.share_outlined,
+                      label: 'Share songs',
+                      onTap: () {},
+                    ),
+                    QueueFabAction(
+                      icon: Icons.save_outlined,
+                      label: 'Save as playlist',
+                      onTap: () {},
+                    ),
+                    QueueFabAction(
+                      icon: Icons.sort,
+                      label: 'Sort',
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (_) => TrackSortDialog(
+                          selectedField: TrackSortField.title,
+                          direction: SortDirection.ascending,
+                          specialOptions: [
+                            SpecialTrackSort.randomize,
+                            SpecialTrackSort.reverse,
+                            SpecialTrackSort.mostPlayedFirst,
+                            SpecialTrackSort.leastPlayedFirst,
+                          ],
+                          onNormalChanged: (field, direction) {},
+                          onSpecialChanged: (special) {},
+                        ),
+                      ),
+                    ),
+                    QueueFabAction(
+                      icon: Icons.add,
+                      label: 'Add song',
+                      onTap: () {},
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
@@ -407,7 +420,12 @@ class _QueueScreenState extends State<QueueScreen> {
 
   Widget _buildTrackList(NatsuyumeColorScheme colors) {
     return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        8,
+        16,
+        80 + FloatingMiniPlayer.height + FloatingMiniPlayer.gap,
+      ),
       itemCount: _tracks.length,
       onReorderItem: (oldIndex, newIndex) {
         NatsuyumeCore.instance.moveTrackInQueue(oldIndex, newIndex);
@@ -623,7 +641,7 @@ class _QueueScreenState extends State<QueueScreen> {
         : '${(_currentTrackIndex + 1).clamp(1, _tracks.length)} / ${_tracks.length}';
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      margin: const EdgeInsets.fromLTRB(130, 0, 130, 12),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
       decoration: BoxDecoration(
         color: colors.surface,
@@ -632,6 +650,8 @@ class _QueueScreenState extends State<QueueScreen> {
       child: Text(
         '$trackDisplay    $_totalDuration',
         textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
       ),
     );

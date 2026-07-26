@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'onboarding/onboarding_flow.dart';
 import 'player/player_shell.dart';
 import 'theme/natsuyume_theme.dart';
+import 'theme/theme_registry.dart';
 import 'core/natsuyume_core.dart';
 
 void main() async {
@@ -10,11 +11,11 @@ void main() async {
   final prefs = await SharedPreferences.getInstance();
   final onboardingComplete = prefs.getBool('onboarding_complete') ?? false;
 
+  await ThemeRegistry.instance.loadFromPrefs(prefs);
+
   try {
     NatsuyumeCore.instance.init();
-    print('NatsuyumeCore init OK');
     await NatsuyumeCore.instance.initCore();
-    print('NatsuyumeCore initCore OK');
   } catch (e) {
     print('NatsuyumeCore init FAILED: $e');
   }
@@ -22,21 +23,48 @@ void main() async {
   runApp(NatsuyumeApp(onboardingComplete: onboardingComplete));
 }
 
-class NatsuyumeApp extends StatelessWidget {
+class NatsuyumeApp extends StatefulWidget {
   final bool onboardingComplete;
 
   const NatsuyumeApp({super.key, required this.onboardingComplete});
 
   @override
+  State<NatsuyumeApp> createState() => _NatsuyumeAppState();
+}
+
+class _NatsuyumeAppState extends State<NatsuyumeApp> {
+  late NatsuyumeColorScheme _scheme;
+
+  @override
+  void initState() {
+    super.initState();
+    _scheme = ThemeRegistry.instance.currentScheme;
+    ThemeRegistry.instance.addListener(_onThemeChanged);
+  }
+
+  @override
+  void dispose() {
+    ThemeRegistry.instance.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    setState(() => _scheme = ThemeRegistry.instance.currentScheme);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return NatsuyumeThemeProvider(
+      initialScheme: _scheme,
       child: MaterialApp(
         title: 'Natsuyume',
         debugShowCheckedModeBanner: false,
         theme: ThemeData.dark().copyWith(
-          scaffoldBackgroundColor: const Color(0xFF1A1A2E),
+          scaffoldBackgroundColor: const Color(0xFF12131A),
         ),
-        home: onboardingComplete ? const PlayerShell() : const OnboardingFlow(),
+        home: widget.onboardingComplete
+            ? const PlayerShell()
+            : const OnboardingFlow(),
       ),
     );
   }

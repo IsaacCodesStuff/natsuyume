@@ -7,6 +7,9 @@ class NatsuyumeBottomNavBar extends StatelessWidget {
   final PlayerTab currentTab;
   final void Function(PlayerTab tab) onTabSelected;
 
+  // Add this constant so the shell knows exactly how tall this is
+  static const double height = 64.0;
+
   const NatsuyumeBottomNavBar({
     super.key,
     required this.currentTab,
@@ -20,12 +23,12 @@ class NatsuyumeBottomNavBar extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: colors.surface,
-        border: Border(top: BorderSide(color: colors.divider, width: 1)),
+        // Removed the BorderSide that was creating the "tiny block"
       ),
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: PlayerTab.values.map((tab) {

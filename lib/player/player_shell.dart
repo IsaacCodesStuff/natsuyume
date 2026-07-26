@@ -72,23 +72,7 @@ class _PlayerShellState extends State<PlayerShell> {
           // Main content + nav bar
           Column(
             children: [
-              Expanded(
-                child: ListenableBuilder(
-                  listenable: core.playerState,
-                  builder: (context, _) {
-                    final hasTrack = !core.playerState.currentTrack.isEmpty;
-                    return Padding(
-                      padding: EdgeInsets.only(
-                        bottom: hasTrack
-                            ? FloatingMiniPlayer.height +
-                                  FloatingMiniPlayer.gap * 2
-                            : 0,
-                      ),
-                      child: _buildCurrentScreen(),
-                    );
-                  },
-                ),
-              ),
+              Expanded(child: _buildCurrentScreen()),
               NatsuyumeBottomNavBar(
                 currentTab: _currentTab,
                 onTabSelected: (tab) => setState(() => _currentTab = tab),
@@ -96,11 +80,11 @@ class _PlayerShellState extends State<PlayerShell> {
             ],
           ),
 
-          // Floating mini player — above nav bar
           FloatingMiniPlayer(
             bottomOffset:
                 MediaQuery.of(context).padding.bottom +
-                kBottomNavigationBarHeight,
+                NatsuyumeBottomNavBar.height + // Use your custom height here
+                FloatingMiniPlayer.gap,
           ),
         ],
       ),

@@ -2,12 +2,10 @@ import 'package:flutter/material.dart';
 import '../theme/natsuyume_theme.dart';
 import '../core/natsuyume_core.dart';
 import '../core/cover_service.dart';
-import 'mini_player.dart';
 import '../player/screens/now_playing_screen.dart';
+import '../widgets/now_playing_bar.dart';
 
 class FloatingMiniPlayer extends StatelessWidget {
-  /// Extra bottom offset — pass the height of any bottom bar in the
-  /// parent screen (e.g. nav bar height) so the player floats above it.
   final double bottomOffset;
 
   const FloatingMiniPlayer({super.key, this.bottomOffset = 0});
@@ -58,57 +56,171 @@ class FloatingMiniPlayer extends StatelessWidget {
               duration: const Duration(milliseconds: 200),
               child: IgnorePointer(
                 ignoring: track.isEmpty,
-                child: Container(
-                  height: height,
-                  decoration: track.isEmpty
-                      ? null // no decoration when hidden — eliminates shadow
-                      : BoxDecoration(
-                          color: colors.surface,
-                          borderRadius: BorderRadius.circular(22),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.18),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.08),
-                              blurRadius: 4,
-                              offset: const Offset(0, 1),
-                            ),
-                          ],
-                        ),
-                  child: track.isEmpty
-                      ? null // no child when hidden
-                      : ClipRRect(
-                          borderRadius: BorderRadius.circular(22),
-                          child: MiniPlayer(
-                            data: MiniPlayerData(
-                              title: track.title,
-                              artist: track.artist,
-                              album: track.album,
-                              albumArt: albumArt,
-                              isPlaying: isPlaying,
-                              isFavorite: track.isFavorite,
-                            ),
-                            onTap: () => _openNowPlaying(context),
-                            onPlayPause: () {
-                              if (isPlaying) {
-                                core.pause();
-                              } else {
-                                core.play();
-                              }
-                            },
-                            onPrevious: core.previous,
-                            onNext: core.next,
-                            onFavorite: () {},
-                          ),
-                        ),
-                ),
+                child: track.isEmpty
+                    ? const SizedBox(height: height)
+                    : _buildContent(
+                        context,
+                        colors,
+                        core,
+                        track,
+                        isPlaying,
+                        albumArt,
+                      ),
               ),
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildContent(
+    BuildContext context,
+    NatsuyumeColorScheme colors,
+    NatsuyumeCore core,
+    CoreTrack track,
+    bool isPlaying,
+    ImageProvider? albumArt,
+  ) {
+    return GestureDetector(
+      onTap: () => _openNowPlaying(context),
+      child: Container(
+        height: height,
+        decoration: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.18),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 4,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Material(
+            type: MaterialType.transparency,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  // Album art
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: albumArt != null
+                        ? Image(
+                            image: albumArt,
+                            width: 46,
+                            height: 46,
+                            fit: BoxFit.cover,
+                          )
+                        : Container(
+                            width: 46,
+                            height: 46,
+                            color: colors.surfaceVariant,
+                            child: Icon(
+                              Icons.music_note,
+                              size: 22,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Track info
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          track.title.isEmpty ? 'Unknown Title' : track.title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: colors.onSurface,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          track.artist.isEmpty
+                              ? 'Unknown Artist'
+                              : track.artist,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: colors.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Now playing indicator
+                  if (isPlaying)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: NowPlayingBars(
+                        color: colors.accent,
+                        isPlaying: isPlaying,
+                        barWidth: 3,
+                        maxHeight: 16,
+                      ),
+                    ),
+                  // Previous
+                  IconButton(
+                    onPressed: core.previous,
+                    icon: Icon(
+                      Icons.skip_previous,
+                      color: colors.onSurface,
+                      size: 22,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                  ),
+                  // Play/pause
+                  IconButton(
+                    onPressed: () => isPlaying ? core.pause() : core.play(),
+                    icon: Icon(
+                      isPlaying ? Icons.pause : Icons.play_arrow,
+                      color: colors.onSurface,
+                      size: 26,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                  ),
+                  // Next
+                  IconButton(
+                    onPressed: core.next,
+                    icon: Icon(
+                      Icons.skip_next,
+                      color: colors.onSurface,
+                      size: 22,
+                    ),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

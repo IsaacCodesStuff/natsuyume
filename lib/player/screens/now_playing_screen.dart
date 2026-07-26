@@ -20,7 +20,6 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
   bool _showLyrics = false;
   bool _isSeeking = false;
   double _seekValue = 0.0;
-  String _lastKnownPath = '';
   Timer? _seekingTimeout; // ← class field, not inside any method
 
   @override

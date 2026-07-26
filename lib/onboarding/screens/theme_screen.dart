@@ -1,96 +1,117 @@
 import 'package:flutter/material.dart';
-
-enum AppTheme { light, dark, dynamic, locked }
+import '../../theme/natsuyume_theme.dart';
+import '../../theme/theme_registry.dart';
 
 class ThemeScreen extends StatefulWidget {
   final VoidCallback onNext;
-  final VoidCallback onBack;
-
-  const ThemeScreen({super.key, required this.onNext, required this.onBack});
+  const ThemeScreen({super.key, required this.onNext});
 
   @override
   State<ThemeScreen> createState() => _ThemeScreenState();
 }
 
 class _ThemeScreenState extends State<ThemeScreen> {
-  AppTheme _selected = AppTheme.dark;
+  NatsuyumeMode _selected = NatsuyumeMode.light;
+
+  void _selectMode(NatsuyumeMode mode) {
+    setState(() => _selected = mode);
+    ThemeRegistry.instance.selectMode(mode);
+    NatsuyumeTheme.of(
+      context,
+    ).onThemeChange(ThemeRegistry.instance.currentScheme);
+  }
 
   @override
   Widget build(BuildContext context) {
+    final colors = NatsuyumeTheme.of(context).colors;
+
     return Scaffold(
+      backgroundColor: colors.background,
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 24),
-              const Text(
-                'Select a theme',
+              const SizedBox(height: 48),
+              Text(
+                'Choose your theme',
                 style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w400,
-                  color: Color(0xFFD0C4E8),
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
+                  color: colors.onBackground,
                 ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'You can always change this later in settings.',
+                style: TextStyle(fontSize: 14, color: colors.onSurfaceVariant),
               ),
               const SizedBox(height: 32),
               Expanded(
-                child: GridView.count(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
+                child: ListView(
                   children: [
-                    _ThemeCard(
-                      label: 'Light',
-                      icon: Icons.wb_sunny_outlined,
-                      theme: AppTheme.light,
-                      selected: _selected == AppTheme.light,
-                      locked: false,
-                      onTap: () => setState(() => _selected = AppTheme.light),
+                    _ThemeOption(
+                      mode: NatsuyumeMode.light,
+                      selected: _selected == NatsuyumeMode.light,
+                      colors: colors,
+                      onTap: () => _selectMode(NatsuyumeMode.light),
+                      description:
+                          'Soft and paper-like. Easy on the eyes indoors.',
+                      previewBg: const Color(0xFFF2F6FE),
+                      previewAccent: const Color(0xFF3A7FD4),
                     ),
-                    _ThemeCard(
-                      label: 'Dark',
-                      icon: Icons.nightlight_outlined,
-                      theme: AppTheme.dark,
-                      selected: _selected == AppTheme.dark,
-                      locked: false,
-                      onTap: () => setState(() => _selected = AppTheme.dark),
+                    const SizedBox(height: 12),
+                    _ThemeOption(
+                      mode: NatsuyumeMode.dark,
+                      selected: _selected == NatsuyumeMode.dark,
+                      colors: colors,
+                      onTap: () => _selectMode(NatsuyumeMode.dark),
+                      description:
+                          'Deep dark theme. Great for low-light listening.',
+                      previewBg: const Color(0xFF12131A),
+                      previewAccent: const Color(0xFF90BFF9),
                     ),
-                    _ThemeCard(
-                      label: 'Dynamic',
-                      icon: Icons.language_outlined,
-                      theme: AppTheme.dynamic,
-                      selected: _selected == AppTheme.dynamic,
-                      locked: false,
-                      onTap: () => setState(() => _selected = AppTheme.dynamic),
+                    const SizedBox(height: 12),
+                    _ThemeOption(
+                      mode: NatsuyumeMode.amoled,
+                      selected: _selected == NatsuyumeMode.amoled,
+                      colors: colors,
+                      onTap: () => _selectMode(NatsuyumeMode.amoled),
+                      description: 'Pure black. Saves battery on OLED screens.',
+                      previewBg: const Color(0xFF000000),
+                      previewAccent: const Color(0xFF90BFF9),
                     ),
-                    _ThemeCard(
-                      label: '???',
-                      icon: Icons.lock_outlined,
-                      theme: AppTheme.locked,
-                      selected: false,
-                      locked: true,
-                      onTap: null,
+                    const SizedBox(height: 12),
+                    _ThemeOption(
+                      mode: NatsuyumeMode.dynamic,
+                      selected: _selected == NatsuyumeMode.dynamic,
+                      colors: colors,
+                      onTap: () => _selectMode(NatsuyumeMode.dynamic),
+                      description: 'Colors shift to match your album art.',
+                      previewBg: const Color(0xFF0E1420),
+                      previewAccent: const Color(0xFF7EC8E3),
+                    ),
+                    const SizedBox(height: 12),
+                    _ThemeOption(
+                      mode: NatsuyumeMode.manual,
+                      selected: _selected == NatsuyumeMode.manual,
+                      colors: colors,
+                      onTap: () => _selectMode(NatsuyumeMode.manual),
+                      description: 'Define every color yourself.',
+                      previewBg: const Color(0xFF1A1A2E),
+                      previewAccent: const Color(0xFFE94560),
                     ),
                   ],
                 ),
               ),
-              const Text(
-                'Note: You can change this later in Settings.',
-                style: TextStyle(fontSize: 13, color: Color(0xFF9A8FB0)),
+              const SizedBox(height: 16),
+              _PrimaryButton(
+                label: 'Continue',
+                onTap: widget.onNext,
+                colors: colors,
               ),
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _NavButton(icon: Icons.arrow_back, onPressed: widget.onBack),
-                  _NavButton(
-                    icon: Icons.arrow_forward,
-                    onPressed: widget.onNext,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -99,54 +120,90 @@ class _ThemeScreenState extends State<ThemeScreen> {
   }
 }
 
-class _ThemeCard extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final AppTheme theme;
+class _ThemeOption extends StatelessWidget {
+  final NatsuyumeMode mode;
   final bool selected;
-  final bool locked;
-  final VoidCallback? onTap;
+  final NatsuyumeColorScheme colors;
+  final VoidCallback onTap;
+  final String description;
+  final Color previewBg;
+  final Color previewAccent;
 
-  const _ThemeCard({
-    required this.label,
-    required this.icon,
-    required this.theme,
+  const _ThemeOption({
+    required this.mode,
     required this.selected,
-    required this.locked,
+    required this.colors,
     required this.onTap,
+    required this.description,
+    required this.previewBg,
+    required this.previewAccent,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: locked ? null : onTap,
+      onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFF3A3850),
+          color: selected
+              ? colors.accent.withValues(alpha: 0.12)
+              : colors.surface,
           borderRadius: BorderRadius.circular(16),
-          border: selected
-              ? Border.all(color: const Color(0xFFB08ED0), width: 2)
-              : Border.all(color: Colors.transparent, width: 2),
+          border: Border.all(
+            color: selected ? colors.accent : colors.divider,
+            width: selected ? 2 : 1,
+          ),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: Row(
           children: [
-            Icon(
-              icon,
-              size: 40,
-              color: locked ? const Color(0xFF5A5470) : const Color(0xFFB0A4C8),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 15,
-                color: locked
-                    ? const Color(0xFF5A5470)
-                    : const Color(0xFFD0C4E8),
+            // Mini theme preview
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: previewBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: colors.divider, width: 1),
+              ),
+              child: Center(
+                child: Container(
+                  width: 24,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: previewAccent,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ),
               ),
             ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    mode.label,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: selected ? colors.accent : colors.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    description,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (selected)
+              Icon(Icons.check_circle, color: colors.accent, size: 22),
           ],
         ),
       ),
@@ -154,23 +211,39 @@ class _ThemeCard extends StatelessWidget {
   }
 }
 
-class _NavButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onPressed;
+class _PrimaryButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  final NatsuyumeColorScheme colors;
 
-  const _NavButton({required this.icon, required this.onPressed});
+  const _PrimaryButton({
+    required this.label,
+    required this.onTap,
+    required this.colors,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF3A3850),
-        foregroundColor: const Color(0xFFB0A4C8),
-        minimumSize: const Size(56, 56),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        height: 54,
+        decoration: BoxDecoration(
+          color: colors.accent,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: colors.background,
+            ),
+          ),
+        ),
       ),
-      child: Icon(icon),
     );
   }
 }

@@ -634,16 +634,28 @@ class NatsuyumeTheme extends InheritedWidget {
 
 class NatsuyumeThemeProvider extends StatefulWidget {
   final Widget child;
-  const NatsuyumeThemeProvider({super.key, required this.child});
+  final NatsuyumeColorScheme? initialScheme;
+
+  const NatsuyumeThemeProvider({
+    super.key,
+    required this.child,
+    this.initialScheme,
+  });
 
   @override
   State<NatsuyumeThemeProvider> createState() => _NatsuyumeThemeProviderState();
 }
 
 class _NatsuyumeThemeProviderState extends State<NatsuyumeThemeProvider> {
-  NatsuyumeColorScheme _colors = NatsuyumeColorScheme.resolve(
-    mode: NatsuyumeMode.dark,
-  );
+  late NatsuyumeColorScheme _colors;
+
+  @override
+  void initState() {
+    super.initState();
+    _colors =
+        widget.initialScheme ??
+        NatsuyumeColorScheme.resolve(mode: NatsuyumeMode.dark);
+  }
 
   void _updateTheme(NatsuyumeColorScheme newColors) {
     setState(() => _colors = newColors);
@@ -656,6 +668,14 @@ class _NatsuyumeThemeProviderState extends State<NatsuyumeThemeProvider> {
       onThemeChange: _updateTheme,
       child: widget.child,
     );
+  }
+
+  @override
+  void didUpdateWidget(NatsuyumeThemeProvider oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialScheme != widget.initialScheme) {
+      setState(() => _colors = widget.initialScheme ?? _colors);
+    }
   }
 }
 
