@@ -16,6 +16,10 @@ void main() async {
   try {
     NatsuyumeCore.instance.init();
     await NatsuyumeCore.instance.initCore();
+    // Restore last session after core is ready
+    // Small delay to let mpv fully initialize
+    await Future.delayed(const Duration(milliseconds: 800));
+    NatsuyumeCore.instance.restoreLastSession();
   } catch (e) {
     print('NatsuyumeCore init FAILED: $e');
   }

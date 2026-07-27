@@ -48,6 +48,14 @@ class NatsuyumeCore {
     _bindings.ncoreShutdown(_core);
   }
 
+  void saveSettings() {
+    _bindings.ncoreSaveSettings(_core);
+  }
+
+  void restoreLastSession() {
+    _bindings.ncoreRestoreLastSession(_core);
+  }
+
   String get version {
     final ptr = _bindings.ncoreGetVersion();
     final str = ptr.toDartString();
@@ -143,37 +151,46 @@ class NatsuyumeCore {
   }
 
   void startPolling() {
-    _pollTimer?.cancel();
+    int _saveCounter = 0;
     _pollTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
-      _bindings.ncoreDrainLibraryCallbacks(_core);
+      _pollTimer?.cancel();
+      _pollTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+        _bindings.ncoreDrainLibraryCallbacks(_core);
 
-      final isPlaying = _bindings.ncoreIsPlaying(_core) == 1;
-      final posMs = _bindings.ncoreGetPosition(_core);
-      final durMs = _bindings.ncoreGetDuration(_core);
-      final track = currentTrack;
-      final trackChanged =
-          track.path.isNotEmpty && track.path != _lastTrackPath;
+        final isPlaying = _bindings.ncoreIsPlaying(_core) == 1;
+        final posMs = _bindings.ncoreGetPosition(_core);
+        final durMs = _bindings.ncoreGetDuration(_core);
+        final track = currentTrack;
+        final trackChanged =
+            track.path.isNotEmpty && track.path != _lastTrackPath;
 
-      // Temporary debug
-      if (trackChanged || durMs == 0) {
-        debugPrint(
-          'POLL: path=${track.path.split('/').last} '
-          'pos=$posMs dur=$durMs changed=$trackChanged last=$_lastTrackPath',
+        // Temporary debug
+        if (trackChanged || durMs == 0) {
+          debugPrint(
+            'POLL: path=${track.path.split('/').last} '
+            'pos=$posMs dur=$durMs changed=$trackChanged last=$_lastTrackPath',
+          );
+        }
+
+        if (trackChanged) _lastTrackPath = track.path;
+        playerState.updateAll(
+          isPlaying: isPlaying,
+          positionMs: posMs,
+          durationMs: durMs,
+          track: trackChanged ? track : null,
         );
-      }
 
-      if (trackChanged) _lastTrackPath = track.path;
-      playerState.updateAll(
-        isPlaying: isPlaying,
-        positionMs: posMs,
-        durationMs: durMs,
-        track: trackChanged ? track : null,
-      );
-
-      final scanning = _bindings.ncoreIsScanning(_core) == 1;
-      final progress = _bindings.ncoreScanProgress(_core);
-      final total = _bindings.ncoreScanTotal(_core);
-      scanState.update(scanning, progress, total);
+        final scanning = _bindings.ncoreIsScanning(_core) == 1;
+        final progress = _bindings.ncoreScanProgress(_core);
+        final total = _bindings.ncoreScanTotal(_core);
+        scanState.update(scanning, progress, total);
+        _saveCounter++;
+        if (_saveCounter >= 20) {
+          _saveCounter = 0;
+          _bindings.ncoreSaveSettings(_core);
+          saveSettings();
+        }
+      });
     });
   }
 

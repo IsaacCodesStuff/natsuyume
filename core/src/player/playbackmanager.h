@@ -93,6 +93,8 @@ public:
     int64_t pointA()         const;
     int64_t pointB()         const;
 
+    void restoreLastSession();
+
 private:
     QueueSession    *m_session;
     Library         *m_library         = nullptr;
@@ -117,6 +119,16 @@ private:
     void connectPlaybackCallbacks(Queue *queue);
     void connectCurrentPlaybackCallbacks(Queue *queue);
     void rebuildLyricLines();
+
+    // Saved playback state for restore on next launch
+    int         m_savedActiveQueueIndex = -1;
+    int         m_savedTrackIndex       = -1;
+    int64_t     m_savedPositionMs       = 0;
+    std::string m_savedTrackPath;
+    bool        m_pendingRestore        = false;
+    std::string m_savedQueuePaths;
+    std::string m_savedQueueName;
+    int64_t     m_pendingSeekMs         = 0;
 };
 
 #endif // PLAYBACKMANAGER_H

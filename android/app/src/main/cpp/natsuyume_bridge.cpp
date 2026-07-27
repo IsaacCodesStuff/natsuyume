@@ -619,4 +619,12 @@ void ncore_move_track(NatsuyumeCore* core, int from, int to) {
     if (core) core->moveTrack(from, to);
 }
 
+void ncore_save_settings(NatsuyumeCore* core) {
+    if (core) core->saveSettings();
+}
+
+void ncore_restore_last_session(NatsuyumeCore* core) {
+    if (core) core->restoreLastSession();
+}
+
 } // extern "C"

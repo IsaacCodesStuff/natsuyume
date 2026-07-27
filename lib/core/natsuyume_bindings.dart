@@ -260,6 +260,12 @@ typedef NcoreOpenPathsInNewQueueNamed =
 typedef _NcoreMoveTrackNative = Void Function(Pointer<Void>, Int32, Int32);
 typedef NcoreMoveTrack = void Function(Pointer<Void>, int, int);
 
+typedef _NcoreSaveSettingsNative = Void Function(Pointer<Void>);
+typedef NcoreSaveSettings = void Function(Pointer<Void>);
+
+typedef _NcoreRestoreLastSessionNative = Void Function(Pointer<Void>);
+typedef NcoreRestoreLastSession = void Function(Pointer<Void>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -323,6 +329,9 @@ class NatsuyumeBindings {
   late final NcoreRenameQueue ncoreRenameQueue;
   late final NcoreOpenPathsInNewQueueNamed ncoreOpenPathsInNewQueueNamed;
   late final NcoreMoveTrack ncoreMoveTrack;
+
+  late final NcoreSaveSettings ncoreSaveSettings;
+  late final NcoreRestoreLastSession ncoreRestoreLastSession;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -555,6 +564,16 @@ class NatsuyumeBindings {
 
     ncoreMoveTrack = _lib
         .lookup<NativeFunction<_NcoreMoveTrackNative>>('ncore_move_track')
+        .asFunction();
+
+    ncoreSaveSettings = _lib
+        .lookup<NativeFunction<_NcoreSaveSettingsNative>>('ncore_save_settings')
+        .asFunction();
+
+    ncoreRestoreLastSession = _lib
+        .lookup<NativeFunction<_NcoreRestoreLastSessionNative>>(
+          'ncore_restore_last_session',
+        )
         .asFunction();
   }
 }

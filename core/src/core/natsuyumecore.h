@@ -206,6 +206,7 @@ public:
     int                      playCountThreshold() const;
     void                     setPlayCountThreshold(int percent);
     void                     saveSettings();
+    void                     restoreLastSession();
 
     // --- Drain ---
     void drainLibraryCallbacks();

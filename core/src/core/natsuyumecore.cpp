@@ -582,6 +582,11 @@ void NatsuyumeCore::saveSettings()
     m_impl->userDataManager->saveSettings(m_impl->dataDir);
 }
 
+void NatsuyumeCore::restoreLastSession()
+{
+    m_impl->playbackManager->restoreLastSession();
+}
+
 // --- Artist / playlist images ---
 
 void NatsuyumeCore::setArtistImage(const std::string &artist,

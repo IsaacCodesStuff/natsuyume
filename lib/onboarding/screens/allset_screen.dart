@@ -66,19 +66,19 @@ class AllSetScreen extends StatelessWidget {
               // Tips
               _TipRow(
                 icon: Icons.queue_music,
-                text: 'Long press an album to add it to a queue',
+                text: 'Tap on any song in an album to play a queue',
                 colors: colors,
               ),
               const SizedBox(height: 12),
               _TipRow(
                 icon: Icons.text_fields,
-                text: 'Tap the lyrics icon in Now Playing for synced lyrics',
+                text: 'Tap the lyrics icon in Now Playing for lyrics',
                 colors: colors,
               ),
               const SizedBox(height: 12),
               _TipRow(
-                icon: Icons.lock_outline,
-                text: 'There are secret themes hidden in the app',
+                icon: Icons.question_mark,
+                text: 'Some things are meant to be forgotten',
                 colors: colors,
               ),
               const Spacer(),
