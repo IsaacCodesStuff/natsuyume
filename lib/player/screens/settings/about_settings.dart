@@ -124,7 +124,7 @@ class _AboutSettingsScreenState extends State<AboutSettingsScreen> {
                 SettingsTile(
                   title: 'Version',
                   subtitle:
-                      'Natsuyume internal beta build ${NatsuyumeCore.instance.version}',
+                      'Natsuyume beta build ${NatsuyumeCore.instance.version}',
                   onTap: null,
                 ),
                 SettingsTile(
