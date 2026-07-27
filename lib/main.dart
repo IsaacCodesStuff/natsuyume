@@ -21,7 +21,7 @@ void main() async {
     await Future.delayed(const Duration(milliseconds: 800));
     NatsuyumeCore.instance.restoreLastSession();
   } catch (e) {
-    print('NatsuyumeCore init FAILED: $e');
+    debugPrint('NatsuyumeCore init FAILED: $e');
   }
 
   runApp(NatsuyumeApp(onboardingComplete: onboardingComplete));

@@ -7,7 +7,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'library_types.dart';
-import 'dart:typed_data';
 
 class NatsuyumeCore {
   NatsuyumeCore._();
@@ -151,7 +150,7 @@ class NatsuyumeCore {
   }
 
   void startPolling() {
-    int _saveCounter = 0;
+    int saveCounter = 0;
     _pollTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       _pollTimer?.cancel();
       _pollTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -184,9 +183,9 @@ class NatsuyumeCore {
         final progress = _bindings.ncoreScanProgress(_core);
         final total = _bindings.ncoreScanTotal(_core);
         scanState.update(scanning, progress, total);
-        _saveCounter++;
-        if (_saveCounter >= 20) {
-          _saveCounter = 0;
+        saveCounter++;
+        if (saveCounter >= 20) {
+          saveCounter = 0;
           _bindings.ncoreSaveSettings(_core);
           saveSettings();
         }

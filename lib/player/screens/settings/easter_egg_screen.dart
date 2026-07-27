@@ -41,7 +41,6 @@ class _EasterEggScreenState extends State<EasterEggScreen> {
               TextField(
                 controller: controller,
                 autofocus: true,
-                textCapitalization: TextCapitalization.characters,
                 style: TextStyle(
                   color: colors.onSurface,
                   fontSize: 16,

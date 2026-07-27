@@ -112,8 +112,9 @@ class LibrarySettingsScreen extends StatelessWidget {
               listenable: core.scanState,
               builder: (context, _) {
                 final s = core.scanState;
-                if (!s.isScanning && s.total == 0)
+                if (!s.isScanning && s.total == 0) {
                   return const SizedBox.shrink();
+                }
 
                 return Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),

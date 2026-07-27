@@ -53,8 +53,9 @@ class ThemeRegistry extends ChangeNotifier {
   // -------------------------------------------------------------------------
   void selectPalette(NatsuyumePalette palette) {
     if (palette != NatsuyumePalette.default_ &&
-        !_unlockedPalettes.contains(palette))
+        !_unlockedPalettes.contains(palette)) {
       return;
+    }
     _palette = palette;
     _save();
     notifyListeners();
@@ -132,25 +133,33 @@ class ThemeRegistry extends ChangeNotifier {
   // -------------------------------------------------------------------------
   String? unlockByCode(String code) {
     const codeMap = {
-      'NATSUYUME': NatsuyumePalette.natsuyume,
-      'REMREM': NatsuyumePalette.rem,
-      'MISAKI': NatsuyumePalette.misaki,
-      'HESTIA': NatsuyumePalette.hestia,
-      'AKANE': NatsuyumePalette.akane,
-      'SYALIS': NatsuyumePalette.syalis,
-      'LISCIA': NatsuyumePalette.liscia,
-      'ITSUKI': NatsuyumePalette.itsuki,
-      'MISUMI': NatsuyumePalette.misumi,
-      'BERRYBLOSSOM': NatsuyumePalette.berryblossom,
-      'JEANNE': NatsuyumePalette.jeanne,
-      'YOSHINO': NatsuyumePalette.yoshino,
-      'ERNA': NatsuyumePalette.erna,
-      'BETA': NatsuyumePalette.beta,
+      'Fuck you Alphanox no dreamy theme for you': NatsuyumePalette.natsuyume,
+      'Rem': NatsuyumePalette.rem,
+      'Misaki': NatsuyumePalette.misaki,
+      'Hestia': NatsuyumePalette.hestia,
+      'Akane': NatsuyumePalette.akane,
+      'Syalis': NatsuyumePalette.syalis,
+      'Liscia': NatsuyumePalette.liscia,
+      'Itsuki': NatsuyumePalette.itsuki,
+      'Misumi': NatsuyumePalette.misumi,
+      'Berry Blossom': NatsuyumePalette.berryblossom,
+      'Jeanne': NatsuyumePalette.jeanne,
+      'Yoshino': NatsuyumePalette.yoshino,
+      'Erna': NatsuyumePalette.erna,
+      'Beta': NatsuyumePalette.beta,
     };
-    final palette = codeMap[code.toUpperCase()];
-    if (palette == null) return null;
-    unlock(palette);
-    return palette.label;
+
+    NatsuyumePalette? found;
+    final lowerCode = code.toLowerCase();
+    for (final entry in codeMap.entries) {
+      if (entry.key.toLowerCase() == lowerCode) {
+        found = entry.value;
+        break;
+      }
+    }
+    if (found == null) return null;
+    unlock(found);
+    return found.label;
   }
 
   void reset() {
@@ -279,19 +288,25 @@ class ThemeRegistry extends ChangeNotifier {
         _enabledPalettes.map((p) => p.name).toList(),
       );
       if (_manualScheme != null) {
-        prefs.setInt(_keyManualBg, _manualScheme!.background.value);
-        prefs.setInt(_keyManualSurface, _manualScheme!.surface.value);
-        prefs.setInt(_keyManualSurfaceVar, _manualScheme!.surfaceVariant.value);
-        prefs.setInt(_keyManualPrimary, _manualScheme!.primary.value);
-        prefs.setInt(_keyManualPrimaryVar, _manualScheme!.primaryVariant.value);
-        prefs.setInt(_keyManualOnBg, _manualScheme!.onBackground.value);
-        prefs.setInt(_keyManualOnSurface, _manualScheme!.onSurface.value);
+        prefs.setInt(_keyManualBg, _manualScheme!.background.toARGB32());
+        prefs.setInt(_keyManualSurface, _manualScheme!.surface.toARGB32());
+        prefs.setInt(
+          _keyManualSurfaceVar,
+          _manualScheme!.surfaceVariant.toARGB32(),
+        );
+        prefs.setInt(_keyManualPrimary, _manualScheme!.primary.toARGB32());
+        prefs.setInt(
+          _keyManualPrimaryVar,
+          _manualScheme!.primaryVariant.toARGB32(),
+        );
+        prefs.setInt(_keyManualOnBg, _manualScheme!.onBackground.toARGB32());
+        prefs.setInt(_keyManualOnSurface, _manualScheme!.onSurface.toARGB32());
         prefs.setInt(
           _keyManualOnSurfaceVar,
-          _manualScheme!.onSurfaceVariant.value,
+          _manualScheme!.onSurfaceVariant.toARGB32(),
         );
-        prefs.setInt(_keyManualAccent, _manualScheme!.accent.value);
-        prefs.setInt(_keyManualDivider, _manualScheme!.divider.value);
+        prefs.setInt(_keyManualAccent, _manualScheme!.accent.toARGB32());
+        prefs.setInt(_keyManualDivider, _manualScheme!.divider.toARGB32());
       }
     });
   }
