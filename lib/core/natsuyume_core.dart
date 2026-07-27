@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'library_types.dart';
+import 'media_session_bridge.dart';
+import 'cover_service.dart';
 
 class NatsuyumeCore {
   NatsuyumeCore._();
@@ -40,6 +42,29 @@ class NatsuyumeCore {
     } finally {
       calloc.free(pathPtr);
     }
+
+    MediaSessionBridge.instance.init(
+      onCommand: (command) {
+        final core = NatsuyumeCore.instance;
+        switch (command) {
+          case 'play':
+            core.play();
+          case 'pause':
+            core.pause();
+          case 'next':
+            core.next();
+          case 'prev':
+            core.previous();
+          case 'stop':
+            core.pause();
+          default:
+            if (command.startsWith('seek:')) {
+              final ms = int.tryParse(command.substring(5));
+              if (ms != null) core.seekTo(ms);
+            }
+        }
+      },
+    );
   }
 
   void shutdown() {
@@ -177,6 +202,19 @@ class NatsuyumeCore {
           positionMs: posMs,
           durationMs: durMs,
           track: trackChanged ? track : null,
+        );
+
+        // ← add this
+        MediaSessionBridge.instance.updateState(
+          title: track.title.isEmpty ? 'Natsuyume' : track.title,
+          artist: track.artist,
+          album: track.album,
+          artBytes: track.path.isEmpty
+              ? null
+              : CoverService.instance.getCoverForTrack(track.path),
+          playing: isPlaying,
+          position: Duration(milliseconds: posMs),
+          duration: Duration(milliseconds: durMs),
         );
 
         final scanning = _bindings.ncoreIsScanning(_core) == 1;
