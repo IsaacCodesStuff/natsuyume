@@ -10,6 +10,7 @@ import 'metadata_editor_screen.dart';
 import 'dart:typed_data';
 import '../../core/cover_service.dart';
 import '../../widgets/floating_mini_player.dart';
+import '../../widgets/playlist_picker_sheet.dart';
 
 class QueueTrack {
   final String path;
@@ -180,7 +181,11 @@ class _QueueScreenState extends State<QueueScreen> {
       },
       onPlayAfterCurrent: () => _exitSelectMode(),
       onAddToQueue: () => _exitSelectMode(),
-      onAddToPlaylists: () => _exitSelectMode(),
+      onAddToPlaylists: () {
+        final paths = _selectedIndices.map((i) => _tracks[i].path).toList();
+        _exitSelectMode();
+        PlaylistPickerSheet.show(context, trackPaths: paths);
+      },
       onAddToFavorites: () => _exitSelectMode(),
       onRemoveFromFavorites: () => _exitSelectMode(),
     );
@@ -233,7 +238,8 @@ class _QueueScreenState extends State<QueueScreen> {
       },
       onPlayAfterCurrent: () {},
       onAddToQueue: () {},
-      onAddToPlaylists: () {},
+      onAddToPlaylists: () =>
+          PlaylistPickerSheet.show(context, trackPaths: [_tracks[index].path]),
       onStopAfterThis: () {},
     );
   }

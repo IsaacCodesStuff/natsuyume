@@ -12,6 +12,7 @@ import 'context_menus/artist_track_context_menu.dart';
 import 'context_menus/artist_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
 import '../../widgets/floating_mini_player.dart';
+import '../../widgets/playlist_picker_sheet.dart';
 
 class ArtistDetailScreen extends StatefulWidget {
   final ArtistData artist;
@@ -99,7 +100,19 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       onPlayAfterCurrent: () => _exitSelectMode(),
       onAddToCurrentQueue: () => _exitSelectMode(),
       onAddToQueue: () => _exitSelectMode(),
-      onAddToPlaylists: () => _exitSelectMode(),
+      onAddToPlaylists: () {
+        final paths = <String>[];
+        for (final i in _selectedIndices) {
+          final tracks = NatsuyumeCore.instance.getAlbumTracks(
+            _albums[i].title,
+          );
+          paths.addAll(tracks.map((t) => t.path));
+        }
+        _exitSelectMode();
+        if (paths.isNotEmpty) {
+          PlaylistPickerSheet.show(context, trackPaths: paths);
+        }
+      },
       onAddToFavorites: () => _exitSelectMode(),
       onRemoveFromFavorites: () => _exitSelectMode(),
       onClearPlaybackHistory: () => _exitSelectMode(),
@@ -381,7 +394,16 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       onPlayAfterCurrent: () {},
       onAddToCurrentQueue: () {},
       onAddToQueue: () {},
-      onAddToPlaylists: () {},
+      onAddToPlaylists: () {
+        final paths = <String>[];
+        for (final album in _albums) {
+          final tracks = NatsuyumeCore.instance.getAlbumTracks(album.title);
+          paths.addAll(tracks.map((t) => t.path));
+        }
+        if (paths.isNotEmpty) {
+          PlaylistPickerSheet.show(context, trackPaths: paths);
+        }
+      },
       onSelectMultiple: () => setState(() => _isSelecting = true),
     );
   }
@@ -401,7 +423,15 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
       onPlayAfterCurrent: () {},
       onAddToCurrentQueue: () {},
       onAddToQueue: () {},
-      onAddToPlaylists: () {},
+      onAddToPlaylists: () {
+        final tracks = NatsuyumeCore.instance.getAlbumTracks(
+          _albums[index].title,
+        );
+        final paths = tracks.map((t) => t.path).toList();
+        if (paths.isNotEmpty) {
+          PlaylistPickerSheet.show(context, trackPaths: paths);
+        }
+      },
     );
   }
 }

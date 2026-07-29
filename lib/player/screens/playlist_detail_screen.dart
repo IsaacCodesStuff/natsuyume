@@ -13,6 +13,7 @@ import 'context_menus/playlist_track_context_menu.dart';
 import 'context_menus/playlist_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
 import '../../widgets/floating_mini_player.dart';
+import '../../widgets/playlist_picker_sheet.dart';
 
 class PlaylistDetailScreen extends StatefulWidget {
   final PlaylistData playlist;
@@ -137,7 +138,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       onPlayAfterCurrent: () => _exitSelectMode(),
       onAddToCurrentQueue: () => _exitSelectMode(),
       onAddToQueue: () => _exitSelectMode(),
-      onAddToPlaylists: () => _exitSelectMode(),
+      onAddToPlaylists: () {
+        final paths = _selectedIndices.map((i) => _tracks[i].path).toList();
+        _exitSelectMode();
+        PlaylistPickerSheet.show(context, trackPaths: paths);
+      },
       onAddToFavorites: () => _exitSelectMode(),
       onRemoveFromFavorites: () => _exitSelectMode(),
       onClearPlaybackHistory: () => _exitSelectMode(),
@@ -584,7 +589,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       onPlayAfterCurrent: () {},
       onAddToCurrentQueue: () {},
       onAddToQueue: () {},
-      onAddToPlaylists: () {},
+      onAddToPlaylists: () => PlaylistPickerSheet.show(
+        context,
+        trackPaths: _tracks.map((t) => t.path).toList(),
+      ),
       onSelectMultiple: () => setState(() => _isSelecting = true),
       onOrganizeSongs: () {
         Navigator.of(context)
@@ -617,7 +625,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       onPlayAfterCurrent: () {},
       onAddToCurrentQueue: () {},
       onAddToQueue: () {},
-      onAddToPlaylists: () {},
+      onAddToPlaylists: () =>
+          PlaylistPickerSheet.show(context, trackPaths: [_tracks[index].path]),
     );
   }
 }

@@ -8,6 +8,7 @@ import '../../core/natsuyume_core.dart';
 import 'artist_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
 import 'context_menus/artist_tab_context_menu.dart';
+import '../../widgets/playlist_picker_sheet.dart';
 
 class ArtistsScreen extends StatefulWidget {
   const ArtistsScreen({super.key});
@@ -160,7 +161,7 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
             onPlayAfterCurrent: () {},
             onAddToCurrentQueue: () {},
             onAddToQueue: () {},
-            onAddToPlaylists: () {},
+            onAddToPlaylists: () => _addArtistToPlaylist(artists[index]),
             onSelectAllSongs: () {},
           ),
         );
@@ -184,11 +185,22 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
             onPlayAfterCurrent: () {},
             onAddToCurrentQueue: () {},
             onAddToQueue: () {},
-            onAddToPlaylists: () {},
+            onAddToPlaylists: () => _addArtistToPlaylist(artists[index]),
             onSelectAllSongs: () {},
           ),
         );
       },
     );
+  }
+
+  void _addArtistToPlaylist(ArtistData artist) {
+    final albums = NatsuyumeCore.instance.getArtistAlbums(artist.name);
+    final paths = <String>[];
+    for (final album in albums) {
+      final tracks = NatsuyumeCore.instance.getAlbumTracks(album.title);
+      paths.addAll(tracks.map((t) => t.path));
+    }
+    if (paths.isEmpty) return;
+    PlaylistPickerSheet.show(context, trackPaths: paths);
   }
 }

@@ -8,6 +8,7 @@ import '../../core/natsuyume_core.dart';
 import 'album_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
 import 'context_menus/album_tab_context_menu.dart';
+import '../../widgets/playlist_picker_sheet.dart';
 
 class AlbumsScreen extends StatefulWidget {
   const AlbumsScreen({super.key});
@@ -154,7 +155,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
             onPlayAfterCurrent: () {},
             onAddToCurrentQueue: () {},
             onAddToQueue: () {},
-            onAddToPlaylists: () {},
+            onAddToPlaylists: () => _addAlbumToPlaylist(albums[index]),
             onSelectAllSongs: () {},
           ),
         );
@@ -178,11 +179,18 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
             onPlayAfterCurrent: () {},
             onAddToCurrentQueue: () {},
             onAddToQueue: () {},
-            onAddToPlaylists: () {},
+            onAddToPlaylists: () => _addAlbumToPlaylist(albums[index]),
             onSelectAllSongs: () {},
           ),
         );
       },
     );
+  }
+
+  void _addAlbumToPlaylist(AlbumData album) {
+    final tracks = NatsuyumeCore.instance.getAlbumTracks(album.title);
+    final paths = tracks.map((t) => t.path).toList();
+    if (paths.isEmpty) return;
+    PlaylistPickerSheet.show(context, trackPaths: paths);
   }
 }

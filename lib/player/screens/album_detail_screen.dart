@@ -11,6 +11,7 @@ import 'metadata_editor_screen.dart';
 import 'dart:typed_data';
 import '../../core/cover_service.dart';
 import '../../widgets/floating_mini_player.dart';
+import '../../widgets/playlist_picker_sheet.dart';
 
 class AlbumDetailScreen extends StatefulWidget {
   final AlbumData album;
@@ -109,7 +110,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       onPlayAfterCurrent: () => _exitSelectMode(),
       onAddToCurrentQueue: () => _exitSelectMode(),
       onAddToQueue: () => _exitSelectMode(),
-      onAddToPlaylists: () => _exitSelectMode(),
+      onAddToPlaylists: () {
+        final paths = _selectedIndices.map((i) => _tracks[i].path).toList();
+        _exitSelectMode();
+        PlaylistPickerSheet.show(context, trackPaths: paths);
+      },
       onAddToFavorites: () => _exitSelectMode(),
       onRemoveFromFavorites: () => _exitSelectMode(),
       onClearPlaybackHistory: () => _exitSelectMode(),
@@ -504,7 +509,12 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       onPlayAfterCurrent: () {},
       onAddToCurrentQueue: () {},
       onAddToQueue: () {},
-      onAddToPlaylists: () {},
+      onAddToPlaylists: () {
+        final paths = _tracks.map((t) => t.path).toList();
+        if (paths.isNotEmpty) {
+          PlaylistPickerSheet.show(context, trackPaths: paths);
+        }
+      },
       onSelectMultiple: () => setState(() => _isSelecting = true),
     );
   }
@@ -523,7 +533,8 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       onPlayAfterCurrent: () {},
       onAddToCurrentQueue: () {},
       onAddToQueue: () {},
-      onAddToPlaylists: () {},
+      onAddToPlaylists: () =>
+          PlaylistPickerSheet.show(context, trackPaths: [_tracks[index].path]),
     );
   }
 }

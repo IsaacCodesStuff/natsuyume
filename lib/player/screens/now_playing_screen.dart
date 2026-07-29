@@ -8,6 +8,7 @@ import 'dart:ui';
 import 'dart:typed_data';
 import '../../core/cover_service.dart';
 import 'dart:async';
+import '../../widgets/playlist_picker_sheet.dart';
 
 class NowPlayingScreen extends StatefulWidget {
   const NowPlayingScreen({super.key});
@@ -312,7 +313,10 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
             icon: Icons.playlist_add,
             active: false,
             colors: colors,
-            onTap: () {},
+            onTap: () {
+              if (track.isEmpty) return;
+              PlaylistPickerSheet.show(context, trackPaths: [track.path]);
+            },
           ),
           _ControlIcon(
             icon: Icons.equalizer,
