@@ -7,13 +7,16 @@ import 'playlist_detail_screen.dart';
 import '../../widgets/sort_dialog.dart';
 import 'context_menus/playlist_tab_context_menu.dart';
 import '../../core/library_types.dart';
+import '../../core/natsuyume_core.dart';
 
 class PlaylistData {
+  final int id;
   final String name;
   final int songCount;
   final ImageProvider? coverArt;
 
   const PlaylistData({
+    required this.id,
     required this.name,
     required this.songCount,
     this.coverArt,
@@ -21,17 +24,6 @@ class PlaylistData {
 
   String get subtitle => '$songCount songs';
 }
-
-final _placeholderPlaylists = [
-  PlaylistData(name: 'mood', songCount: 10),
-  PlaylistData(name: 'Inori-chan <3', songCount: 20),
-  PlaylistData(name: 'beats for locking in', songCount: 17),
-  PlaylistData(name: 'chinese music i found on yt', songCount: 19),
-  PlaylistData(name: 'cool ass beats', songCount: 15),
-  PlaylistData(name: 'Inori love songs', songCount: 32),
-  PlaylistData(name: 'national "anthems"', songCount: 2),
-  PlaylistData(name: 'meme tracks from discord', songCount: 7),
-];
 
 class PlaylistsScreen extends StatefulWidget {
   const PlaylistsScreen({super.key});
@@ -43,24 +35,176 @@ class PlaylistsScreen extends StatefulWidget {
 class _PlaylistsScreenState extends State<PlaylistsScreen> {
   LibraryLayout _layout = LibraryLayout.grid;
   String _searchQuery = '';
-  final int _playingPlaylistIndex = 1;
+  List<PlaylistData> _playlists = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPlaylists();
+  }
+
+  void _loadPlaylists() {
+    final raw = NatsuyumeCore.instance.getPlaylists();
+    setState(() {
+      _playlists = raw
+          .map(
+            (p) => PlaylistData(id: p.id, name: p.name, songCount: p.songCount),
+          )
+          .toList();
+    });
+  }
 
   List<PlaylistData> get _filteredPlaylists {
-    if (_searchQuery.isEmpty) return _placeholderPlaylists;
+    if (_searchQuery.isEmpty) return _playlists;
     final q = _searchQuery.toLowerCase();
-    return _placeholderPlaylists
-        .where((p) => p.name.toLowerCase().contains(q))
-        .toList();
+    return _playlists.where((p) => p.name.toLowerCase().contains(q)).toList();
   }
 
   void _openPlaylist(PlaylistData playlist) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PlaylistDetailScreen(
-          playlist: playlist,
-          isPlaylistPlaying:
-              _placeholderPlaylists.indexOf(playlist) == _playingPlaylistIndex,
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => PlaylistDetailScreen(
+              playlist: playlist,
+              isPlaylistPlaying: false,
+            ),
+          ),
+        )
+        .then((_) => _loadPlaylists());
+  }
+
+  void _showCreatePlaylistDialog() {
+    final controller = TextEditingController();
+    final colors = NatsuyumeTheme.of(context).colors;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: colors.surface,
+        title: Text('New playlist', style: TextStyle(color: colors.onSurface)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: TextStyle(color: colors.onSurface),
+          decoration: InputDecoration(
+            hintText: 'Playlist name',
+            hintStyle: TextStyle(color: colors.onSurfaceVariant),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: colors.onSurfaceVariant),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: colors.accent),
+            ),
+          ),
+          onSubmitted: (_) => _createPlaylist(controller.text),
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+          ),
+          TextButton(
+            onPressed: () => _createPlaylist(controller.text),
+            child: Text('Create', style: TextStyle(color: colors.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _createPlaylist(String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    Navigator.pop(context);
+    NatsuyumeCore.instance.createPlaylist(trimmed);
+    _loadPlaylists();
+  }
+
+  void _renamePlaylist(PlaylistData playlist) {
+    final controller = TextEditingController(text: playlist.name);
+    final colors = NatsuyumeTheme.of(context).colors;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: colors.surface,
+        title: Text(
+          'Rename playlist',
+          style: TextStyle(color: colors.onSurface),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: TextStyle(color: colors.onSurface),
+          decoration: InputDecoration(
+            hintText: 'Playlist name',
+            hintStyle: TextStyle(color: colors.onSurfaceVariant),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: colors.onSurfaceVariant),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: colors.accent),
+            ),
+          ),
+          onSubmitted: (_) => _doRename(playlist, controller.text),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+          ),
+          TextButton(
+            onPressed: () => _doRename(playlist, controller.text),
+            child: Text('Rename', style: TextStyle(color: colors.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _doRename(PlaylistData playlist, String name) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    Navigator.pop(context);
+    NatsuyumeCore.instance.renamePlaylist(playlist.id, trimmed);
+    _loadPlaylists();
+  }
+
+  void _deletePlaylist(PlaylistData playlist) {
+    final colors = NatsuyumeTheme.of(context).colors;
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: colors.surface,
+        title: Text(
+          'Delete playlist',
+          style: TextStyle(color: colors.onSurface),
+        ),
+        content: Text(
+          'Delete "${playlist.name}"? This cannot be undone.',
+          style: TextStyle(color: colors.onSurfaceVariant),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: colors.onSurfaceVariant),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              NatsuyumeCore.instance.deletePlaylist(playlist.id);
+              _loadPlaylists();
+            },
+            child: Text('Delete', style: TextStyle(color: Colors.redAccent)),
+          ),
+        ],
       ),
     );
   }
@@ -76,27 +220,15 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           ListTile(
-            leading: Icon(Icons.sort, color: colors.onSurface),
-            title: Text('Sort', style: TextStyle(color: colors.onSurface)),
-            onTap: () {
-              Navigator.pop(context);
-              showDialog(
-                context: context,
-                builder: (_) => AlbumSortDialog(
-                  selectedField: AlbumSortField.name,
-                  direction: SortDirection.ascending,
-                  onChanged: (field, direction) {},
-                ),
-              );
-            },
-          ),
-          ListTile(
             leading: Icon(Icons.add, color: colors.onSurface),
             title: Text(
               'New playlist',
               style: TextStyle(color: colors.onSurface),
             ),
-            onTap: () => Navigator.pop(context),
+            onTap: () {
+              Navigator.pop(context);
+              _showCreatePlaylistDialog();
+            },
           ),
         ],
       ),
@@ -130,7 +262,36 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
               onMoreTap: () => _showMoreSheet(context, colors),
             ),
             Expanded(
-              child: _layout == LibraryLayout.grid
+              child: playlists.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.queue_music,
+                            size: 48,
+                            color: colors.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No playlists yet',
+                            style: TextStyle(
+                              fontSize: 15,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          TextButton(
+                            onPressed: _showCreatePlaylistDialog,
+                            child: Text(
+                              'Create one',
+                              style: TextStyle(color: colors.accent),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _layout == LibraryLayout.grid
                   ? _buildGrid(playlists, colors)
                   : _buildList(playlists, colors),
             ),
@@ -153,16 +314,14 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
       itemBuilder: (context, index) {
         return AlbumGridItem(
           album: _toAlbumData(playlists[index]),
-          isPlaying:
-              _placeholderPlaylists.indexOf(playlists[index]) ==
-              _playingPlaylistIndex,
+          isPlaying: false,
           onTap: () => _openPlaylist(playlists[index]),
           onLongPress: () => PlaylistTabContextMenu.show(
             context,
             playlist: playlists[index],
             onExportM3U: () {},
-            onRenamePlaylist: () {},
-            onRemovePlaylist: () {},
+            onRenamePlaylist: () => _renamePlaylist(playlists[index]),
+            onRemovePlaylist: () => _deletePlaylist(playlists[index]),
             onPlayAfterCurrent: () {},
             onAddToCurrentQueue: () {},
             onAddToQueue: () {},
@@ -181,17 +340,15 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
       itemBuilder: (context, index) {
         return AlbumListItem(
           album: _toAlbumData(playlists[index]),
-          isPlaying:
-              _placeholderPlaylists.indexOf(playlists[index]) ==
-              _playingPlaylistIndex,
+          isPlaying: false,
           onTap: () => _openPlaylist(playlists[index]),
-          onMoreTap: () {},
+          onMoreTap: () => _renamePlaylist(playlists[index]),
           onLongPress: () => PlaylistTabContextMenu.show(
             context,
             playlist: playlists[index],
             onExportM3U: () {},
-            onRenamePlaylist: () {},
-            onRemovePlaylist: () {},
+            onRenamePlaylist: () => _renamePlaylist(playlists[index]),
+            onRemovePlaylist: () => _deletePlaylist(playlists[index]),
             onPlayAfterCurrent: () {},
             onAddToCurrentQueue: () {},
             onAddToQueue: () {},

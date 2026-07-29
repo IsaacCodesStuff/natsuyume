@@ -627,4 +627,89 @@ void ncore_restore_last_session(NatsuyumeCore* core) {
     if (core) core->restoreLastSession();
 }
 
+// ---------------------------------------------------------------------------
+// Playlists
+// ---------------------------------------------------------------------------
+
+char* ncore_get_playlists_json(NatsuyumeCore* core) {
+    if (!core) return mallocStr("[]");
+
+    auto playlists = core->allPlaylists();
+    std::string json = "[";
+    for (size_t i = 0; i < playlists.size(); i++) {
+        if (i > 0) json += ",";
+        const auto& p = playlists[i];
+        int songCount = (int)core->tracksForPlaylist(p.id).size();
+        json += "{";
+        json += "\"id\":" + std::to_string(p.id) + ",";
+        json += "\"name\":\"" + escapeJson(p.name) + "\",";
+        json += "\"songCount\":" + std::to_string(songCount);
+        json += "}";
+    }
+    json += "]";
+    return mallocStr(json);
+}
+
+char* ncore_get_playlist_tracks_json(NatsuyumeCore* core, int playlist_id) {
+    if (!core) return mallocStr("[]");
+
+    auto tracks = core->tracksForPlaylist(playlist_id);
+    std::string json = "[";
+    for (size_t i = 0; i < tracks.size(); i++) {
+        if (i > 0) json += ",";
+        const auto& t = tracks[i];
+        json += "{";
+        json += "\"path\":\"" + escapeJson(t.path) + "\",";
+        json += "\"title\":\"" + escapeJson(t.title) + "\",";
+        json += "\"artist\":\"" + escapeJson(t.artist) + "\",";
+        json += "\"album\":\"" + escapeJson(t.album) + "\",";
+        json += "\"durationMs\":" + std::to_string(t.duration);
+        json += "}";
+    }
+    json += "]";
+    return mallocStr(json);
+}
+
+int ncore_create_playlist(NatsuyumeCore* core, const char* name) {
+    if (!core || !name) return -1;
+    return core->createPlaylist(std::string(name));
+}
+
+void ncore_delete_playlist(NatsuyumeCore* core, int playlist_id) {
+    if (core) core->deletePlaylist(playlist_id);
+}
+
+void ncore_rename_playlist(NatsuyumeCore* core,
+                            int playlist_id,
+                            const char* name) {
+    if (core && name) core->renamePlaylist(playlist_id, std::string(name));
+}
+
+void ncore_add_track_to_playlist(NatsuyumeCore* core,
+                                  int playlist_id,
+                                  const char* path) {
+    if (core && path) core->addTrackToPlaylist(playlist_id, std::string(path));
+}
+
+void ncore_remove_track_from_playlist(NatsuyumeCore* core,
+                                       int playlist_id,
+                                       const char* path) {
+    if (core && path)
+        core->removeTrackFromPlaylist(playlist_id, std::string(path));
+}
+
+void ncore_move_track_in_playlist(NatsuyumeCore* core,
+                                   int playlist_id,
+                                   int from,
+                                   int to) {
+    if (core) core->moveTrackInPlaylist(playlist_id, from, to);
+}
+
+void ncore_open_playlist_in_new_queue(NatsuyumeCore* core,
+                                       int playlist_id,
+                                       const char* name) {
+    if (core && name)
+        core->openPlaylistInNewQueue(playlist_id, std::string(name));
+}
+
 } // extern "C"

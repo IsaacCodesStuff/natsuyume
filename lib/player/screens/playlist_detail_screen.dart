@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../theme/natsuyume_theme.dart';
 import '../../widgets/collection_detail_bar.dart';
 import '../../widgets/playlist_track_list.dart';
+import '../../core/natsuyume_core.dart';
+import '../../core/cover_service.dart';
 import 'playlists_screen.dart';
 import 'playlist_info_overlay.dart';
 import 'playlist_editor_screen.dart';
@@ -11,57 +13,6 @@ import 'context_menus/playlist_track_context_menu.dart';
 import 'context_menus/playlist_track_multiselect_menu.dart';
 import 'metadata_editor_screen.dart';
 import '../../widgets/floating_mini_player.dart';
-
-final _placeholderPlaylistTracks = [
-  PlaylistTrack(
-    title: 'Calling Blue (overture)',
-    artist: 'Turquoise',
-    album: '水瀬いのり',
-    duration: '1:11',
-  ),
-  PlaylistTrack(
-    title: 'Turquoise',
-    artist: 'Turquoise',
-    album: '水瀬いのり',
-    duration: '3:32',
-  ),
-  PlaylistTrack(
-    title: '夢のつぼみ',
-    artist: '夢のつぼみ',
-    album: '水瀬いのり',
-    duration: '5:01',
-  ),
-  PlaylistTrack(
-    title: '夏の約束',
-    artist: 'Starry Wish',
-    album: '水瀬いのり',
-    duration: '4:10',
-  ),
-  PlaylistTrack(
-    title: '風色Letter',
-    artist: 'glow',
-    album: '水瀬いのり',
-    duration: '4:35',
-  ),
-  PlaylistTrack(
-    title: '八月のスーベニア',
-    artist: 'glow',
-    album: '水瀬いのり',
-    duration: '5:11',
-  ),
-  PlaylistTrack(
-    title: '夏夢',
-    artist: 'アイマイモコ',
-    album: '水瀬いのり',
-    duration: '4:59',
-  ),
-  PlaylistTrack(
-    title: '水彩メモリー',
-    artist: 'Catch the Rainbow!',
-    album: '水瀬いのり',
-    duration: '4:35',
-  ),
-];
 
 class PlaylistDetailScreen extends StatefulWidget {
   final PlaylistData playlist;
@@ -80,9 +31,10 @@ class PlaylistDetailScreen extends StatefulWidget {
 class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showTitleInBar = false;
-  int _currentTrackIndex = 1;
+  int _currentTrackIndex = -1;
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
+  List<CorePlaylistTrack> _tracks = [];
 
   static const double _coverThreshold = 260.0;
 
@@ -90,6 +42,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    _loadTracks();
+  }
+
+  void _loadTracks() {
+    final tracks = NatsuyumeCore.instance.getPlaylistTracks(widget.playlist.id);
+    setState(() => _tracks = tracks);
   }
 
   void _onScroll() {
@@ -131,13 +89,42 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     });
   }
 
+  void _removeTrackAt(int index) {
+    final track = _tracks[index];
+    NatsuyumeCore.instance.removeTrackFromPlaylist(
+      widget.playlist.id,
+      track.path,
+    );
+    _loadTracks();
+  }
+
+  void _removeSelectedTracks() {
+    final sorted = _selectedIndices.toList()..sort((a, b) => b.compareTo(a));
+    for (final i in sorted) {
+      NatsuyumeCore.instance.removeTrackFromPlaylist(
+        widget.playlist.id,
+        _tracks[i].path,
+      );
+    }
+    _loadTracks();
+    _exitSelectMode();
+  }
+
+  void _playPlaylist() {
+    if (_tracks.isEmpty) return;
+    NatsuyumeCore.instance.openPlaylistInNewQueue(
+      widget.playlist.id,
+      widget.playlist.name,
+    );
+  }
+
   void _showMultiSelectMenu() {
     final selected = _selectedIndices
         .map(
           (i) => TrackMetadata(
-            title: _placeholderPlaylistTracks[i].title,
-            artist: _placeholderPlaylistTracks[i].artist,
-            album: _placeholderPlaylistTracks[i].album,
+            title: _tracks[i].title,
+            artist: _tracks[i].artist,
+            album: _tracks[i].album,
           ),
         )
         .toList();
@@ -146,16 +133,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       context,
       count: _selectedIndices.length,
       tracks: selected,
-      onRemoveFromPlaylist: () {
-        setState(() {
-          final sorted = _selectedIndices.toList()
-            ..sort((a, b) => b.compareTo(a));
-          for (final i in sorted) {
-            _placeholderPlaylistTracks.removeAt(i);
-          }
-          _exitSelectMode();
-        });
-      },
+      onRemoveFromPlaylist: _removeSelectedTracks,
       onPlayAfterCurrent: () => _exitSelectMode(),
       onAddToCurrentQueue: () => _exitSelectMode(),
       onAddToQueue: () => _exitSelectMode(),
@@ -166,7 +144,29 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
   }
 
-  String get _totalDuration => '1:29:43';
+  String get _totalDuration {
+    final totalMs = _tracks.fold(0, (sum, t) => sum + t.durationMs);
+    final totalSec = totalMs ~/ 1000;
+    final h = totalSec ~/ 3600;
+    final m = (totalSec % 3600) ~/ 60;
+    final s = totalSec % 60;
+    if (h > 0) {
+      return '$h:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+    }
+    return '$m:${s.toString().padLeft(2, '0')}';
+  }
+
+  // Convert CorePlaylistTrack to PlaylistTrack for widgets that expect it
+  PlaylistTrack _toWidgetTrack(CorePlaylistTrack t) {
+    final coverBytes = CoverService.instance.getCoverForTrack(t.path);
+    return PlaylistTrack(
+      title: t.title,
+      artist: t.artist,
+      album: t.album,
+      duration: t.durationFormatted,
+      albumArt: coverBytes != null ? MemoryImage(coverBytes) : null,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -236,6 +236,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   }
 
   Widget _buildCoverHero(NatsuyumeColorScheme colors) {
+    // Use cover art from first track that has it
+    ImageProvider? cover;
+    for (final t in _tracks) {
+      final bytes = CoverService.instance.getCoverForTrack(t.path);
+      if (bytes != null) {
+        cover = MemoryImage(bytes);
+        break;
+      }
+    }
+
     return AnimatedBuilder(
       animation: _scrollController,
       builder: (context, child) {
@@ -244,7 +254,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             : 0.0;
         final opacity = (1.0 - (offset / _coverThreshold)).clamp(0.0, 1.0);
         final parallaxOffset = offset * 0.4;
-
         return Opacity(
           opacity: opacity,
           child: Transform.translate(
@@ -275,8 +284,8 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             borderRadius: BorderRadius.circular(16),
             child: AspectRatio(
               aspectRatio: 1,
-              child: widget.playlist.coverArt != null
-                  ? Image(image: widget.playlist.coverArt!, fit: BoxFit.cover)
+              child: cover != null
+                  ? Image(image: cover, fit: BoxFit.cover)
                   : Container(
                       color: colors.surfaceVariant,
                       child: Icon(
@@ -310,10 +319,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
           const SizedBox(height: 16),
           Row(
             children: [
-              _InfoChip(
-                label: '${widget.playlist.songCount} songs',
-                colors: colors,
-              ),
+              _InfoChip(label: '${_tracks.length} songs', colors: colors),
               const SizedBox(width: 8),
               _InfoChip(label: _totalDuration, colors: colors),
             ],
@@ -331,15 +337,44 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       children: [
         _ActionButton(icon: Icons.shuffle, colors: colors, onTap: () {}),
         const SizedBox(width: 12),
-        _ActionButton(icon: Icons.play_arrow, colors: colors, onTap: () {}),
+        _ActionButton(
+          icon: Icons.play_arrow,
+          colors: colors,
+          onTap: _playPlaylist,
+        ),
       ],
     );
   }
 
   SliverList _buildTrackList(NatsuyumeColorScheme colors) {
+    if (_tracks.isEmpty) {
+      return SliverList(
+        delegate: SliverChildListDelegate([
+          Padding(
+            padding: const EdgeInsets.only(top: 48),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.music_off, size: 48, color: colors.onSurfaceVariant),
+                const SizedBox(height: 12),
+                Text(
+                  'No tracks in this playlist',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ]),
+      );
+    }
+
     return SliverList(
       delegate: SliverChildBuilderDelegate((context, index) {
-        final track = _placeholderPlaylistTracks[index];
+        final track = _tracks[index];
+        final widgetTrack = _toWidgetTrack(track);
         final isPlaying = index == _currentTrackIndex;
         final isSelected = _selectedIndices.contains(index);
 
@@ -348,6 +383,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             if (_isSelecting) {
               _toggleSelection(index);
             } else {
+              NatsuyumeCore.instance.openPlaylistInNewQueue(
+                widget.playlist.id,
+                widget.playlist.name,
+              );
+              // Jump to tapped track after opening
+              Future.delayed(const Duration(milliseconds: 100), () {
+                NatsuyumeCore.instance.jumpToTrack(index);
+              });
               setState(() => _currentTrackIndex = index);
             }
           },
@@ -374,7 +417,6 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             ),
             child: Row(
               children: [
-                // Checkbox or index
                 if (_isSelecting)
                   SizedBox(
                     width: 32,
@@ -402,12 +444,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                           ),
                   ),
                 const SizedBox(width: 10),
-                // Album art
                 ClipRRect(
                   borderRadius: BorderRadius.circular(6),
-                  child: track.albumArt != null
+                  child: widgetTrack.albumArt != null
                       ? Image(
-                          image: track.albumArt!,
+                          image: widgetTrack.albumArt!,
                           width: 44,
                           height: 44,
                           fit: BoxFit.cover,
@@ -424,14 +465,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         ),
                 ),
                 const SizedBox(width: 12),
-                // Track info
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        track.title,
+                        widgetTrack.title,
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
@@ -442,7 +482,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        track.artist,
+                        widgetTrack.artist,
                         style: TextStyle(
                           fontSize: 12,
                           color: colors.onSurfaceVariant,
@@ -451,7 +491,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       Text(
-                        track.album,
+                        widgetTrack.album,
                         style: TextStyle(
                           fontSize: 11,
                           color: colors.onSurfaceVariant,
@@ -462,10 +502,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                     ],
                   ),
                 ),
-                // Duration + more
                 if (!_isSelecting) ...[
                   Text(
-                    track.duration,
+                    widgetTrack.duration,
                     style: TextStyle(
                       fontSize: 13,
                       color: colors.onSurfaceVariant,
@@ -485,7 +524,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             ),
           ),
         );
-      }, childCount: _placeholderPlaylistTracks.length),
+      }, childCount: _tracks.length),
     );
   }
 
@@ -548,14 +587,17 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
       onAddToPlaylists: () {},
       onSelectMultiple: () => setState(() => _isSelecting = true),
       onOrganizeSongs: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PlaylistOrganizerScreen(
-              playlistName: widget.playlist.name,
-              tracks: _placeholderPlaylistTracks,
-            ),
-          ),
-        );
+        Navigator.of(context)
+            .push(
+              MaterialPageRoute(
+                builder: (_) => PlaylistOrganizerScreen(
+                  playlistId: widget.playlist.id,
+                  playlistName: widget.playlist.name,
+                  tracks: _tracks,
+                ),
+              ),
+            )
+            .then((_) => _loadTracks());
       },
     );
   }
@@ -567,17 +609,11 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   ) {
     PlaylistTrackContextMenu.show(
       context,
-      track: _placeholderPlaylistTracks[index],
+      track: _toWidgetTrack(_tracks[index]),
       isFavorite: false,
       onFavoriteTap: () {},
       onSongInfo: () {},
-      onRemoveFromPlaylist: () {
-        setState(() {
-          if (_placeholderPlaylistTracks.length > 1) {
-            _placeholderPlaylistTracks.removeAt(index);
-          }
-        });
-      },
+      onRemoveFromPlaylist: () => _removeTrackAt(index),
       onPlayAfterCurrent: () {},
       onAddToCurrentQueue: () {},
       onAddToQueue: () {},
@@ -585,6 +621,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Private widgets — unchanged from original
+// ---------------------------------------------------------------------------
 
 class _InfoChip extends StatelessWidget {
   final String label;

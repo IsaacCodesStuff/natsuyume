@@ -266,6 +266,52 @@ typedef NcoreSaveSettings = void Function(Pointer<Void>);
 typedef _NcoreRestoreLastSessionNative = Void Function(Pointer<Void>);
 typedef NcoreRestoreLastSession = void Function(Pointer<Void>);
 
+// char* ncore_get_playlists_json(NatsuyumeCore*)
+typedef _NcoreGetPlaylistsJsonNative = Pointer<Utf8> Function(Pointer<Void>);
+typedef NcoreGetPlaylistsJson = Pointer<Utf8> Function(Pointer<Void>);
+
+// char* ncore_get_playlist_tracks_json(NatsuyumeCore*, int)
+typedef _NcoreGetPlaylistTracksJsonNative =
+    Pointer<Utf8> Function(Pointer<Void>, Int32);
+typedef NcoreGetPlaylistTracksJson = Pointer<Utf8> Function(Pointer<Void>, int);
+
+// int ncore_create_playlist(NatsuyumeCore*, const char*)
+typedef _NcoreCreatePlaylistNative =
+    Int32 Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreCreatePlaylist = int Function(Pointer<Void>, Pointer<Utf8>);
+
+// void ncore_delete_playlist(NatsuyumeCore*, int)
+typedef _NcoreDeletePlaylistNative = Void Function(Pointer<Void>, Int32);
+typedef NcoreDeletePlaylist = void Function(Pointer<Void>, int);
+
+// void ncore_rename_playlist(NatsuyumeCore*, int, const char*)
+typedef _NcoreRenamePlaylistNative =
+    Void Function(Pointer<Void>, Int32, Pointer<Utf8>);
+typedef NcoreRenamePlaylist = void Function(Pointer<Void>, int, Pointer<Utf8>);
+
+// void ncore_add_track_to_playlist(NatsuyumeCore*, int, const char*)
+typedef _NcoreAddTrackToPlaylistNative =
+    Void Function(Pointer<Void>, Int32, Pointer<Utf8>);
+typedef NcoreAddTrackToPlaylist =
+    void Function(Pointer<Void>, int, Pointer<Utf8>);
+
+// void ncore_remove_track_from_playlist(NatsuyumeCore*, int, const char*)
+typedef _NcoreRemoveTrackFromPlaylistNative =
+    Void Function(Pointer<Void>, Int32, Pointer<Utf8>);
+typedef NcoreRemoveTrackFromPlaylist =
+    void Function(Pointer<Void>, int, Pointer<Utf8>);
+
+// void ncore_move_track_in_playlist(NatsuyumeCore*, int, int, int)
+typedef _NcoreMoveTrackInPlaylistNative =
+    Void Function(Pointer<Void>, Int32, Int32, Int32);
+typedef NcoreMoveTrackInPlaylist = void Function(Pointer<Void>, int, int, int);
+
+// void ncore_open_playlist_in_new_queue(NatsuyumeCore*, int, const char*)
+typedef _NcoreOpenPlaylistInNewQueueNative =
+    Void Function(Pointer<Void>, Int32, Pointer<Utf8>);
+typedef NcoreOpenPlaylistInNewQueue =
+    void Function(Pointer<Void>, int, Pointer<Utf8>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -331,7 +377,16 @@ class NatsuyumeBindings {
   late final NcoreMoveTrack ncoreMoveTrack;
 
   late final NcoreSaveSettings ncoreSaveSettings;
-  late final NcoreRestoreLastSession ncoreRestoreLastSession;
+  late final NcoreRestoreLastSession ncoreRestoreLastSession; // Playlist fields
+  late final NcoreGetPlaylistsJson ncoreGetPlaylistsJson;
+  late final NcoreGetPlaylistTracksJson ncoreGetPlaylistTracksJson;
+  late final NcoreCreatePlaylist ncoreCreatePlaylist;
+  late final NcoreDeletePlaylist ncoreDeletePlaylist;
+  late final NcoreRenamePlaylist ncoreRenamePlaylist;
+  late final NcoreAddTrackToPlaylist ncoreAddTrackToPlaylist;
+  late final NcoreRemoveTrackFromPlaylist ncoreRemoveTrackFromPlaylist;
+  late final NcoreMoveTrackInPlaylist ncoreMoveTrackInPlaylist;
+  late final NcoreOpenPlaylistInNewQueue ncoreOpenPlaylistInNewQueue;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -573,6 +628,60 @@ class NatsuyumeBindings {
     ncoreRestoreLastSession = _lib
         .lookup<NativeFunction<_NcoreRestoreLastSessionNative>>(
           'ncore_restore_last_session',
+        )
+        .asFunction();
+
+    ncoreGetPlaylistsJson = _lib
+        .lookup<NativeFunction<_NcoreGetPlaylistsJsonNative>>(
+          'ncore_get_playlists_json',
+        )
+        .asFunction();
+
+    ncoreGetPlaylistTracksJson = _lib
+        .lookup<NativeFunction<_NcoreGetPlaylistTracksJsonNative>>(
+          'ncore_get_playlist_tracks_json',
+        )
+        .asFunction();
+
+    ncoreCreatePlaylist = _lib
+        .lookup<NativeFunction<_NcoreCreatePlaylistNative>>(
+          'ncore_create_playlist',
+        )
+        .asFunction();
+
+    ncoreDeletePlaylist = _lib
+        .lookup<NativeFunction<_NcoreDeletePlaylistNative>>(
+          'ncore_delete_playlist',
+        )
+        .asFunction();
+
+    ncoreRenamePlaylist = _lib
+        .lookup<NativeFunction<_NcoreRenamePlaylistNative>>(
+          'ncore_rename_playlist',
+        )
+        .asFunction();
+
+    ncoreAddTrackToPlaylist = _lib
+        .lookup<NativeFunction<_NcoreAddTrackToPlaylistNative>>(
+          'ncore_add_track_to_playlist',
+        )
+        .asFunction();
+
+    ncoreRemoveTrackFromPlaylist = _lib
+        .lookup<NativeFunction<_NcoreRemoveTrackFromPlaylistNative>>(
+          'ncore_remove_track_from_playlist',
+        )
+        .asFunction();
+
+    ncoreMoveTrackInPlaylist = _lib
+        .lookup<NativeFunction<_NcoreMoveTrackInPlaylistNative>>(
+          'ncore_move_track_in_playlist',
+        )
+        .asFunction();
+
+    ncoreOpenPlaylistInNewQueue = _lib
+        .lookup<NativeFunction<_NcoreOpenPlaylistInNewQueueNative>>(
+          'ncore_open_playlist_in_new_queue',
         )
         .asFunction();
   }

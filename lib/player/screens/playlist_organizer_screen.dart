@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../theme/natsuyume_theme.dart';
-import '../../widgets/playlist_track_list.dart';
+import '../../core/natsuyume_core.dart';
+import '../../core/cover_service.dart';
+import 'dart:typed_data';
 
 class PlaylistOrganizerScreen extends StatefulWidget {
+  final int playlistId;
   final String playlistName;
-  final List<PlaylistTrack> tracks;
+  final List<CorePlaylistTrack> tracks;
 
   const PlaylistOrganizerScreen({
     super.key,
+    required this.playlistId,
     required this.playlistName,
     required this.tracks,
   });
@@ -18,7 +22,7 @@ class PlaylistOrganizerScreen extends StatefulWidget {
 }
 
 class _PlaylistOrganizerScreenState extends State<PlaylistOrganizerScreen> {
-  late List<PlaylistTrack> _tracks;
+  late List<CorePlaylistTrack> _tracks;
 
   @override
   void initState() {
@@ -27,8 +31,18 @@ class _PlaylistOrganizerScreenState extends State<PlaylistOrganizerScreen> {
   }
 
   void _save() {
-    // Wired to UserDataManager in 0.8.x
-    Navigator.of(context).pop(_tracks);
+    // Persist each move to core — walk the current order and set positions
+    for (int i = 0; i < _tracks.length; i++) {
+      final originalIndex = widget.tracks.indexOf(_tracks[i]);
+      if (originalIndex != i) {
+        NatsuyumeCore.instance.moveTrackInPlaylist(
+          widget.playlistId,
+          originalIndex,
+          i,
+        );
+      }
+    }
+    Navigator.of(context).pop();
   }
 
   @override
@@ -53,10 +67,14 @@ class _PlaylistOrganizerScreenState extends State<PlaylistOrganizerScreen> {
                 },
                 itemBuilder: (context, index) {
                   final track = _tracks[index];
+                  final coverBytes = CoverService.instance.getCoverForTrack(
+                    track.path,
+                  );
                   return _OrganizerTrackRow(
-                    key: ValueKey('${track.title}_$index'),
+                    key: ValueKey('${track.path}_$index'),
                     index: index,
                     track: track,
+                    coverBytes: coverBytes,
                     colors: colors,
                   );
                 },
@@ -118,13 +136,15 @@ class _PlaylistOrganizerScreenState extends State<PlaylistOrganizerScreen> {
 
 class _OrganizerTrackRow extends StatelessWidget {
   final int index;
-  final PlaylistTrack track;
+  final CorePlaylistTrack track;
+  final Uint8List? coverBytes;
   final NatsuyumeColorScheme colors;
 
   const _OrganizerTrackRow({
     super.key,
     required this.index,
     required this.track,
+    required this.coverBytes,
     required this.colors,
   });
 
@@ -139,7 +159,6 @@ class _OrganizerTrackRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Index
           SizedBox(
             width: 24,
             child: Text(
@@ -149,12 +168,11 @@ class _OrganizerTrackRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 10),
-          // Album art
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: track.albumArt != null
+            child: coverBytes != null
                 ? Image(
-                    image: track.albumArt!,
+                    image: MemoryImage(coverBytes!),
                     width: 44,
                     height: 44,
                     fit: BoxFit.cover,
@@ -171,7 +189,6 @@ class _OrganizerTrackRow extends StatelessWidget {
                   ),
           ),
           const SizedBox(width: 12),
-          // Track info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,8 +226,14 @@ class _OrganizerTrackRow extends StatelessWidget {
               ],
             ),
           ),
-          // Drag handle
-          Icon(Icons.drag_handle, color: colors.onSurfaceVariant, size: 22),
+          ReorderableDragStartListener(
+            index: index,
+            child: Icon(
+              Icons.drag_handle,
+              color: colors.onSurfaceVariant,
+              size: 22,
+            ),
+          ),
         ],
       ),
     );

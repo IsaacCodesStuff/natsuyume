@@ -510,6 +510,100 @@ class NatsuyumeCore {
   void moveTrackInQueue(int from, int to) {
     _bindings.ncoreMoveTrack(_core, from, to);
   }
+
+  // ---------------------------------------------------------------------------
+  // Playlists
+  // ---------------------------------------------------------------------------
+
+  List<CorePlaylistData> getPlaylists() {
+    final ptr = _bindings.ncoreGetPlaylistsJson(_core);
+    try {
+      final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
+      return list.map((e) {
+        final m = e as Map<String, dynamic>;
+        return CorePlaylistData(
+          id: m['id'] as int,
+          name: m['name'] as String,
+          songCount: m['songCount'] as int,
+        );
+      }).toList();
+    } finally {
+      _bindings.ncoreFreeString(ptr);
+    }
+  }
+
+  List<CorePlaylistTrack> getPlaylistTracks(int playlistId) {
+    final ptr = _bindings.ncoreGetPlaylistTracksJson(_core, playlistId);
+    try {
+      final list = jsonDecode(ptr.toDartString()) as List<dynamic>;
+      return list.map((e) {
+        final m = e as Map<String, dynamic>;
+        return CorePlaylistTrack(
+          path: m['path'] as String,
+          title: m['title'] as String,
+          artist: m['artist'] as String,
+          album: m['album'] as String,
+          durationMs: m['durationMs'] as int,
+        );
+      }).toList();
+    } finally {
+      _bindings.ncoreFreeString(ptr);
+    }
+  }
+
+  int createPlaylist(String name) {
+    final namePtr = name.toNativeUtf8();
+    try {
+      return _bindings.ncoreCreatePlaylist(_core, namePtr);
+    } finally {
+      calloc.free(namePtr);
+    }
+  }
+
+  void deletePlaylist(int playlistId) {
+    _bindings.ncoreDeletePlaylist(_core, playlistId);
+  }
+
+  void renamePlaylist(int playlistId, String name) {
+    final namePtr = name.toNativeUtf8();
+    try {
+      _bindings.ncoreRenamePlaylist(_core, playlistId, namePtr);
+    } finally {
+      calloc.free(namePtr);
+    }
+  }
+
+  void addTrackToPlaylist(int playlistId, String path) {
+    final pathPtr = path.toNativeUtf8();
+    try {
+      _bindings.ncoreAddTrackToPlaylist(_core, playlistId, pathPtr);
+    } finally {
+      calloc.free(pathPtr);
+    }
+  }
+
+  void removeTrackFromPlaylist(int playlistId, String path) {
+    final pathPtr = path.toNativeUtf8();
+    try {
+      _bindings.ncoreRemoveTrackFromPlaylist(_core, playlistId, pathPtr);
+    } finally {
+      calloc.free(pathPtr);
+    }
+  }
+
+  void moveTrackInPlaylist(int playlistId, int from, int to) {
+    _bindings.ncoreMoveTrackInPlaylist(_core, playlistId, from, to);
+  }
+
+  void openPlaylistInNewQueue(int playlistId, String name) {
+    resetTrackDetection();
+    final namePtr = name.toNativeUtf8();
+    try {
+      _bindings.ncoreOpenPlaylistInNewQueue(_core, playlistId, namePtr);
+    } finally {
+      calloc.free(namePtr);
+    }
+  }
 }
 
 class CoreTrack {
@@ -613,5 +707,40 @@ class CoreScanState extends ChangeNotifier {
     _progress = progress;
     _total = total;
     notifyListeners();
+  }
+}
+
+class CorePlaylistData {
+  final int id;
+  final String name;
+  final int songCount;
+
+  const CorePlaylistData({
+    required this.id,
+    required this.name,
+    required this.songCount,
+  });
+}
+
+class CorePlaylistTrack {
+  final String path;
+  final String title;
+  final String artist;
+  final String album;
+  final int durationMs;
+
+  const CorePlaylistTrack({
+    required this.path,
+    required this.title,
+    required this.artist,
+    required this.album,
+    required this.durationMs,
+  });
+
+  String get durationFormatted {
+    final totalSec = durationMs ~/ 1000;
+    final m = totalSec ~/ 60;
+    final s = totalSec % 60;
+    return '$m:${s.toString().padLeft(2, '0')}';
   }
 }

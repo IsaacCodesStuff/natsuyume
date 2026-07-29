@@ -3,7 +3,6 @@ import '../../../widgets/context_menu.dart';
 import '../playlists_screen.dart';
 import '../playlist_editor_screen.dart';
 import '../metadata_editor_screen.dart';
-import '../playlist_organizer_screen.dart';
 
 class PlaylistDetailContextMenu {
   static Future<void> show(
@@ -95,21 +94,6 @@ class PlaylistDetailContextMenu {
                     playlist.songCount,
                     (_) => TrackMetadata(),
                   ),
-                ),
-              ),
-            );
-          },
-        ),
-        ContextMenuOption(
-          icon: Icons.sort,
-          label: 'Organize songs',
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => PlaylistOrganizerScreen(
-                  playlistName: playlist.name,
-                  tracks: const [],
-                  // Real tracks wired in 0.8.x
                 ),
               ),
             );
