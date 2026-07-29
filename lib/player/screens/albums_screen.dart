@@ -63,41 +63,6 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     );
   }
 
-  void _showMoreSheet(BuildContext context, NatsuyumeColorScheme colors) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: colors.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ListTile(
-            leading: Icon(Icons.sort, color: colors.onSurface),
-            title: Text('Sort', style: TextStyle(color: colors.onSurface)),
-            onTap: () {
-              Navigator.pop(context);
-              showDialog(
-                context: context,
-                builder: (_) => AlbumSortDialog(
-                  selectedField: AlbumSortField.name,
-                  direction: SortDirection.ascending,
-                  onChanged: (field, direction) {},
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: Icon(Icons.filter_list, color: colors.onSurface),
-            title: Text('Filter', style: TextStyle(color: colors.onSurface)),
-            onTap: () => Navigator.pop(context),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final colors = NatsuyumeTheme.of(context).colors;
@@ -114,7 +79,14 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
               onSearchChanged: (q) => setState(() => _searchQuery = q),
               currentLayout: _layout,
               onLayoutChanged: (l) => setState(() => _layout = l),
-              onMoreTap: () => _showMoreSheet(context, colors),
+              onMoreTap: () => showDialog(
+                context: context,
+                builder: (_) => AlbumSortDialog(
+                  selectedField: AlbumSortField.name,
+                  direction: SortDirection.ascending,
+                  onChanged: (field, direction) {},
+                ),
+              ),
             ),
             Expanded(
               child: albums.isEmpty

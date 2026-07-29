@@ -251,88 +251,95 @@ class _QueueScreenState extends State<QueueScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
+        child: ListenableBuilder(
+          listenable: NatsuyumeCore.instance.playerState,
+          builder: (context, _) {
+            final hasTrack =
+                !NatsuyumeCore.instance.playerState.currentTrack.isEmpty;
+            final miniPlayerOffset = hasTrack
+                ? FloatingMiniPlayer.height + FloatingMiniPlayer.gap * 2
+                : 0.0;
+
+            return Stack(
               children: [
-                _buildTopBar(colors),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: _tracks.isEmpty
-                      ? _buildEmptyState(colors)
-                      : _buildTrackList(colors),
-                ),
-                if (_isSelecting) _buildMultiSelectBar(colors),
-              ],
-            ),
-
-            // Queue info bar — floats above mini player
-            Positioned(
-              left: 16,
-              right: 16,
-              bottom: FloatingMiniPlayer.height + FloatingMiniPlayer.gap * 2,
-              child: _buildQueueInfoBar(colors),
-            ),
-
-            // FAB
-            if (!_isSelecting)
-              Positioned(
-                right: 16,
-                bottom:
-                    FloatingMiniPlayer.height +
-                    FloatingMiniPlayer.gap * 2 +
-                    48 +
-                    12,
-                child: QueueFab(
-                  actions: [
-                    QueueFabAction(
-                      icon: Icons.checklist,
-                      label: 'Select multiple',
-                      onTap: () => setState(() => _isSelecting = true),
+                Column(
+                  children: [
+                    _buildTopBar(colors),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: _tracks.isEmpty
+                          ? _buildEmptyState(colors)
+                          : _buildTrackList(colors, miniPlayerOffset),
                     ),
-                    QueueFabAction(
-                      icon: Icons.file_upload_outlined,
-                      label: 'Export as .M3U',
-                      onTap: () {},
-                    ),
-                    QueueFabAction(
-                      icon: Icons.share_outlined,
-                      label: 'Share songs',
-                      onTap: () {},
-                    ),
-                    QueueFabAction(
-                      icon: Icons.save_outlined,
-                      label: 'Save as playlist',
-                      onTap: () {},
-                    ),
-                    QueueFabAction(
-                      icon: Icons.sort,
-                      label: 'Sort',
-                      onTap: () => showDialog(
-                        context: context,
-                        builder: (_) => TrackSortDialog(
-                          selectedField: TrackSortField.title,
-                          direction: SortDirection.ascending,
-                          specialOptions: [
-                            SpecialTrackSort.randomize,
-                            SpecialTrackSort.reverse,
-                            SpecialTrackSort.mostPlayedFirst,
-                            SpecialTrackSort.leastPlayedFirst,
-                          ],
-                          onNormalChanged: (field, direction) {},
-                          onSpecialChanged: (special) {},
-                        ),
-                      ),
-                    ),
-                    QueueFabAction(
-                      icon: Icons.add,
-                      label: 'Add song',
-                      onTap: () {},
-                    ),
+                    if (_isSelecting) _buildMultiSelectBar(colors),
                   ],
                 ),
-              ),
-          ],
+
+                // Queue info bar
+                Positioned(
+                  left: 16,
+                  right: 16,
+                  bottom: miniPlayerOffset + 12,
+                  child: _buildQueueInfoBar(colors),
+                ),
+
+                // FAB
+                if (!_isSelecting)
+                  Positioned(
+                    right: 16,
+                    bottom: miniPlayerOffset + 48 + 12,
+                    child: QueueFab(
+                      actions: [
+                        QueueFabAction(
+                          icon: Icons.checklist,
+                          label: 'Select multiple',
+                          onTap: () => setState(() => _isSelecting = true),
+                        ),
+                        QueueFabAction(
+                          icon: Icons.file_upload_outlined,
+                          label: 'Export as .M3U',
+                          onTap: () {},
+                        ),
+                        QueueFabAction(
+                          icon: Icons.share_outlined,
+                          label: 'Share songs',
+                          onTap: () {},
+                        ),
+                        QueueFabAction(
+                          icon: Icons.save_outlined,
+                          label: 'Save as playlist',
+                          onTap: () {},
+                        ),
+                        QueueFabAction(
+                          icon: Icons.sort,
+                          label: 'Sort',
+                          onTap: () => showDialog(
+                            context: context,
+                            builder: (_) => TrackSortDialog(
+                              selectedField: TrackSortField.title,
+                              direction: SortDirection.ascending,
+                              specialOptions: [
+                                SpecialTrackSort.randomize,
+                                SpecialTrackSort.reverse,
+                                SpecialTrackSort.mostPlayedFirst,
+                                SpecialTrackSort.leastPlayedFirst,
+                              ],
+                              onNormalChanged: (field, direction) {},
+                              onSpecialChanged: (special) {},
+                            ),
+                          ),
+                        ),
+                        QueueFabAction(
+                          icon: Icons.add,
+                          label: 'Add song',
+                          onTap: () {},
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
         ),
       ),
     );
@@ -424,14 +431,9 @@ class _QueueScreenState extends State<QueueScreen> {
     );
   }
 
-  Widget _buildTrackList(NatsuyumeColorScheme colors) {
+  Widget _buildTrackList(NatsuyumeColorScheme colors, double miniPlayerOffset) {
     return ReorderableListView.builder(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        8,
-        16,
-        80 + FloatingMiniPlayer.height + FloatingMiniPlayer.gap,
-      ),
+      padding: EdgeInsets.fromLTRB(16, 8, 16, 80 + miniPlayerOffset),
       itemCount: _tracks.length,
       onReorderItem: (oldIndex, newIndex) {
         NatsuyumeCore.instance.moveTrackInQueue(oldIndex, newIndex);

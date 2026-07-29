@@ -191,6 +191,27 @@ std::vector<Track> UserDataManager::tracksForPlaylist(int playlistId) const
 {
     if (!m_library) return {};
 
+    // Built-in playlists — handled directly, not via playlist_tracks table
+    if (playlistId == kAllSongsPlaylistId) {
+        auto tracks = m_library->allTracks();
+        m_userData->applyUserData(tracks);
+        return tracks;
+    }
+    if (playlistId == kFavoritesPlaylistId) {
+        auto favPaths = m_userData->allFavoritePaths();
+        std::vector<Track> result;
+        result.reserve(favPaths.size());
+        for (const auto &path : favPaths) {
+            Track t = m_library->trackByPath(path);
+            if (t.isValid()) {
+                m_userData->applyUserData(t);
+                result.push_back(std::move(t));
+            }
+        }
+        return result;
+    }
+
+    // Normal user playlist
     auto paths = m_userData->playlistTrackPaths(playlistId);
     std::vector<Track> result;
     result.reserve(paths.size());
