@@ -10,18 +10,11 @@
 #include <sqlite3.h>
 #include "track.h"
 
-struct QueueSnapshot {
-    std::string              name;
-    std::vector<std::string> paths;
-    int     currentTrackIndex = 0;
-    int64_t currentPosition   = 0;
-    bool    wasPlaying        = false;
-    bool    isActive          = false;
-};
-
 class Library
 {
 public:
+    sqlite3 *db() const { return m_db; }
+
     enum class AlbumSort {
         Name, Artist, AlbumArtist, Year, SongCount, Duration, Composer, DateAdded
     };
@@ -38,10 +31,8 @@ public:
     Library();
     ~Library();
 
-    // Called once at startup — dataDir is passed in from Flutter
     bool open(const std::string &dataDir);
 
-    // Callback fired when library contents change
     std::function<void()> onLibraryChanged;
 
     // --- Track writing ---
@@ -66,10 +57,6 @@ public:
     int64_t lastModifiedFor(const std::string &path) const;
     std::vector<std::string> albumsForArtist(const std::string &artist) const;
 
-    // --- Queue persistence ---
-    void                      saveQueues(const std::vector<QueueSnapshot> &queues);
-    std::vector<QueueSnapshot> loadQueues() const;
-
     // --- Bulk operations ---
     void removeTracksFromFolder(const std::string &folderPath);
     void removeTrackIfMissing(const std::string &path);
@@ -85,7 +72,6 @@ private:
     static std::string albumSortColumn(AlbumSort sort);
     static std::string trackSortColumn(TrackSort sort);
 
-    // SQLite helpers
     bool exec(const std::string &sql) const;
     static Track trackFromStmt(sqlite3_stmt *stmt);
 };

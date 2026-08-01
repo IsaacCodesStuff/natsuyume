@@ -31,7 +31,7 @@ void ncore_init(NatsuyumeCore* core) {
 }
 
 void ncore_shutdown(NatsuyumeCore* core) {
-    if (core) core->shutdown();
+    if (core) core->saveAndShutdown();
 }
 
 // Open a single file in a new queue and start playing
@@ -710,6 +710,16 @@ void ncore_open_playlist_in_new_queue(NatsuyumeCore* core,
                                        const char* name) {
     if (core && name)
         core->openPlaylistInNewQueue(playlist_id, std::string(name));
+}
+
+int ncore_get_playing_queue_index(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->playingQueueIndex();
+}
+
+int ncore_get_viewed_track_index(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->viewedTrackIndex();
 }
 
 } // extern "C"

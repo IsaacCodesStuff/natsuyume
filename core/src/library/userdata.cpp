@@ -96,6 +96,26 @@ void UserData::createSchema()
             image_path TEXT NOT NULL DEFAULT ''
         )
     )");
+
+    exec(R"(
+        CREATE TABLE IF NOT EXISTS queues (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT    NOT NULL,
+            sort_order    INTEGER NOT NULL,
+            current_index INTEGER NOT NULL DEFAULT 0,
+            position_ms   INTEGER NOT NULL DEFAULT 0,
+            is_active     INTEGER NOT NULL DEFAULT 0
+        )
+    )");
+
+    exec(R"(
+        CREATE TABLE IF NOT EXISTS queue_tracks (
+            queue_id   INTEGER NOT NULL REFERENCES queues(id) ON DELETE CASCADE,
+            track_path TEXT    NOT NULL,
+            position   INTEGER NOT NULL,
+            PRIMARY KEY (queue_id, track_path)
+        )
+    )");
 }
 
 // ---------------------------------------------------------------------------
@@ -542,6 +562,7 @@ void UserData::clearAll()
     exec("DELETE FROM user_track_data");
     exec("DELETE FROM favorite_paths");
     exec("DELETE FROM playlists");
+    exec("DELETE FROM queues");
     exec("DELETE FROM artist_images");
     if (onPlaylistsChanged) onPlaylistsChanged();
     if (onFavoritesChanged) onFavoritesChanged();

@@ -53,6 +53,7 @@ class _QueueScreenState extends State<QueueScreen> {
   int _currentTrackIndex = -1;
   int _currentQueueIndex = 0;
   bool _isSelecting = false;
+  int _playingQueueIndex = 0;
   final Set<int> _selectedIndices = {};
 
   List<String> _queueNames = [];
@@ -78,12 +79,24 @@ class _QueueScreenState extends State<QueueScreen> {
   void _refreshTracks() {
     final core = NatsuyumeCore.instance;
     final coreTracks = core.getQueueTracks();
-    final currentPath = core.playerState.currentTrack.path;
-    final newIndex = coreTracks.indexWhere((t) => t.path == currentPath);
     final newNames = core.getQueueNames();
-    final newActiveQueue = newNames.isEmpty
+    final newViewedQueue = newNames.isEmpty
         ? 0
         : core.getActiveQueueIndex().clamp(0, newNames.length - 1);
+    final newPlayingQueue = newNames.isEmpty
+        ? 0
+        : core.getPlayingQueueIndex().clamp(0, newNames.length - 1);
+
+    // If viewing the playing queue, highlight by path match
+    // If viewing an inactive queue, highlight by queue's own currentTrackIndex
+    final currentPath = core.playerState.currentTrack.path;
+    final int newIndex;
+    if (newViewedQueue == newPlayingQueue) {
+      newIndex = coreTracks.indexWhere((t) => t.path == currentPath);
+    } else {
+      // Use the viewed queue's saved track index from core
+      newIndex = core.viewedTrackIndex();
+    }
 
     final newTracks = coreTracks.map(QueueTrack.fromCoreTrack).toList();
     final trackListChanged =
@@ -96,9 +109,9 @@ class _QueueScreenState extends State<QueueScreen> {
     if (trackListChanged ||
         newIndex != _currentTrackIndex ||
         newNames.length != _queueNames.length ||
-        newActiveQueue != _currentQueueIndex ||
+        newViewedQueue != _currentQueueIndex ||
+        newPlayingQueue != _playingQueueIndex ||
         !List.generate(
-          // ← add this
           newNames.length,
           (i) => newNames[i] == _queueNames[i],
         ).every((e) => e)) {
@@ -106,7 +119,8 @@ class _QueueScreenState extends State<QueueScreen> {
         _tracks = newTracks;
         _currentTrackIndex = newIndex;
         _queueNames = newNames.isEmpty ? ['Queue'] : newNames;
-        _currentQueueIndex = newActiveQueue;
+        _currentQueueIndex = newViewedQueue;
+        _playingQueueIndex = newPlayingQueue;
       });
     }
   }
@@ -453,7 +467,10 @@ class _QueueScreenState extends State<QueueScreen> {
       },
       itemBuilder: (context, index) {
         final track = _tracks[index];
-        final isPlaying = index == _currentTrackIndex;
+        final isViewingPlayingQueue = _currentQueueIndex == _playingQueueIndex;
+        final isCurrentTrack = index == _currentTrackIndex;
+        final isPlaying = isViewingPlayingQueue && isCurrentTrack;
+        final isLastPlayed = !isViewingPlayingQueue && isCurrentTrack;
         final isSelected = _selectedIndices.contains(index);
 
         return GestureDetector(
@@ -476,13 +493,22 @@ class _QueueScreenState extends State<QueueScreen> {
                   ? colors.accent.withValues(alpha: 0.2)
                   : isPlaying
                   ? colors.accent.withValues(alpha: 0.15)
-                  : colors.surface,
+                  : isLastPlayed
+                  ? colors.accent.withValues(alpha: 0.08)
+                  : colors.surface.withValues(
+                      alpha: isViewingPlayingQueue ? 1.0 : 0.6,
+                    ),
               borderRadius: BorderRadius.circular(12),
               border: isSelected
                   ? Border.all(color: colors.accent, width: 1.5)
                   : isPlaying
                   ? Border.all(
                       color: colors.accent.withValues(alpha: 0.3),
+                      width: 1,
+                    )
+                  : isLastPlayed
+                  ? Border.all(
+                      color: colors.accent.withValues(alpha: 0.15),
                       width: 1,
                     )
                   : null,
@@ -544,7 +570,11 @@ class _QueueScreenState extends State<QueueScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w500,
-                          color: isPlaying ? colors.accent : colors.onSurface,
+                          color: isPlaying
+                              ? colors.accent
+                              : isLastPlayed
+                              ? colors.accent.withValues(alpha: 0.7)
+                              : colors.onSurface,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

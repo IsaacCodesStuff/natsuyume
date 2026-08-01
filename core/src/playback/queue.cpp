@@ -348,18 +348,24 @@ void Queue::restoreState()
         m_currentTrackIndex >= (int)m_tracks.size()) return;
 
     int64_t savedPos = m_savedPosition;
+    const Track &track = m_tracks.at(m_currentTrackIndex);
 
-    // One-shot: fire once on readyToPlay then restore original callback
+    // Debug
+    fprintf(stderr, "Queue::restoreState: track=%s valid=%d savedPos=%lld\n",
+            track.path.c_str(), (int)track.isValid(), (long long)savedPos);
+
     auto prevCallback = m_currentPlayback->onReadyToPlay;
     m_currentPlayback->onReadyToPlay = [this, savedPos, prevCallback]() {
+        fprintf(stderr, "Queue::restoreState: onReadyToPlay fired, seeking to %lld\n",
+                (long long)savedPos);
         m_currentPlayback->seekTo(savedPos);
         m_currentPlayback->pause();
         m_currentPlayback->onReadyToPlay = prevCallback;
-        if (onTrackChanged)    onTrackChanged();
+        if (onTrackChanged)     onTrackChanged();
         if (onRestoreCompleted) onRestoreCompleted();
     };
 
-    m_currentPlayback->loadTrack(m_tracks.at(m_currentTrackIndex), false);
+    m_currentPlayback->loadTrack(track, false);
 }
 
 // ---------------------------------------------------------------------------

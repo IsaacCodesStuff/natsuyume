@@ -17,6 +17,7 @@ class NatsuyumeCore {
   late final NatsuyumeBindings _bindings;
   late final Pointer<Void> _core;
   bool _initialized = false;
+  bool _coreInitialized = false;
 
   final CorePlayerState playerState = CorePlayerState();
   final CoreScanState scanState = CoreScanState();
@@ -30,6 +31,16 @@ class NatsuyumeCore {
   }
 
   Future<void> initCore() async {
+    // Tear down any previous core before creating a new one.
+    // This handles the case where the Dart isolate survives app restart
+    // but the C++ core needs to be rebuilt (e.g. hot restart, swipe-dismiss).
+    if (_coreInitialized) {
+      stopPolling();
+      _bindings.ncoreSaveSettings(_core);
+      _bindings.ncoreShutdown(_core);
+      _coreInitialized = false;
+    }
+
     await Permission.audio.request();
     final dataDir = await getApplicationSupportDirectory();
     final dataDirPath = dataDir.path;
@@ -38,6 +49,7 @@ class NatsuyumeCore {
     try {
       _bindings.ncoreSetDataDir(_core, pathPtr);
       _bindings.ncoreInit(_core);
+      _coreInitialized = true; // ← set after successful init
       startPolling();
     } finally {
       calloc.free(pathPtr);
@@ -49,14 +61,19 @@ class NatsuyumeCore {
         switch (command) {
           case 'play':
             core.play();
+            break;
           case 'pause':
             core.pause();
+            break;
           case 'next':
             core.next();
+            break;
           case 'prev':
             core.previous();
+            break;
           case 'stop':
             core.pause();
+            break;
           default:
             if (command.startsWith('seek:')) {
               final ms = int.tryParse(command.substring(5));
@@ -65,15 +82,6 @@ class NatsuyumeCore {
         }
       },
     );
-  }
-
-  void shutdown() {
-    if (!_initialized) return;
-    _bindings.ncoreShutdown(_core);
-  }
-
-  void saveSettings() {
-    _bindings.ncoreSaveSettings(_core);
   }
 
   void restoreLastSession() {
@@ -225,7 +233,6 @@ class NatsuyumeCore {
         if (saveCounter >= 20) {
           saveCounter = 0;
           _bindings.ncoreSaveSettings(_core);
-          saveSettings();
         }
       });
     });
@@ -234,6 +241,14 @@ class NatsuyumeCore {
   void stopPolling() {
     _pollTimer?.cancel();
     _pollTimer = null;
+  }
+
+  void saveAndShutdown() {
+    if (!_coreInitialized) return;
+    stopPolling();
+    _bindings.ncoreSaveSettings(_core);
+    _bindings.ncoreShutdown(_core);
+    _coreInitialized = false;
   }
 
   void play() => _bindings.ncorePlay(_core);
@@ -492,6 +507,7 @@ class NatsuyumeCore {
 
   void closeQueue(int index) {
     _bindings.ncoreCloseQueue(_core, index);
+    _bindings.ncoreSaveSettings(_core); // ← add this
   }
 
   void removeTrackAt(int index) {
@@ -509,6 +525,14 @@ class NatsuyumeCore {
 
   void moveTrackInQueue(int from, int to) {
     _bindings.ncoreMoveTrack(_core, from, to);
+  }
+
+  int getPlayingQueueIndex() {
+    return _bindings.ncoreGetPlayingQueueIndex(_core);
+  }
+
+  int viewedTrackIndex() {
+    return _bindings.ncoreGetViewedTrackIndex(_core);
   }
 
   // ---------------------------------------------------------------------------

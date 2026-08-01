@@ -132,7 +132,7 @@ int main(int argc, char *argv[])
         }
         else if (line == "help")         { printHelp(); std::cout << "> " << std::flush; }
         else if (line == "quit" || line == "q") {
-            core.shutdown();
+            core.saveAndShutdown();
             QCoreApplication::quit();
             return;
         } else {

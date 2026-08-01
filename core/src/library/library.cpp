@@ -71,27 +71,6 @@ void Library::createSchema()
             last_modified INTEGER NOT NULL DEFAULT 0
         )
     )");
-
-    exec(R"(
-        CREATE TABLE IF NOT EXISTS saved_queues (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            name           TEXT    NOT NULL,
-            position       INTEGER NOT NULL,
-            track_index    INTEGER NOT NULL DEFAULT 0,
-            track_position INTEGER NOT NULL DEFAULT 0,
-            was_playing    INTEGER NOT NULL DEFAULT 0,
-            is_active      INTEGER NOT NULL DEFAULT 0
-        )
-    )");
-
-    exec(R"(
-        CREATE TABLE IF NOT EXISTS saved_queue_tracks (
-            queue_id INTEGER NOT NULL,
-            path     TEXT    NOT NULL,
-            position INTEGER NOT NULL,
-            FOREIGN KEY (queue_id) REFERENCES saved_queues(id) ON DELETE CASCADE
-        )
-    )");
 }
 
 void Library::populateCache()
@@ -528,89 +507,6 @@ std::vector<std::string> Library::albumsForArtist(const std::string &artist) con
     while (sqlite3_step(stmt) == SQLITE_ROW) {
         const char *v = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
         if (v) result.push_back(v);
-    }
-    return result;
-}
-
-// ---------------------------------------------------------------------------
-// Queue persistence
-// ---------------------------------------------------------------------------
-
-void Library::saveQueues(const std::vector<QueueSnapshot> &queues)
-{
-    exec("DELETE FROM saved_queues");
-
-    for (int i = 0; i < (int)queues.size(); ++i) {
-        const QueueSnapshot &snap = queues[i];
-
-        Stmt stmt;
-        if (sqlite3_prepare_v2(m_db, R"(
-            INSERT INTO saved_queues
-                (name, position, track_index, track_position, was_playing, is_active)
-            VALUES (?,?,?,?,?,?)
-        )", -1, &stmt.s, nullptr) != SQLITE_OK)
-            continue;
-
-        sqlite3_bind_text(stmt, 1, snap.name.c_str(), -1, SQLITE_TRANSIENT);
-        sqlite3_bind_int (stmt, 2, i);
-        sqlite3_bind_int (stmt, 3, snap.currentTrackIndex);
-        sqlite3_bind_int64(stmt, 4, snap.currentPosition);
-        sqlite3_bind_int (stmt, 5, snap.wasPlaying ? 1 : 0);
-        sqlite3_bind_int (stmt, 6, snap.isActive   ? 1 : 0);
-        sqlite3_step(stmt);
-
-        int64_t queueId = sqlite3_last_insert_rowid(m_db);
-
-        for (int j = 0; j < (int)snap.paths.size(); ++j) {
-            Stmt tStmt;
-            if (sqlite3_prepare_v2(m_db, R"(
-                INSERT INTO saved_queue_tracks (queue_id, path, position)
-                VALUES (?,?,?)
-            )", -1, &tStmt.s, nullptr) != SQLITE_OK)
-                continue;
-
-            sqlite3_bind_int64(tStmt, 1, queueId);
-            sqlite3_bind_text (tStmt, 2, snap.paths[j].c_str(), -1, SQLITE_TRANSIENT);
-            sqlite3_bind_int  (tStmt, 3, j);
-            sqlite3_step(tStmt);
-        }
-    }
-}
-
-std::vector<QueueSnapshot> Library::loadQueues() const
-{
-    std::vector<QueueSnapshot> result;
-    Stmt stmt;
-    if (sqlite3_prepare_v2(m_db, R"(
-        SELECT id, name, track_index, track_position, was_playing, is_active
-        FROM saved_queues ORDER BY position ASC
-    )", -1, &stmt.s, nullptr) != SQLITE_OK)
-        return result;
-
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        QueueSnapshot snap;
-        int64_t queueId      = sqlite3_column_int64(stmt, 0);
-        const char *name     = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
-        snap.name            = name ? name : "";
-        snap.currentTrackIndex = sqlite3_column_int(stmt, 2);
-        snap.currentPosition = sqlite3_column_int64(stmt, 3);
-        snap.wasPlaying      = sqlite3_column_int(stmt, 4) == 1;
-        snap.isActive        = sqlite3_column_int(stmt, 5) == 1;
-
-        Stmt tStmt;
-        if (sqlite3_prepare_v2(m_db, R"(
-            SELECT path FROM saved_queue_tracks
-            WHERE queue_id = ? ORDER BY position ASC
-        )", -1, &tStmt.s, nullptr) == SQLITE_OK) {
-            sqlite3_bind_int64(tStmt, 1, queueId);
-            while (sqlite3_step(tStmt) == SQLITE_ROW) {
-                const char *p = reinterpret_cast<const char *>(
-                    sqlite3_column_text(tStmt, 0));
-                if (p) snap.paths.push_back(p);
-            }
-        }
-
-        result.push_back(std::move(snap));
     }
     return result;
 }

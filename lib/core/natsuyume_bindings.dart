@@ -312,6 +312,12 @@ typedef _NcoreOpenPlaylistInNewQueueNative =
 typedef NcoreOpenPlaylistInNewQueue =
     void Function(Pointer<Void>, int, Pointer<Utf8>);
 
+typedef _NcoreGetPlayingQueueIndexNative = Int32 Function(Pointer<Void>);
+typedef NcoreGetPlayingQueueIndex = int Function(Pointer<Void>);
+
+typedef _NcoreGetViewedTrackIndexNative = Int32 Function(Pointer<Void>);
+typedef NcoreGetViewedTrackIndex = int Function(Pointer<Void>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -387,6 +393,9 @@ class NatsuyumeBindings {
   late final NcoreRemoveTrackFromPlaylist ncoreRemoveTrackFromPlaylist;
   late final NcoreMoveTrackInPlaylist ncoreMoveTrackInPlaylist;
   late final NcoreOpenPlaylistInNewQueue ncoreOpenPlaylistInNewQueue;
+
+  late final NcoreGetPlayingQueueIndex ncoreGetPlayingQueueIndex;
+  late final NcoreGetViewedTrackIndex ncoreGetViewedTrackIndex;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -682,6 +691,18 @@ class NatsuyumeBindings {
     ncoreOpenPlaylistInNewQueue = _lib
         .lookup<NativeFunction<_NcoreOpenPlaylistInNewQueueNative>>(
           'ncore_open_playlist_in_new_queue',
+        )
+        .asFunction();
+
+    ncoreGetPlayingQueueIndex = _lib
+        .lookup<NativeFunction<_NcoreGetPlayingQueueIndexNative>>(
+          'ncore_get_playing_queue_index',
+        )
+        .asFunction();
+
+    ncoreGetViewedTrackIndex = _lib
+        .lookup<NativeFunction<_NcoreGetViewedTrackIndexNative>>(
+          'ncore_get_viewed_track_index',
         )
         .asFunction();
   }

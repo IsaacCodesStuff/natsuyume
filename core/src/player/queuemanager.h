@@ -45,20 +45,16 @@ public:
     void reverseQueue();
 
     // --- Track lookup ---
-    std::vector<Natsuyume::CoreTrack> trackList()                            const;
+    std::vector<Natsuyume::CoreTrack> trackList()                              const;
     Natsuyume::CoreTrack              trackInfoByPath(const std::string &path) const;
-    int64_t                           queueTotalDuration()                   const;
+    int64_t                           queueTotalDuration()                     const;
     bool                              isAlbumActiveQueue(const std::string &album,
-                                              Library::TrackSort sort,
-                                              bool ascending) const;
+                                                Library::TrackSort sort,
+                                                bool ascending)                const;
 
     // --- Jump ---
     void jumpToTrack(int index);
     void jumpToTrackByPath(const std::string &path);
-
-    // --- Persistence ---
-    void saveQueues(int viewedIndex);
-    void loadQueues(float volume);
 
     // --- Helpers ---
     std::string              generateQueueName() const;

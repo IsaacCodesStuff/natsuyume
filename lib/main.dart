@@ -36,7 +36,8 @@ class NatsuyumeApp extends StatefulWidget {
   State<NatsuyumeApp> createState() => _NatsuyumeAppState();
 }
 
-class _NatsuyumeAppState extends State<NatsuyumeApp> with WidgetsBindingObserver {
+class _NatsuyumeAppState extends State<NatsuyumeApp>
+    with WidgetsBindingObserver {
   late NatsuyumeColorScheme _scheme;
 
   @override
@@ -57,8 +58,7 @@ class _NatsuyumeAppState extends State<NatsuyumeApp> with WidgetsBindingObserver
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
-      NatsuyumeCore.instance.stopPolling();
-      NatsuyumeCore.instance.shutdown();
+      NatsuyumeCore.instance.saveAndShutdown();
     }
   }
 

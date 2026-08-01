@@ -100,16 +100,14 @@ struct NatsuyumeCore::Impl
         libraryManager->loadSettings();
         userDataManager->loadSettings(dataDir);
 
-        queueManager->loadQueues(playbackManager->volume());
         return true;
     }
 
-    void shutdown()
+    void saveAndShutdown()
     {
         playbackManager->saveSettings(dataDir);
         libraryManager->saveSettings();
         userDataManager->saveSettings(dataDir);
-        queueManager->saveQueues(session->viewedQueueIndex());
     }
 
     // -----------------------------------------------------------------------
@@ -286,9 +284,9 @@ void NatsuyumeCore::setDataDir(const std::string &dir)
     m_impl->dataDir = dir;
 }
 
-void NatsuyumeCore::shutdown()
+void NatsuyumeCore::saveAndShutdown()
 {
-    m_impl->shutdown();
+    m_impl->saveAndShutdown();
 }
 
 // --- Playback ---
@@ -395,16 +393,6 @@ void NatsuyumeCore::reverseActiveQueue()        { m_impl->queueManager->reverseQ
 void NatsuyumeCore::jumpToTrack(int index)      { m_impl->queueManager->jumpToTrack(index); }
 void NatsuyumeCore::jumpToTrackByPath(const std::string &path)
                                                 { m_impl->queueManager->jumpToTrackByPath(path); }
-
-void NatsuyumeCore::saveQueues()
-{
-    m_impl->queueManager->saveQueues(m_impl->session->viewedQueueIndex());
-}
-
-void NatsuyumeCore::loadQueues()
-{
-    m_impl->queueManager->loadQueues(m_impl->playbackManager->volume());
-}
 
 // --- Queue state ---
 

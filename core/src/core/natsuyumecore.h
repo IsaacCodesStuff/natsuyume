@@ -71,7 +71,7 @@ public:
 
     // --- Lifecycle ---
     bool init();         // open DB, load settings, restore queues
-    void shutdown();     // save queues/settings, tear down mpv
+    void saveAndShutdown();
 
     // --- Callbacks (set before calling init()) ---
     CoreCallbacks callbacks;
@@ -129,8 +129,6 @@ public:
     void reverseActiveQueue();
     void jumpToTrack(int index);
     void jumpToTrackByPath(const std::string &path);
-    void saveQueues();
-    void loadQueues();
 
     // --- Queue state ---
     int                         queueCount()        const;

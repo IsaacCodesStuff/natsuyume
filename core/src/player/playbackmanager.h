@@ -126,9 +126,6 @@ private:
     int64_t     m_savedPositionMs       = 0;
     std::string m_savedTrackPath;
     bool        m_pendingRestore        = false;
-    std::string m_savedQueuePaths;
-    std::string m_savedQueueName;
-    int64_t     m_pendingSeekMs         = 0;
 };
 
 #endif // PLAYBACKMANAGER_H
