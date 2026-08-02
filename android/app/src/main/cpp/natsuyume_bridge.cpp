@@ -41,7 +41,7 @@ void ncore_open_file(NatsuyumeCore* core, const char* path) {
 }
 
 char* ncore_get_version() {
-    const char* version = "0.9.1";
+    const char* version = "0.9.2";
     char* out = static_cast<char*>(malloc(strlen(version) + 1));
     strcpy(out, version);
     return out;
