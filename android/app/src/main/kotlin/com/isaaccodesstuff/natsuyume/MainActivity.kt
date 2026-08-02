@@ -26,10 +26,15 @@ class MainActivity : FlutterActivity() {
             playbackService = localBinder.getService()
             isBound = true
 
-            // Wire service commands back to Dart
             playbackService?.onCommand = { command ->
                 runOnUiThread {
                     methodChannel?.invokeMethod("onCommand", command)
+                }
+            }
+
+            playbackService?.onShutdown = {
+                runOnUiThread {
+                    methodChannel?.invokeMethod("shutdown", null)
                 }
             }
         }

@@ -318,6 +318,30 @@ typedef NcoreGetPlayingQueueIndex = int Function(Pointer<Void>);
 typedef _NcoreGetViewedTrackIndexNative = Int32 Function(Pointer<Void>);
 typedef NcoreGetViewedTrackIndex = int Function(Pointer<Void>);
 
+// int ncore_is_shuffled(NatsuyumeCore*)
+typedef _NcoreIsShuffledNative = Int32 Function(Pointer<Void>);
+typedef NcoreIsShuffled = int Function(Pointer<Void>);
+
+// int ncore_get_repeat_mode(NatsuyumeCore*)
+typedef _NcoreGetRepeatModeNative = Int32 Function(Pointer<Void>);
+typedef NcoreGetRepeatMode = int Function(Pointer<Void>);
+
+// int ncore_is_favorite(NatsuyumeCore*)
+typedef _NcoreIsFavoriteNative = Int32 Function(Pointer<Void>);
+typedef NcoreIsFavorite = int Function(Pointer<Void>);
+
+// void ncore_toggle_shuffle(NatsuyumeCore*)
+typedef _NcoreToggleShuffleNative = Void Function(Pointer<Void>);
+typedef NcoreToggleShuffle = void Function(Pointer<Void>);
+
+// void ncore_cycle_repeat_mode(NatsuyumeCore*)
+typedef _NcoreCycleRepeatModeNative = Void Function(Pointer<Void>);
+typedef NcoreCycleRepeatMode = void Function(Pointer<Void>);
+
+// void ncore_toggle_favorite(NatsuyumeCore*)
+typedef _NcoreToggleFavoriteNative = Void Function(Pointer<Void>);
+typedef NcoreToggleFavorite = void Function(Pointer<Void>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -396,6 +420,13 @@ class NatsuyumeBindings {
 
   late final NcoreGetPlayingQueueIndex ncoreGetPlayingQueueIndex;
   late final NcoreGetViewedTrackIndex ncoreGetViewedTrackIndex;
+
+  late final NcoreIsShuffled ncoreIsShuffled;
+  late final NcoreGetRepeatMode ncoreGetRepeatMode;
+  late final NcoreIsFavorite ncoreIsFavorite;
+  late final NcoreToggleShuffle ncoreToggleShuffle;
+  late final NcoreCycleRepeatMode ncoreCycleRepeatMode;
+  late final NcoreToggleFavorite ncoreToggleFavorite;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -703,6 +734,38 @@ class NatsuyumeBindings {
     ncoreGetViewedTrackIndex = _lib
         .lookup<NativeFunction<_NcoreGetViewedTrackIndexNative>>(
           'ncore_get_viewed_track_index',
+        )
+        .asFunction();
+
+    ncoreIsShuffled = _lib
+        .lookup<NativeFunction<_NcoreIsShuffledNative>>('ncore_is_shuffled')
+        .asFunction();
+
+    ncoreGetRepeatMode = _lib
+        .lookup<NativeFunction<_NcoreGetRepeatModeNative>>(
+          'ncore_get_repeat_mode',
+        )
+        .asFunction();
+
+    ncoreIsFavorite = _lib
+        .lookup<NativeFunction<_NcoreIsFavoriteNative>>('ncore_is_favorite')
+        .asFunction();
+
+    ncoreToggleShuffle = _lib
+        .lookup<NativeFunction<_NcoreToggleShuffleNative>>(
+          'ncore_toggle_shuffle',
+        )
+        .asFunction();
+
+    ncoreCycleRepeatMode = _lib
+        .lookup<NativeFunction<_NcoreCycleRepeatModeNative>>(
+          'ncore_cycle_repeat_mode',
+        )
+        .asFunction();
+
+    ncoreToggleFavorite = _lib
+        .lookup<NativeFunction<_NcoreToggleFavoriteNative>>(
+          'ncore_toggle_favorite',
         )
         .asFunction();
   }

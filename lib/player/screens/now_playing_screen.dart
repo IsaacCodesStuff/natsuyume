@@ -284,6 +284,22 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
     CoreTrack track,
     bool isPlaying,
   ) {
+    final shuffled = core.isShuffled;
+    final repeatMode = core.repeatMode; // 0=off, 1=all, 2=one
+    final isFavorite = core.isFavorite;
+
+    IconData repeatIcon;
+    switch (repeatMode) {
+      case 1:
+        repeatIcon = Icons.repeat;
+        break;
+      case 2:
+        repeatIcon = Icons.repeat_one;
+        break;
+      default:
+        repeatIcon = Icons.repeat;
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
       child: Row(
@@ -291,22 +307,25 @@ class _NowPlayingScreenState extends State<NowPlayingScreen> {
         children: [
           _ControlIcon(
             icon: Icons.shuffle,
-            active: false,
+            active: shuffled,
             colors: colors,
-            onTap: () {},
+            onTap: () => core.toggleShuffle(),
           ),
           _ControlIcon(
-            icon: Icons.repeat,
-            active: false,
+            icon: repeatIcon,
+            active: repeatMode != 0,
             colors: colors,
-            onTap: () {},
+            onTap: () => core.cycleRepeatMode(),
           ),
           GestureDetector(
-            onTap: () {},
+            onTap: () {
+              if (track.isEmpty) return;
+              core.toggleFavorite();
+            },
             child: Icon(
-              Icons.favorite_border,
+              isFavorite ? Icons.favorite : Icons.favorite_border,
               size: 32,
-              color: colors.onSurface,
+              color: isFavorite ? colors.accent : colors.onSurface,
             ),
           ),
           _ControlIcon(

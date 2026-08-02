@@ -722,4 +722,35 @@ int ncore_get_viewed_track_index(NatsuyumeCore* core) {
     return core->viewedTrackIndex();
 }
 
+// ---------------------------------------------------------------------------
+// Playback mode queries + toggles
+// ---------------------------------------------------------------------------
+
+int ncore_is_shuffled(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->isShuffled() ? 1 : 0;
+}
+
+int ncore_get_repeat_mode(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->repeatMode();
+}
+
+int ncore_is_favorite(NatsuyumeCore* core) {
+    if (!core) return 0;
+    return core->isFavorite() ? 1 : 0;
+}
+
+void ncore_toggle_shuffle(NatsuyumeCore* core) {
+    if (core) core->toggleShuffle();
+}
+
+void ncore_cycle_repeat_mode(NatsuyumeCore* core) {
+    if (core) core->cycleRepeatMode();
+}
+
+void ncore_toggle_favorite(NatsuyumeCore* core) {
+    if (core) core->toggleFavorite();
+}
+
 } // extern "C"

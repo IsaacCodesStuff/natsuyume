@@ -99,7 +99,10 @@ void QueueManager::openFilesInNewQueue(const std::vector<std::string> &paths,
     int oldPlayingIndex = m_session->playingQueueIndex();
     if (oldPlayingIndex >= 0) {
         Queue *oldQueue = m_session->queueAt(oldPlayingIndex);
-        if (oldQueue) oldQueue->pause();
+        if (oldQueue) {
+            oldQueue->pause();
+            oldQueue->saveState();  // ← snapshot position before switching
+        }
     }
 
     std::string queueName = name.empty() ? generateQueueName() : name;
@@ -185,10 +188,11 @@ void QueueManager::closeQueue(int index)
         Queue *nextQueue = m_session->queueAt(newPlayingIndex);
         if (nextQueue) {
             if (!nextQueue->isPlaying()) {
-                if (nextQueue->position() > 0 || nextQueue->duration() > 0)
-                    nextQueue->play();
-                else if (nextQueue->currentTrackIndex() >= 0)
+                if (nextQueue->savedPosition() > 0 || nextQueue->currentTrackIndex() >= 0) {
+                    nextQueue->restoreState();  // ← seek to saved position
+                } else if (nextQueue->currentTrackIndex() >= 0) {
                     nextQueue->loadTrackAt(nextQueue->currentTrackIndex());
+                }
             }
         }
     }

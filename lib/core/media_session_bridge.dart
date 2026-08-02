@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart';
+import 'natsuyume_core.dart';
 
 class MediaSessionBridge {
   MediaSessionBridge._();
@@ -8,12 +9,16 @@ class MediaSessionBridge {
     'com.isaaccodesstuff.natsuyume/media_session',
   );
 
-  /// Called once at app startup
   void init({required void Function(String command) onCommand}) {
     _channel.setMethodCallHandler((call) async {
-      if (call.method == 'onCommand') {
-        final command = call.arguments as String;
-        onCommand(command);
+      switch (call.method) {
+        case 'onCommand':
+          final command = call.arguments as String;
+          onCommand(command);
+          break;
+        case 'shutdown':
+          NatsuyumeCore.instance.saveAndShutdown();
+          break;
       }
     });
   }

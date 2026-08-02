@@ -126,8 +126,14 @@ void PlaybackManager::saveSettings(const std::string &dataDir)
         if (!q) continue;
 
         int currentIdx = q->currentTrackIndex();
-        int64_t posMs  = q->position();
-        int isActive   = (qi == playingIdx) ? 1 : 0;
+        int64_t posMs;
+        if (qi == playingIdx) {
+            posMs = q->position();  // live mpv position
+        } else {
+            q->saveState();         // snapshot current state
+            posMs = q->savedPosition();
+        }
+        int isActive = (qi == playingIdx) ? 1 : 0;
 
         sqlite3_stmt *qStmt = nullptr;
         if (sqlite3_prepare_v2(db, R"(
@@ -587,7 +593,9 @@ void PlaybackManager::connectCurrentPlaybackCallbacks(Queue *queue)
         if (playingQ->repeatMode() == Queue::RepeatTrack) {
             if (Playback *p = playingQ->currentPlayback()) {
                 p->clearAppendedTrack();
-                p->setRepeatTrackPending(true);
+                Track current = playingQ->peekNextTrack();
+                if (current.isValid())
+                    p->appendTrack(current);
             }
             return;
         }
@@ -595,16 +603,14 @@ void PlaybackManager::connectCurrentPlaybackCallbacks(Queue *queue)
         if (m_pendingGaplessAdvance) {
             m_pendingGaplessAdvance = false;
             if (playingQ->repeatMode() == Queue::RepeatTrack) {
-                if (Playback *p = playingQ->currentPlayback())
+                if (Playback *p = playingQ->currentPlayback()) {
                     p->clearAppendedTrack();
+                    Track current = playingQ->peekNextTrack(); // returns current track when RepeatTrack
+                    if (current.isValid())
+                        p->appendTrack(current);
+                }
                 return;
             }
-            Track next = playingQ->peekNextTrack();
-            if (next.isValid()) {
-                if (Playback *p = playingQ->currentPlayback())
-                    p->appendTrack(next);
-            }
-            return;
         }
 
         Track next = playingQ->peekNextTrack();

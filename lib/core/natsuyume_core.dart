@@ -24,6 +24,13 @@ class NatsuyumeCore {
   String _lastTrackPath = '';
   Timer? _pollTimer;
 
+  bool get isShuffled => _bindings.ncoreIsShuffled(_core) == 1;
+  int get repeatMode => _bindings.ncoreGetRepeatMode(_core);
+  bool get isFavorite => _bindings.ncoreIsFavorite(_core) == 1;
+  void toggleShuffle() => _bindings.ncoreToggleShuffle(_core);
+  void cycleRepeatMode() => _bindings.ncoreCycleRepeatMode(_core);
+  void toggleFavorite() => _bindings.ncoreToggleFavorite(_core);
+
   void init() {
     if (_initialized) return;
     _bindings = NatsuyumeBindings();
@@ -193,23 +200,30 @@ class NatsuyumeCore {
         final posMs = _bindings.ncoreGetPosition(_core);
         final durMs = _bindings.ncoreGetDuration(_core);
         final track = currentTrack;
-        final trackChanged =
-            track.path.isNotEmpty && track.path != _lastTrackPath;
-
-        // Temporary debug
-        if (trackChanged || durMs == 0) {
-          debugPrint(
-            'POLL: path=${track.path.split('/').last} '
-            'pos=$posMs dur=$durMs changed=$trackChanged last=$_lastTrackPath',
-          );
-        }
-
-        if (trackChanged) _lastTrackPath = track.path;
+        final hasQueue =
+            getActiveQueueIndex() >= 0 || getPlayingQueueIndex() >= 0;
+        final effectiveTrack = hasQueue
+            ? track
+            : const CoreTrack(
+                path: '',
+                title: '',
+                artist: '',
+                album: '',
+                albumArtist: '',
+                genre: '',
+                trackNumber: 0,
+                year: 0,
+                durationMs: 0,
+                playCount: 0,
+                isFavorite: false,
+              );
+        final trackChanged = effectiveTrack.path != _lastTrackPath;
+        if (trackChanged) _lastTrackPath = effectiveTrack.path;
         playerState.updateAll(
-          isPlaying: isPlaying,
-          positionMs: posMs,
-          durationMs: durMs,
-          track: trackChanged ? track : null,
+          isPlaying: hasQueue ? isPlaying : false,
+          positionMs: hasQueue ? posMs : 0,
+          durationMs: hasQueue ? durMs : 0,
+          track: trackChanged ? effectiveTrack : null,
         );
 
         // ← add this

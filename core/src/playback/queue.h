@@ -102,6 +102,8 @@ public:
     void setWasPlaying(bool wasPlaying);
     void setCurrentTrackIndex(int index);
 
+    int displayTrackIndex() const;
+
 private:
     std::string        m_name;
     std::vector<Track> m_tracks;
@@ -116,6 +118,7 @@ private:
     bool       m_shuffled      = false;
     std::vector<int> m_shuffleOrder;
     bool       m_stopAfterCurrent = false;
+    bool       m_isRestoringState = false;
 
     void generateShuffleOrder();
     int  nextShuffleIndex()     const;

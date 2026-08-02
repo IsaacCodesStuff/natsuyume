@@ -52,6 +52,7 @@ class NatsuyumePlaybackService : Service() {
     private var durationMs: Long = 0L
 
     var onCommand: ((String) -> Unit)? = null
+    var onShutdown: (() -> Unit)? = null
 
     // ── Audio focus listener ─────────────────────────────────────────────────
 
@@ -115,15 +116,14 @@ class NatsuyumePlaybackService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        // User swiped app from recents — pause and clean up
-        onCommand?.invoke("pause")
+        onShutdown?.invoke()
         abandonAudioFocus()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        onShutdown?.invoke()
         abandonAudioFocus()
         mediaSession.release()
         super.onDestroy()

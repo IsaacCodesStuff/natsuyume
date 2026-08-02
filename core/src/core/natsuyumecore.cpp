@@ -338,7 +338,7 @@ bool NatsuyumeCore::hasNext()           const { return m_impl->playbackManager->
 int NatsuyumeCore::viewedTrackIndex() const
 {
     Queue *q = m_impl->session->viewedQueue();
-    return q ? q->currentTrackIndex() : -1;
+    return q ? q->displayTrackIndex() : -1;
 }
 
 int NatsuyumeCore::viewedTrackCount() const

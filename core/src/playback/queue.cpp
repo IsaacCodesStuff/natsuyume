@@ -3,7 +3,7 @@
 #include <random>
 #include <chrono>
 #include <cstring>
-
+#include <android/log.h>
 
 // ---------------------------------------------------------------------------
 // ICU locale-aware string comparison
@@ -47,6 +47,7 @@ void Queue::destroyPlayback()
 void Queue::connectPlaybackCallbacks()
 {
     m_currentPlayback->onTrackEnded = [this]() {
+        if (m_isRestoringState) return;
         if (m_stopAfterCurrent) {
             m_stopAfterCurrent = false;
             if (onStopAfterCurrentChanged) onStopAfterCurrentChanged();
@@ -159,6 +160,12 @@ Track Queue::peekNextTrack() const
 
 void Queue::advancePlayback()
 {
+    if (m_repeatMode == RepeatTrack) {
+        // Stay on same track — just fire the callback to refresh UI
+        if (onTrackChanged) onTrackChanged();
+        return;
+    }
+
     if (m_shuffled) {
         int next = nextShuffleIndex();
         if (next >= 0) {
@@ -246,6 +253,12 @@ void Queue::removeTrack(int index)
 
     if (m_currentTrackIndex >= (int)m_tracks.size())
         m_currentTrackIndex = (int)m_tracks.size() - 1;
+    if (m_currentPlayback) {
+        m_currentPlayback->clearAppendedTrack();
+        Track next = peekNextTrack();
+        if (next.isValid())
+            m_currentPlayback->appendTrack(next);
+    }
 
     if (onQueueChanged)  onQueueChanged();
     if (onTrackChanged)  onTrackChanged();
@@ -262,7 +275,25 @@ void Queue::clearTracks()
 
 int              Queue::trackCount() const { return (int)m_tracks.size(); }
 Track            Queue::trackAt(int index) const { return m_tracks.at(index); }
-std::vector<Track> Queue::tracks()   const { return m_tracks; }
+std::vector<Track> Queue::tracks() const
+{
+    if (!m_shuffled || m_shuffleOrder.empty()) return m_tracks;
+    std::vector<Track> shuffled;
+    shuffled.reserve(m_shuffleOrder.size());
+    for (int i : m_shuffleOrder)
+        if (i >= 0 && i < (int)m_tracks.size())
+            shuffled.push_back(m_tracks.at(i));
+    return shuffled;
+}
+
+int Queue::displayTrackIndex() const
+{
+    if (!m_shuffled || m_shuffleOrder.empty()) return m_currentTrackIndex;
+    auto it = std::find(m_shuffleOrder.begin(), m_shuffleOrder.end(),
+                        m_currentTrackIndex);
+    if (it == m_shuffleOrder.end()) return -1;
+    return (int)std::distance(m_shuffleOrder.begin(), it);
+}
 
 // ---------------------------------------------------------------------------
 // Playback control
@@ -347,19 +378,24 @@ void Queue::restoreState()
     if (m_currentTrackIndex < 0 ||
         m_currentTrackIndex >= (int)m_tracks.size()) return;
 
+    m_isRestoringState = true;
+
     int64_t savedPos = m_savedPosition;
     const Track &track = m_tracks.at(m_currentTrackIndex);
 
-    // Debug
-    fprintf(stderr, "Queue::restoreState: track=%s valid=%d savedPos=%lld\n",
-            track.path.c_str(), (int)track.isValid(), (long long)savedPos);
-
     auto prevCallback = m_currentPlayback->onReadyToPlay;
     m_currentPlayback->onReadyToPlay = [this, savedPos, prevCallback]() {
-        fprintf(stderr, "Queue::restoreState: onReadyToPlay fired, seeking to %lld\n",
-                (long long)savedPos);
-        m_currentPlayback->seekTo(savedPos);
+        m_isRestoringState = false;
+
+        if (savedPos > 0)
+            m_currentPlayback->seekTo(savedPos);
         m_currentPlayback->pause();
+
+        // Append next track so natural playback end works
+        Track next = peekNextTrack();
+        if (next.isValid())
+            m_currentPlayback->appendTrack(next);
+
         m_currentPlayback->onReadyToPlay = prevCallback;
         if (onTrackChanged)     onTrackChanged();
         if (onRestoreCompleted) onRestoreCompleted();
@@ -406,9 +442,11 @@ void Queue::cycleRepeatMode()
     case RepeatTrack: m_repeatMode = NoRepeat;    break;
     }
 
-    if (m_repeatMode == RepeatTrack && m_currentPlayback) {
+    if (m_currentPlayback) {
         m_currentPlayback->clearAppendedTrack();
-        m_currentPlayback->setRepeatTrackPending(true);
+        Track next = peekNextTrack();
+        if (next.isValid())
+            m_currentPlayback->appendTrack(next);
     }
 
     if (onRepeatModeChanged) onRepeatModeChanged();
@@ -427,6 +465,14 @@ void Queue::toggleShuffle()
         generateShuffleOrder();
     else
         m_shuffleOrder.clear();
+
+    // Re-queue correct next track for gapless
+    if (m_currentPlayback) {
+        m_currentPlayback->clearAppendedTrack();
+        Track next = peekNextTrack();
+        if (next.isValid())
+            m_currentPlayback->appendTrack(next);
+    }
 
     if (onShuffleChanged) onShuffleChanged();
 }
@@ -468,6 +514,12 @@ void Queue::moveTrack(int from, int to)
     } else {
         if (m_currentTrackIndex >= to && m_currentTrackIndex < from)
             m_currentTrackIndex++;
+    }
+    if (m_currentPlayback) {
+        m_currentPlayback->clearAppendedTrack();
+        Track next = peekNextTrack();
+        if (next.isValid())
+            m_currentPlayback->appendTrack(next);
     }
 
     if (onQueueChanged) onQueueChanged();
@@ -541,6 +593,13 @@ void Queue::sortTracks(Library::TrackSort sort, bool ascending)
         }
     }
 
+    if (m_currentPlayback) {
+        m_currentPlayback->clearAppendedTrack();
+        Track next = peekNextTrack();
+        if (next.isValid())
+            m_currentPlayback->appendTrack(next);
+    }
+
     if (m_shuffled) generateShuffleOrder();
     if (onQueueChanged) onQueueChanged();
 }
@@ -563,6 +622,13 @@ void Queue::reverseTracks()
                 break;
             }
         }
+    }
+
+    if (m_currentPlayback) {
+        m_currentPlayback->clearAppendedTrack();
+        Track next = peekNextTrack();
+        if (next.isValid())
+            m_currentPlayback->appendTrack(next);
     }
 
     if (m_shuffled) generateShuffleOrder();
