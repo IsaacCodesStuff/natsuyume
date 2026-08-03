@@ -224,6 +224,7 @@ public:
 
     // --- Playlist image ---
     void setPlaylistImage(int playlistId, const std::string &imagePath);
+    std::string playlistImage(int playlistId) const;
 
     // --- Clear operations ---
     void clearUserData();

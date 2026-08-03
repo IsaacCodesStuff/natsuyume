@@ -594,6 +594,11 @@ void NatsuyumeCore::setPlaylistImage(int playlistId,
     m_impl->userDataManager->setPlaylistImage(playlistId, imagePath);
 }
 
+std::string NatsuyumeCore::playlistImage(int playlistId) const
+{
+    return m_impl->userDataManager->playlistImagePath(playlistId);
+}
+
 // --- Clear operations ---
 
 void NatsuyumeCore::clearUserData() { m_impl->userDataManager->clearUserData(); }

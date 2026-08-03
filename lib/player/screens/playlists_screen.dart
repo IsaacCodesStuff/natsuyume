@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../../theme/natsuyume_theme.dart';
 import '../../widgets/library_top_bar.dart';
 import '../../widgets/album_grid_item.dart';
@@ -55,13 +56,16 @@ class _PlaylistsScreenState extends State<PlaylistsScreen> {
 
   void _loadPlaylists() {
     final raw = NatsuyumeCore.instance.getPlaylists();
-    setState(() {
-      _playlists = raw
-          .map(
-            (p) => PlaylistData(id: p.id, name: p.name, songCount: p.songCount),
-          )
-          .toList();
-    });
+    final enriched = raw.map((p) {
+      final imagePath = NatsuyumeCore.instance.getPlaylistImage(p.id);
+      return PlaylistData(
+        id: p.id,
+        name: p.name,
+        songCount: p.songCount,
+        coverArt: imagePath.isNotEmpty ? FileImage(File(imagePath)) : null,
+      );
+    }).toList();
+    setState(() => _playlists = enriched);
   }
 
   List<PlaylistData> get _filteredPlaylists {

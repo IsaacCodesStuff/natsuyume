@@ -753,4 +753,36 @@ void ncore_toggle_favorite(NatsuyumeCore* core) {
     if (core) core->toggleFavorite();
 }
 
+// ---------------------------------------------------------------------------
+// Artist images
+// ---------------------------------------------------------------------------
+
+void ncore_set_artist_image(NatsuyumeCore* core,
+                             const char* artist,
+                             const char* imagePath) {
+    if (core && artist && imagePath)
+        core->setArtistImage(std::string(artist), std::string(imagePath));
+}
+
+char* ncore_get_artist_image(NatsuyumeCore* core, const char* artist) {
+    if (!core || !artist) return mallocStr("");
+    return mallocStr(core->artistImage(std::string(artist)));
+}
+
+// ---------------------------------------------------------------------------
+// Playlist image
+// ---------------------------------------------------------------------------
+
+void ncore_set_playlist_image(NatsuyumeCore* core,
+                               int playlist_id,
+                               const char* imagePath) {
+    if (core && imagePath)
+        core->setPlaylistImage(playlist_id, std::string(imagePath));
+}
+
+char* ncore_get_playlist_image(NatsuyumeCore* core, int playlist_id) {
+    if (!core) return mallocStr("");
+    return mallocStr(core->playlistImage(playlist_id));
+}
+
 } // extern "C"

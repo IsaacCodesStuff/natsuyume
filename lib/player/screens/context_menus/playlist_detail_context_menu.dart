@@ -72,6 +72,7 @@ class PlaylistDetailContextMenu {
               builder: (_) => FractionallySizedBox(
                 heightFactor: 1.0,
                 child: PlaylistEditorScreen(
+                  playlistId: playlist.id,
                   initialName: playlist.name,
                   initialImage: playlist.coverArt,
                 ),

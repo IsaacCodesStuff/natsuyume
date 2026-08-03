@@ -1,13 +1,19 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'collection_editor_screen.dart';
+import '../../core/natsuyume_core.dart';
+import '../../core/image_picker_service.dart';
+import '../../core/collection_image_service.dart';
 
 class PlaylistEditorScreen extends StatelessWidget {
+  final int playlistId;
   final String initialName;
   final String initialDescription;
   final ImageProvider? initialImage;
 
   const PlaylistEditorScreen({
     super.key,
+    required this.playlistId,
     this.initialName = '',
     this.initialDescription = '',
     this.initialImage,
@@ -22,6 +28,29 @@ class PlaylistEditorScreen extends StatelessWidget {
       initialName: initialName,
       initialDescription: initialDescription,
       initialImage: initialImage,
+      onSave: (name, description) async {
+        if (name.isNotEmpty && name != initialName) {
+          NatsuyumeCore.instance.renamePlaylist(playlistId, name);
+        }
+        // Description deferred to 0.9.5.
+      },
+      onPickImage: () async {
+        final file = await ImagePickerService.instance.pickAndCropSquare(
+          context,
+        );
+        if (file == null) return null;
+        final path = await CollectionImageService.instance.savePlaylistImage(
+          file,
+          playlistId,
+        );
+        if (path == null) return null;
+        NatsuyumeCore.instance.setPlaylistImage(playlistId, path);
+        return FileImage(File(path));
+      },
+      onDeleteImage: () async {
+        await CollectionImageService.instance.deletePlaylistImage(playlistId);
+        NatsuyumeCore.instance.setPlaylistImage(playlistId, '');
+      },
     );
   }
 }

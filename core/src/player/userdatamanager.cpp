@@ -103,6 +103,11 @@ void UserDataManager::setPlaylistImage(int playlistId,
     m_userData->setPlaylistImage(playlistId, imagePath);
 }
 
+std::string UserDataManager::playlistImagePath(int playlistId) const
+{
+    return m_userData->playlistImagePath(playlistId);
+}
+
 void UserDataManager::addTrackToPlaylist(int playlistId,
                                          const std::string &path)
 {

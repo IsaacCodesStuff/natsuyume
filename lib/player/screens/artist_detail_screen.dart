@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../../theme/natsuyume_theme.dart';
 import '../../core/library_types.dart';
 import '../../core/natsuyume_core.dart';
@@ -35,6 +36,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
   List<ArtistAlbumEntry> _albums = [];
+  ImageProvider? _customArtistImage;
 
   static const double _coverThreshold = 260.0;
 
@@ -43,6 +45,16 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _loadAlbums();
+    _loadArtistImage();
+  }
+
+  void _loadArtistImage() {
+    final path = NatsuyumeCore.instance.getArtistImage(widget.artist.name);
+    if (path.isNotEmpty) {
+      setState(() => _customArtistImage = FileImage(File(path)));
+    } else {
+      setState(() => _customArtistImage = null);
+    }
   }
 
   void _loadAlbums() {
@@ -179,9 +191,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         heightFactor: 1.0,
                         child: ArtistEditorScreen(
                           initialName: widget.artist.name,
+                          initialImage: _customArtistImage,
                         ),
                       ),
-                    );
+                    ).then((_) => _loadArtistImage());
                   },
                 ),
               ],
@@ -237,9 +250,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 totalTracks: _totalTrackCount,
                 totalDuration: '—',
                 description: 'No description yet.',
+                customImage: _customArtistImage,
               ),
             ),
-          );
+          ).then((_) => _loadArtistImage());
         },
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -247,7 +261,9 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
             borderRadius: BorderRadius.circular(16),
             child: AspectRatio(
               aspectRatio: 1,
-              child: widget.artist.photo != null
+              child: _customArtistImage != null
+                  ? Image(image: _customArtistImage!, fit: BoxFit.cover)
+                  : widget.artist.photo != null
                   ? Image(image: widget.artist.photo!, fit: BoxFit.cover)
                   : Container(
                       color: colors.surfaceVariant,

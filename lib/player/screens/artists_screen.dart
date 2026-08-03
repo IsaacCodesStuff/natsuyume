@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../../theme/natsuyume_theme.dart';
 import '../../widgets/library_top_bar.dart';
 import '../../widgets/album_grid_item.dart';
@@ -43,7 +44,18 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
 
   void _loadArtists() {
     final artists = NatsuyumeCore.instance.getArtists();
-    setState(() => _artists = artists);
+    final enriched = artists.map((a) {
+      final imagePath = NatsuyumeCore.instance.getArtistImage(a.name);
+      if (imagePath.isNotEmpty) {
+        return ArtistData(
+          name: a.name,
+          albumCount: a.albumCount,
+          photo: FileImage(File(imagePath)),
+        );
+      }
+      return a;
+    }).toList();
+    setState(() => _artists = enriched);
   }
 
   List<ArtistData> get _filteredArtists {
@@ -53,12 +65,14 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
   }
 
   void _openArtist(ArtistData artist) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            ArtistDetailScreen(artist: artist, isArtistPlaying: false),
-      ),
-    );
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) =>
+                ArtistDetailScreen(artist: artist, isArtistPlaying: false),
+          ),
+        )
+        .then((_) => _loadArtists());
   }
 
   AlbumData _toAlbumData(ArtistData artist) => AlbumData(

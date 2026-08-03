@@ -7,19 +7,21 @@ class PlaylistInfoOverlay extends StatelessWidget {
   final PlaylistData playlist;
   final String totalDuration;
   final String description;
+  final ImageProvider? customImage;
 
   const PlaylistInfoOverlay({
     super.key,
     required this.playlist,
     this.totalDuration = '0:00',
     this.description = '',
+    this.customImage,
   });
 
   @override
   Widget build(BuildContext context) {
     return CollectionInfoOverlay(
       name: playlist.name,
-      image: playlist.coverArt,
+      image: customImage ?? playlist.coverArt,
       sectionLabel: 'Playlist Description',
       description: description,
       details: [
@@ -35,9 +37,10 @@ class PlaylistInfoOverlay extends StatelessWidget {
           builder: (_) => FractionallySizedBox(
             heightFactor: 1.0,
             child: PlaylistEditorScreen(
+              playlistId: playlist.id,
               initialName: playlist.name,
               initialDescription: description,
-              initialImage: playlist.coverArt,
+              initialImage: customImage ?? playlist.coverArt,
             ),
           ),
         );

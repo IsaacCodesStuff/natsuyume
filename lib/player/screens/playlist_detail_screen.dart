@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../../theme/natsuyume_theme.dart';
 import '../../widgets/collection_detail_bar.dart';
 import '../../widgets/playlist_track_list.dart';
@@ -36,6 +37,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   bool _isSelecting = false;
   final Set<int> _selectedIndices = {};
   List<CorePlaylistTrack> _tracks = [];
+  ImageProvider? _customPlaylistImage;
 
   static const double _coverThreshold = 260.0;
 
@@ -44,6 +46,16 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     _loadTracks();
+    _loadPlaylistImage();
+  }
+
+  void _loadPlaylistImage() {
+    final path = NatsuyumeCore.instance.getPlaylistImage(widget.playlist.id);
+    if (path.isNotEmpty) {
+      setState(() => _customPlaylistImage = FileImage(File(path)));
+    } else {
+      setState(() => _customPlaylistImage = null);
+    }
   }
 
   void _loadTracks() {
@@ -212,10 +224,12 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                       builder: (_) => FractionallySizedBox(
                         heightFactor: 1.0,
                         child: PlaylistEditorScreen(
+                          playlistId: widget.playlist.id,
                           initialName: widget.playlist.name,
+                          initialImage: _customPlaylistImage,
                         ),
                       ),
-                    );
+                    ).then((_) => _loadPlaylistImage());
                   },
                 ),
               ],
@@ -279,9 +293,10 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                 playlist: widget.playlist,
                 totalDuration: _totalDuration,
                 description: 'No description yet.',
+                customImage: _customPlaylistImage,
               ),
             ),
-          );
+          ).then((_) => _loadPlaylistImage());
         },
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -289,7 +304,9 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
             borderRadius: BorderRadius.circular(16),
             child: AspectRatio(
               aspectRatio: 1,
-              child: cover != null
+              child: _customPlaylistImage != null
+                  ? Image(image: _customPlaylistImage!, fit: BoxFit.cover)
+                  : cover != null
                   ? Image(image: cover, fit: BoxFit.cover)
                   : Container(
                       color: colors.surfaceVariant,

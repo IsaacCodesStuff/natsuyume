@@ -342,6 +342,29 @@ typedef NcoreCycleRepeatMode = void Function(Pointer<Void>);
 typedef _NcoreToggleFavoriteNative = Void Function(Pointer<Void>);
 typedef NcoreToggleFavorite = void Function(Pointer<Void>);
 
+// void ncore_set_artist_image(NatsuyumeCore*, const char*, const char*)
+typedef _NcoreSetArtistImageNative =
+    Void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>);
+typedef NcoreSetArtistImage =
+    void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>);
+
+// char* ncore_get_artist_image(NatsuyumeCore*, const char*)
+typedef _NcoreGetArtistImageNative =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreGetArtistImage =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+
+// void ncore_set_playlist_image(NatsuyumeCore*, int, const char*)
+typedef _NcoreSetPlaylistImageNative =
+    Void Function(Pointer<Void>, Int32, Pointer<Utf8>);
+typedef NcoreSetPlaylistImage =
+    void Function(Pointer<Void>, int, Pointer<Utf8>);
+
+// char* ncore_get_playlist_image(NatsuyumeCore*, int)
+typedef _NcoreGetPlaylistImageNative =
+    Pointer<Utf8> Function(Pointer<Void>, Int32);
+typedef NcoreGetPlaylistImage = Pointer<Utf8> Function(Pointer<Void>, int);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -427,6 +450,10 @@ class NatsuyumeBindings {
   late final NcoreToggleShuffle ncoreToggleShuffle;
   late final NcoreCycleRepeatMode ncoreCycleRepeatMode;
   late final NcoreToggleFavorite ncoreToggleFavorite;
+  late final NcoreSetArtistImage ncoreSetArtistImage;
+  late final NcoreGetArtistImage ncoreGetArtistImage;
+  late final NcoreSetPlaylistImage ncoreSetPlaylistImage;
+  late final NcoreGetPlaylistImage ncoreGetPlaylistImage;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -766,6 +793,30 @@ class NatsuyumeBindings {
     ncoreToggleFavorite = _lib
         .lookup<NativeFunction<_NcoreToggleFavoriteNative>>(
           'ncore_toggle_favorite',
+        )
+        .asFunction();
+
+    ncoreSetArtistImage = _lib
+        .lookup<NativeFunction<_NcoreSetArtistImageNative>>(
+          'ncore_set_artist_image',
+        )
+        .asFunction();
+
+    ncoreGetArtistImage = _lib
+        .lookup<NativeFunction<_NcoreGetArtistImageNative>>(
+          'ncore_get_artist_image',
+        )
+        .asFunction();
+
+    ncoreSetPlaylistImage = _lib
+        .lookup<NativeFunction<_NcoreSetPlaylistImageNative>>(
+          'ncore_set_playlist_image',
+        )
+        .asFunction();
+
+    ncoreGetPlaylistImage = _lib
+        .lookup<NativeFunction<_NcoreGetPlaylistImageNative>>(
+          'ncore_get_playlist_image',
         )
         .asFunction();
   }

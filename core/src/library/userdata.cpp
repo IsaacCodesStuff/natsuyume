@@ -553,6 +553,22 @@ std::string UserData::artistImage(const std::string &artist) const
     return "";
 }
 
+std::string UserData::playlistImagePath(int playlistId) const
+{
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT image_path FROM playlists WHERE id = ?",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return "";
+    sqlite3_bind_int(stmt, 1, playlistId);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *v = reinterpret_cast<const char *>(
+            sqlite3_column_text(stmt, 0));
+        return v ? v : "";
+    }
+    return "";
+}
+
 // ---------------------------------------------------------------------------
 // Nuclear reset
 // ---------------------------------------------------------------------------

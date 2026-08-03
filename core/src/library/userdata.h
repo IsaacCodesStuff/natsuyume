@@ -48,6 +48,8 @@ public:
     void deletePlaylist(int playlistId);
     void renamePlaylist(int playlistId, const std::string &name);
     void setPlaylistImage(int playlistId, const std::string &imagePath);
+    std::string playlistImagePath(int playlistId) const;
+    std::string artistImagePath(const std::string &artist) const;
     void addTrackToPlaylist(int playlistId, const std::string &path);
     void removeTrackFromPlaylist(int playlistId, const std::string &path);
     void moveTrackInPlaylist(int playlistId, int from, int to);

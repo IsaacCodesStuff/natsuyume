@@ -9,6 +9,7 @@ class ArtistInfoOverlay extends StatelessWidget {
   final int totalTracks;
   final String totalDuration;
   final String description;
+  final ImageProvider? customImage;
 
   const ArtistInfoOverlay({
     super.key,
@@ -17,13 +18,14 @@ class ArtistInfoOverlay extends StatelessWidget {
     this.totalTracks = 0,
     this.totalDuration = '0:00',
     this.description = '',
+    this.customImage,
   });
 
   @override
   Widget build(BuildContext context) {
     return CollectionInfoOverlay(
       name: artist.name,
-      image: artist.photo,
+      image: customImage ?? artist.photo,
       sectionLabel: 'Artist Description',
       description: description,
       details: [
@@ -42,7 +44,7 @@ class ArtistInfoOverlay extends StatelessWidget {
             child: ArtistEditorScreen(
               initialName: artist.name,
               initialDescription: description,
-              initialImage: artist.photo,
+              initialImage: customImage ?? artist.photo,
             ),
           ),
         );

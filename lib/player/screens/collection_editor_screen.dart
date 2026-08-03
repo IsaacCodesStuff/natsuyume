@@ -10,6 +10,9 @@ class CollectionEditorScreen extends StatefulWidget {
   final String initialName;
   final String initialDescription;
   final ImageProvider? initialImage;
+  final Future<void> Function(String name, String description)? onSave;
+  final Future<ImageProvider?> Function()? onPickImage;
+  final Future<void> Function()? onDeleteImage;
 
   const CollectionEditorScreen({
     super.key,
@@ -19,6 +22,9 @@ class CollectionEditorScreen extends StatefulWidget {
     this.initialName = '',
     this.initialDescription = '',
     this.initialImage,
+    this.onSave,
+    this.onPickImage,
+    this.onDeleteImage,
   });
 
   @override
@@ -29,6 +35,8 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
   ThemeColorMode _themeColorMode = ThemeColorMode.automatic;
+  ImageProvider? _currentImage;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -37,6 +45,7 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
     _descriptionController = TextEditingController(
       text: widget.initialDescription,
     );
+    _currentImage = widget.initialImage;
   }
 
   @override
@@ -46,9 +55,26 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
     super.dispose();
   }
 
-  void _save() {
-    // Wired to core in 0.8.x
-    Navigator.of(context).pop();
+  Future<void> _save() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    await widget.onSave?.call(
+      _nameController.text.trim(),
+      _descriptionController.text.trim(),
+    );
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  Future<void> _pickImage() async {
+    final image = await widget.onPickImage?.call();
+    if (image != null && mounted) {
+      setState(() => _currentImage = image);
+    }
+  }
+
+  Future<void> _deleteImage() async {
+    await widget.onDeleteImage?.call();
+    if (mounted) setState(() => _currentImage = null);
   }
 
   @override
@@ -112,10 +138,19 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
               ),
             ),
           ),
-          GestureDetector(
-            onTap: _save,
-            child: Icon(Icons.check, color: colors.accent, size: 24),
-          ),
+          _saving
+              ? SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: colors.accent,
+                  ),
+                )
+              : GestureDetector(
+                  onTap: _save,
+                  child: Icon(Icons.check, color: colors.accent, size: 24),
+                ),
         ],
       ),
     );
@@ -127,11 +162,9 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Image
-          widget.initialImage != null
-              ? Image(image: widget.initialImage!, fit: BoxFit.cover)
+          _currentImage != null
+              ? Image(image: _currentImage!, fit: BoxFit.cover)
               : Container(color: colors.surfaceVariant),
-          // Gradient overlay
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -144,7 +177,6 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
               ),
             ),
           ),
-          // Edit + delete buttons
           Positioned(
             left: 24,
             bottom: 24,
@@ -153,18 +185,15 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
                 _ImageButton(
                   icon: Icons.edit_outlined,
                   colors: colors,
-                  onTap: () {
-                    // Image picker wired in 0.8.x
-                  },
+                  onTap: _pickImage,
                 ),
                 const SizedBox(width: 16),
-                _ImageButton(
-                  icon: Icons.delete_outline,
-                  colors: colors,
-                  onTap: () {
-                    // Remove image wired in 0.8.x
-                  },
-                ),
+                if (_currentImage != null)
+                  _ImageButton(
+                    icon: Icons.delete_outline,
+                    colors: colors,
+                    onTap: _deleteImage,
+                  ),
               ],
             ),
           ),
@@ -179,12 +208,10 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Name field
           _FieldLabel(label: widget.nameLabel, colors: colors),
           const SizedBox(height: 4),
           _UnderlineField(controller: _nameController, colors: colors),
           const SizedBox(height: 24),
-          // Theme color mode
           _FieldLabel(label: widget.themeColorLabel, colors: colors),
           const SizedBox(height: 12),
           _ThemeColorPicker(
@@ -193,7 +220,6 @@ class _CollectionEditorScreenState extends State<CollectionEditorScreen> {
             onChanged: (mode) => setState(() => _themeColorMode = mode),
           ),
           const SizedBox(height: 24),
-          // Description field
           _FieldLabel(label: 'Description', colors: colors),
           const SizedBox(height: 4),
           _UnderlineField(controller: _descriptionController, colors: colors),
