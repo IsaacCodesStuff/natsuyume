@@ -28,18 +28,26 @@ class _AlbumGridItemState extends State<AlbumGridItem> {
   @override
   void initState() {
     super.initState();
-    _coverFuture = CoverService.instance.getCoverForAlbumAsync(
-      widget.album.title,
-    );
+    if (widget.album.coverArt == null) {
+      _coverFuture = CoverService.instance.getCoverForAlbumAsync(
+        widget.album.title,
+      );
+    } else {
+      _coverFuture = Future.value(null);
+    }
   }
 
   @override
   void didUpdateWidget(AlbumGridItem old) {
     super.didUpdateWidget(old);
     if (old.album.title != widget.album.title) {
-      _coverFuture = CoverService.instance.getCoverForAlbumAsync(
-        widget.album.title,
-      );
+      if (widget.album.coverArt == null) {
+        _coverFuture = CoverService.instance.getCoverForAlbumAsync(
+          widget.album.title,
+        );
+      } else {
+        _coverFuture = Future.value(null);
+      }
     }
   }
 
@@ -73,25 +81,27 @@ class _AlbumGridItemState extends State<AlbumGridItem> {
               ),
               child: AspectRatio(
                 aspectRatio: 1,
-                child: FutureBuilder<Uint8List?>(
-                  future: _coverFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData && snapshot.data != null) {
-                      return Image(
-                        image: MemoryImage(snapshot.data!),
-                        fit: BoxFit.cover,
-                      );
-                    }
-                    return Container(
-                      color: colors.surfaceVariant,
-                      child: Icon(
-                        Icons.album,
-                        size: 48,
-                        color: colors.onSurfaceVariant,
+                child: widget.album.coverArt != null
+                    ? Image(image: widget.album.coverArt!, fit: BoxFit.cover)
+                    : FutureBuilder<Uint8List?>(
+                        future: _coverFuture,
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData && snapshot.data != null) {
+                            return Image(
+                              image: MemoryImage(snapshot.data!),
+                              fit: BoxFit.cover,
+                            );
+                          }
+                          return Container(
+                            color: colors.surfaceVariant,
+                            child: Icon(
+                              Icons.album,
+                              size: 48,
+                              color: colors.onSurfaceVariant,
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ),
             Padding(

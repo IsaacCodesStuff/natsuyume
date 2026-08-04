@@ -30,18 +30,26 @@ class _AlbumListItemState extends State<AlbumListItem> {
   @override
   void initState() {
     super.initState();
-    _coverFuture = CoverService.instance.getCoverForAlbumAsync(
-      widget.album.title,
-    );
+    if (widget.album.coverArt == null) {
+      _coverFuture = CoverService.instance.getCoverForAlbumAsync(
+        widget.album.title,
+      );
+    } else {
+      _coverFuture = Future.value(null);
+    }
   }
 
   @override
   void didUpdateWidget(AlbumListItem old) {
     super.didUpdateWidget(old);
     if (old.album.title != widget.album.title) {
-      _coverFuture = CoverService.instance.getCoverForAlbumAsync(
-        widget.album.title,
-      );
+      if (widget.album.coverArt == null) {
+        _coverFuture = CoverService.instance.getCoverForAlbumAsync(
+          widget.album.title,
+        );
+      } else {
+        _coverFuture = Future.value(null);
+      }
     }
   }
 
@@ -72,29 +80,36 @@ class _AlbumListItemState extends State<AlbumListItem> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: FutureBuilder<Uint8List?>(
-                future: _coverFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.hasData && snapshot.data != null) {
-                    return Image(
-                      image: MemoryImage(snapshot.data!),
+              child: widget.album.coverArt != null
+                  ? Image(
+                      image: widget.album.coverArt!,
                       width: 52,
                       height: 52,
                       fit: BoxFit.cover,
-                    );
-                  }
-                  return Container(
-                    width: 52,
-                    height: 52,
-                    color: colors.surfaceVariant,
-                    child: Icon(
-                      Icons.album,
-                      size: 28,
-                      color: colors.onSurfaceVariant,
+                    )
+                  : FutureBuilder<Uint8List?>(
+                      future: _coverFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data != null) {
+                          return Image(
+                            image: MemoryImage(snapshot.data!),
+                            width: 52,
+                            height: 52,
+                            fit: BoxFit.cover,
+                          );
+                        }
+                        return Container(
+                          width: 52,
+                          height: 52,
+                          color: colors.surfaceVariant,
+                          child: Icon(
+                            Icons.album,
+                            size: 28,
+                            color: colors.onSurfaceVariant,
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
             const SizedBox(width: 12),
             Expanded(
