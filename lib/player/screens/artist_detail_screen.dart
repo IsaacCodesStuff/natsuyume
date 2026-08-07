@@ -37,6 +37,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   final Set<int> _selectedIndices = {};
   List<ArtistAlbumEntry> _albums = [];
   ImageProvider? _customArtistImage;
+  String _artistDescription = '';
 
   static const double _coverThreshold = 260.0;
 
@@ -46,6 +47,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     _scrollController.addListener(_onScroll);
     _loadAlbums();
     _loadArtistImage();
+    _loadArtistDescription();
   }
 
   void _loadArtistImage() {
@@ -55,6 +57,13 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     } else {
       setState(() => _customArtistImage = null);
     }
+  }
+
+  void _loadArtistDescription() {
+    final desc = NatsuyumeCore.instance.getArtistDescription(
+      widget.artist.name,
+    );
+    setState(() => _artistDescription = desc);
   }
 
   void _loadAlbums() {
@@ -191,10 +200,14 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         heightFactor: 1.0,
                         child: ArtistEditorScreen(
                           initialName: widget.artist.name,
+                          initialDescription: _artistDescription,
                           initialImage: _customArtistImage,
                         ),
                       ),
-                    ).then((_) => _loadArtistImage());
+                    ).then((_) {
+                      _loadArtistImage();
+                      _loadArtistDescription();
+                    });
                   },
                 ),
               ],
@@ -249,11 +262,15 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 totalAlbums: _albums.length,
                 totalTracks: _totalTrackCount,
                 totalDuration: '—',
-                description: 'No description yet.',
+                description: _artistDescription,
                 customImage: _customArtistImage,
+                onSaved: () {
+                  _loadArtistImage();
+                  _loadArtistDescription();
+                },
               ),
             ),
-          ).then((_) => _loadArtistImage());
+          );
         },
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),

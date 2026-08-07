@@ -221,10 +221,15 @@ public:
     void        setArtistImage(const std::string &artist,
                         const std::string &imagePath);
     std::string artistImage(const std::string &artist) const;
+    void        setArtistDescription(const std::string &artist,
+                                 const std::string &description);
+    std::string artistDescription(const std::string &artist) const;
 
     // --- Playlist image ---
     void setPlaylistImage(int playlistId, const std::string &imagePath);
     std::string playlistImage(int playlistId) const;
+    void        setPlaylistDescription(int playlistId, const std::string &description);
+    std::string playlistDescription(int playlistId) const;
 
     // --- Clear operations ---
     void clearUserData();

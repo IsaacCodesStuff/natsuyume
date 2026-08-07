@@ -41,7 +41,7 @@ void ncore_open_file(NatsuyumeCore* core, const char* path) {
 }
 
 char* ncore_get_version() {
-    const char* version = "0.9.3";
+    const char* version = "0.9.4";
     char* out = static_cast<char*>(malloc(strlen(version) + 1));
     strcpy(out, version);
     return out;
@@ -783,6 +783,30 @@ void ncore_set_playlist_image(NatsuyumeCore* core,
 char* ncore_get_playlist_image(NatsuyumeCore* core, int playlist_id) {
     if (!core) return mallocStr("");
     return mallocStr(core->playlistImage(playlist_id));
+}
+
+void ncore_set_playlist_description(NatsuyumeCore* core,
+                                     int playlist_id,
+                                     const char* description) {
+    if (core && description)
+        core->setPlaylistDescription(playlist_id, std::string(description));
+}
+
+char* ncore_get_playlist_description(NatsuyumeCore* core, int playlist_id) {
+    if (!core) return mallocStr("");
+    return mallocStr(core->playlistDescription(playlist_id));
+}
+
+void ncore_set_artist_description(NatsuyumeCore* core,
+                                   const char* artist,
+                                   const char* description) {
+    if (core && artist && description)
+        core->setArtistDescription(std::string(artist), std::string(description));
+}
+
+char* ncore_get_artist_description(NatsuyumeCore* core, const char* artist) {
+    if (!core || !artist) return mallocStr("");
+    return mallocStr(core->artistDescription(std::string(artist)));
 }
 
 } // extern "C"

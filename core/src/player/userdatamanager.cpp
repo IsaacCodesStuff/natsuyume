@@ -103,6 +103,17 @@ void UserDataManager::setPlaylistImage(int playlistId,
     m_userData->setPlaylistImage(playlistId, imagePath);
 }
 
+void UserDataManager::setPlaylistDescription(int playlistId,
+                                             const std::string &description)
+{
+    m_userData->setPlaylistDescription(playlistId, description);
+}
+
+std::string UserDataManager::playlistDescription(int playlistId) const
+{
+    return m_userData->playlistDescription(playlistId);
+}
+
 std::string UserDataManager::playlistImagePath(int playlistId) const
 {
     return m_userData->playlistImagePath(playlistId);
@@ -280,6 +291,17 @@ void UserDataManager::setArtistImage(const std::string &artist,
 std::string UserDataManager::artistImage(const std::string &artist) const
 {
     return m_userData->artistImage(artist);
+}
+
+void UserDataManager::setArtistDescription(const std::string &artist,
+                                           const std::string &description)
+{
+    m_userData->setArtistDescription(artist, description);
+}
+
+std::string UserDataManager::artistDescription(const std::string &artist) const
+{
+    return m_userData->artistDescription(artist);
 }
 
 // ---------------------------------------------------------------------------

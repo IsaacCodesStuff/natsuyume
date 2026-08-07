@@ -588,6 +588,17 @@ std::string NatsuyumeCore::artistImage(const std::string &artist) const
     return m_impl->userDataManager->artistImage(artist);
 }
 
+void NatsuyumeCore::setArtistDescription(const std::string &artist,
+                                         const std::string &description)
+{
+    m_impl->userDataManager->setArtistDescription(artist, description);
+}
+
+std::string NatsuyumeCore::artistDescription(const std::string &artist) const
+{
+    return m_impl->userDataManager->artistDescription(artist);
+}
+
 void NatsuyumeCore::setPlaylistImage(int playlistId,
                                      const std::string &imagePath)
 {
@@ -597,6 +608,17 @@ void NatsuyumeCore::setPlaylistImage(int playlistId,
 std::string NatsuyumeCore::playlistImage(int playlistId) const
 {
     return m_impl->userDataManager->playlistImagePath(playlistId);
+}
+
+void NatsuyumeCore::setPlaylistDescription(int playlistId,
+                                           const std::string &description)
+{
+    m_impl->userDataManager->setPlaylistDescription(playlistId, description);
+}
+
+std::string NatsuyumeCore::playlistDescription(int playlistId) const
+{
+    return m_impl->userDataManager->playlistDescription(playlistId);
 }
 
 // --- Clear operations ---

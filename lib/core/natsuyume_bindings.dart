@@ -365,6 +365,26 @@ typedef _NcoreGetPlaylistImageNative =
     Pointer<Utf8> Function(Pointer<Void>, Int32);
 typedef NcoreGetPlaylistImage = Pointer<Utf8> Function(Pointer<Void>, int);
 
+typedef _NcoreSetPlaylistDescriptionNative =
+    Void Function(Pointer<Void>, Int32, Pointer<Utf8>);
+typedef NcoreSetPlaylistDescription =
+    void Function(Pointer<Void>, int, Pointer<Utf8>);
+
+typedef _NcoreGetPlaylistDescriptionNative =
+    Pointer<Utf8> Function(Pointer<Void>, Int32);
+typedef NcoreGetPlaylistDescription =
+    Pointer<Utf8> Function(Pointer<Void>, int);
+
+typedef _NcoreSetArtistDescriptionNative =
+    Void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>);
+typedef NcoreSetArtistDescription =
+    void Function(Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>);
+
+typedef _NcoreGetArtistDescriptionNative =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+typedef NcoreGetArtistDescription =
+    Pointer<Utf8> Function(Pointer<Void>, Pointer<Utf8>);
+
 // ---------------------------------------------------------------------------
 // NatsuyumeBindings — loads libnatsuyume_bridge.so and binds symbols
 // ---------------------------------------------------------------------------
@@ -454,6 +474,11 @@ class NatsuyumeBindings {
   late final NcoreGetArtistImage ncoreGetArtistImage;
   late final NcoreSetPlaylistImage ncoreSetPlaylistImage;
   late final NcoreGetPlaylistImage ncoreGetPlaylistImage;
+
+  late final NcoreSetPlaylistDescription ncoreSetPlaylistDescription;
+  late final NcoreGetPlaylistDescription ncoreGetPlaylistDescription;
+  late final NcoreSetArtistDescription ncoreSetArtistDescription;
+  late final NcoreGetArtistDescription ncoreGetArtistDescription;
 
   NatsuyumeBindings() {
     _lib = DynamicLibrary.open('libnatsuyume_bridge.so');
@@ -817,6 +842,30 @@ class NatsuyumeBindings {
     ncoreGetPlaylistImage = _lib
         .lookup<NativeFunction<_NcoreGetPlaylistImageNative>>(
           'ncore_get_playlist_image',
+        )
+        .asFunction();
+
+    ncoreSetPlaylistDescription = _lib
+        .lookup<NativeFunction<_NcoreSetPlaylistDescriptionNative>>(
+          'ncore_set_playlist_description',
+        )
+        .asFunction();
+
+    ncoreGetPlaylistDescription = _lib
+        .lookup<NativeFunction<_NcoreGetPlaylistDescriptionNative>>(
+          'ncore_get_playlist_description',
+        )
+        .asFunction();
+
+    ncoreSetArtistDescription = _lib
+        .lookup<NativeFunction<_NcoreSetArtistDescriptionNative>>(
+          'ncore_set_artist_description',
+        )
+        .asFunction();
+
+    ncoreGetArtistDescription = _lib
+        .lookup<NativeFunction<_NcoreGetArtistDescriptionNative>>(
+          'ncore_get_artist_description',
         )
         .asFunction();
   }

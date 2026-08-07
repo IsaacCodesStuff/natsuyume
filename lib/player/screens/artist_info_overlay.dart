@@ -10,6 +10,7 @@ class ArtistInfoOverlay extends StatelessWidget {
   final String totalDuration;
   final String description;
   final ImageProvider? customImage;
+  final VoidCallback? onSaved;
 
   const ArtistInfoOverlay({
     super.key,
@@ -19,6 +20,7 @@ class ArtistInfoOverlay extends StatelessWidget {
     this.totalDuration = '0:00',
     this.description = '',
     this.customImage,
+    this.onSaved,
   });
 
   @override
@@ -47,7 +49,7 @@ class ArtistInfoOverlay extends StatelessWidget {
               initialImage: customImage ?? artist.photo,
             ),
           ),
-        );
+        ).then((_) => onSaved?.call());
       },
       onSaveImage: () {
         // Save image to gallery — wired in 0.8.x

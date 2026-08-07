@@ -32,7 +32,12 @@ class PlaylistEditorScreen extends StatelessWidget {
         if (name.isNotEmpty && name != initialName) {
           NatsuyumeCore.instance.renamePlaylist(playlistId, name);
         }
-        // Description deferred to 0.9.5.
+        if (description != initialDescription) {
+          NatsuyumeCore.instance.setPlaylistDescription(
+            playlistId,
+            description,
+          );
+        }
       },
       onPickImage: () async {
         final file = await ImagePickerService.instance.pickAndCropSquare(

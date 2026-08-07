@@ -67,6 +67,15 @@ void UserData::createSchema()
     )");
 
     exec(R"(
+        CREATE TABLE IF NOT EXISTS artist_metadata (
+            artist      TEXT PRIMARY KEY,
+            description TEXT NOT NULL DEFAULT ''
+        )
+    )");
+
+    exec("ALTER TABLE playlists ADD COLUMN description TEXT NOT NULL DEFAULT ''");
+
+    exec(R"(
         CREATE TABLE IF NOT EXISTS favorite_paths (
             path TEXT PRIMARY KEY
         )
@@ -74,9 +83,10 @@ void UserData::createSchema()
 
     exec(R"(
         CREATE TABLE IF NOT EXISTS playlists (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            name       TEXT NOT NULL UNIQUE,
-            image_path TEXT NOT NULL DEFAULT ''
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT NOT NULL UNIQUE,
+            image_path  TEXT NOT NULL DEFAULT '',
+            description TEXT NOT NULL DEFAULT ''
         )
     )");
 
@@ -339,6 +349,36 @@ void UserData::setPlaylistImage(int playlistId, const std::string &imagePath)
     if (onPlaylistsChanged) onPlaylistsChanged();
 }
 
+void UserData::setPlaylistDescription(int playlistId,
+                                      const std::string &description)
+{
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "UPDATE playlists SET description = ? WHERE id = ?",
+            -1, &stmt.s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, description.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int (stmt, 2, playlistId);
+        sqlite3_step(stmt);
+    }
+    if (onPlaylistsChanged) onPlaylistsChanged();
+}
+
+std::string UserData::playlistDescription(int playlistId) const
+{
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT description FROM playlists WHERE id = ?",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return "";
+    sqlite3_bind_int(stmt, 1, playlistId);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *v = reinterpret_cast<const char *>(
+            sqlite3_column_text(stmt, 0));
+        return v ? v : "";
+    }
+    return "";
+}
+
 void UserData::addTrackToPlaylist(int playlistId, const std::string &path)
 {
     int nextPos = 0;
@@ -485,7 +525,7 @@ std::vector<PlaylistInfo> UserData::allPlaylists() const
     std::vector<PlaylistInfo> result;
     Stmt stmt;
     if (sqlite3_prepare_v2(m_db,
-            "SELECT id, name, image_path FROM playlists ORDER BY name ASC",
+            "SELECT id, name, image_path, description FROM playlists ORDER BY name ASC",
             -1, &stmt.s, nullptr) != SQLITE_OK)
         return result;
 
@@ -494,8 +534,10 @@ std::vector<PlaylistInfo> UserData::allPlaylists() const
         info.id   = sqlite3_column_int(stmt, 0);
         const char *n = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 1));
         const char *p = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 2));
-        info.name      = n ? n : "";
-        info.imagePath = p ? p : "";
+        const char *d = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 3));
+        info.name        = n ? n : "";
+        info.imagePath   = p ? p : "";
+        info.description = d ? d : "";
         result.push_back(std::move(info));
     }
     return result;
@@ -548,6 +590,37 @@ std::string UserData::artistImage(const std::string &artist) const
     sqlite3_bind_text(stmt, 1, artist.c_str(), -1, SQLITE_TRANSIENT);
     if (sqlite3_step(stmt) == SQLITE_ROW) {
         const char *v = reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0));
+        return v ? v : "";
+    }
+    return "";
+}
+
+void UserData::setArtistDescription(const std::string &artist,
+                                    const std::string &description)
+{
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db, R"(
+        INSERT INTO artist_metadata (artist, description) VALUES (?,?)
+        ON CONFLICT(artist) DO UPDATE SET description = ?
+    )", -1, &stmt.s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(stmt, 1, artist.c_str(),      -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 2, description.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(stmt, 3, description.c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_step(stmt);
+    }
+}
+
+std::string UserData::artistDescription(const std::string &artist) const
+{
+    Stmt stmt;
+    if (sqlite3_prepare_v2(m_db,
+            "SELECT description FROM artist_metadata WHERE artist = ?",
+            -1, &stmt.s, nullptr) != SQLITE_OK)
+        return "";
+    sqlite3_bind_text(stmt, 1, artist.c_str(), -1, SQLITE_TRANSIENT);
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        const char *v = reinterpret_cast<const char *>(
+            sqlite3_column_text(stmt, 0));
         return v ? v : "";
     }
     return "";

@@ -14,6 +14,7 @@ struct PlaylistInfo {
     int         id = -1;
     std::string name;
     std::string imagePath;
+    std::string description;
 };
 
 class UserData
@@ -48,6 +49,8 @@ public:
     void deletePlaylist(int playlistId);
     void renamePlaylist(int playlistId, const std::string &name);
     void setPlaylistImage(int playlistId, const std::string &imagePath);
+    void setPlaylistDescription(int playlistId, const std::string &description);
+    std::string playlistDescription(int playlistId) const;
     std::string playlistImagePath(int playlistId) const;
     std::string artistImagePath(const std::string &artist) const;
     void addTrackToPlaylist(int playlistId, const std::string &path);
@@ -65,6 +68,9 @@ public:
     void        setArtistImage(const std::string &artist,
                                const std::string &imagePath);
     std::string artistImage(const std::string &artist) const;
+    void        setArtistDescription(const std::string &artist,
+                                 const std::string &description);
+    std::string artistDescription(const std::string &artist) const;
 
     // --- Nuclear reset ---
     void clearAll();

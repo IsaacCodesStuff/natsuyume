@@ -681,6 +681,45 @@ class NatsuyumeCore {
     _bindings.ncoreFreeString(ptr);
     return result;
   }
+
+  void setPlaylistDescription(int playlistId, String description) {
+    final ptr = description.toNativeUtf8();
+    try {
+      _bindings.ncoreSetPlaylistDescription(_core, playlistId, ptr);
+    } finally {
+      calloc.free(ptr);
+    }
+  }
+
+  String getPlaylistDescription(int playlistId) {
+    final ptr = _bindings.ncoreGetPlaylistDescription(_core, playlistId);
+    final result = ptr.toDartString();
+    _bindings.ncoreFreeString(ptr);
+    return result;
+  }
+
+  void setArtistDescription(String artist, String description) {
+    final artistPtr = artist.toNativeUtf8();
+    final descPtr = description.toNativeUtf8();
+    try {
+      _bindings.ncoreSetArtistDescription(_core, artistPtr, descPtr);
+    } finally {
+      calloc.free(artistPtr);
+      calloc.free(descPtr);
+    }
+  }
+
+  String getArtistDescription(String artist) {
+    final artistPtr = artist.toNativeUtf8();
+    try {
+      final ptr = _bindings.ncoreGetArtistDescription(_core, artistPtr);
+      final result = ptr.toDartString();
+      _bindings.ncoreFreeString(ptr);
+      return result;
+    } finally {
+      calloc.free(artistPtr);
+    }
+  }
 }
 
 class CoreTrack {

@@ -8,6 +8,7 @@ class PlaylistInfoOverlay extends StatelessWidget {
   final String totalDuration;
   final String description;
   final ImageProvider? customImage;
+  final VoidCallback? onSaved;
 
   const PlaylistInfoOverlay({
     super.key,
@@ -15,6 +16,7 @@ class PlaylistInfoOverlay extends StatelessWidget {
     this.totalDuration = '0:00',
     this.description = '',
     this.customImage,
+    this.onSaved,
   });
 
   @override
@@ -43,7 +45,7 @@ class PlaylistInfoOverlay extends StatelessWidget {
               initialImage: customImage ?? playlist.coverArt,
             ),
           ),
-        );
+        ).then((_) => onSaved?.call());
       },
       onSaveImage: () {
         // Save image to gallery — wired in 0.8.x

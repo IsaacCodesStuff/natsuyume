@@ -38,6 +38,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
   final Set<int> _selectedIndices = {};
   List<CorePlaylistTrack> _tracks = [];
   ImageProvider? _customPlaylistImage;
+  String _playlistDescription = '';
 
   static const double _coverThreshold = 260.0;
 
@@ -47,6 +48,7 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     _scrollController.addListener(_onScroll);
     _loadTracks();
     _loadPlaylistImage();
+    _loadPlaylistDescription();
   }
 
   void _loadPlaylistImage() {
@@ -56,6 +58,13 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
     } else {
       setState(() => _customPlaylistImage = null);
     }
+  }
+
+  void _loadPlaylistDescription() {
+    final desc = NatsuyumeCore.instance.getPlaylistDescription(
+      widget.playlist.id,
+    );
+    setState(() => _playlistDescription = desc);
   }
 
   void _loadTracks() {
@@ -226,10 +235,14 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
                         child: PlaylistEditorScreen(
                           playlistId: widget.playlist.id,
                           initialName: widget.playlist.name,
+                          initialDescription: _playlistDescription,
                           initialImage: _customPlaylistImage,
                         ),
                       ),
-                    ).then((_) => _loadPlaylistImage());
+                    ).then((_) {
+                      _loadPlaylistImage();
+                      _loadPlaylistDescription();
+                    });
                   },
                 ),
               ],
@@ -292,11 +305,15 @@ class _PlaylistDetailScreenState extends State<PlaylistDetailScreen> {
               child: PlaylistInfoOverlay(
                 playlist: widget.playlist,
                 totalDuration: _totalDuration,
-                description: 'No description yet.',
+                description: _playlistDescription,
                 customImage: _customPlaylistImage,
+                onSaved: () {
+                  _loadPlaylistImage();
+                  _loadPlaylistDescription();
+                },
               ),
             ),
-          ).then((_) => _loadPlaylistImage());
+          );
         },
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),

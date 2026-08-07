@@ -27,9 +27,9 @@ class ArtistEditorScreen extends StatelessWidget {
       initialDescription: initialDescription,
       initialImage: initialImage,
       onSave: (name, description) async {
-        // Name field is read-only for artists — artists are identified
-        // by their library name, we only store the image.
-        // Description storage deferred to 0.9.5 metadata infrastructure.
+        if (description != initialDescription) {
+          NatsuyumeCore.instance.setArtistDescription(initialName, description);
+        }
       },
       onPickImage: () async {
         final file = await ImagePickerService.instance.pickAndCropSquare(
